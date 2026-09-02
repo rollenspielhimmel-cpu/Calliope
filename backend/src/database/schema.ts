@@ -55,6 +55,7 @@ export type NotificationType =
   | "invitation_accepted"
   | "invited_to_chat_group"
   | "invited_to_writing_group"
+  | "new_writing_page"
   | "new_writing_post"
   | "new_writing_thread"
   | "role_changed_in_writing_group"
@@ -97,6 +98,7 @@ export type ReportTargetType =
   | "story_idea"
   | "user"
   | "writing_group"
+  | "writing_page"
   | "writing_post"
   | "writing_thread";
 
@@ -422,6 +424,7 @@ export interface Favourite {
   storyIdeaId: string | null;
   userId: string;
   writingGroupId: string | null;
+  writingPageId: string | null;
   writingPostId: string | null;
   writingThreadId: string | null;
 }
@@ -464,6 +467,7 @@ export interface Notification {
   recipientId: string;
   type: NotificationType;
   writingGroupId: string | null;
+  writingPageId: string | null;
   writingPostId: string | null;
   writingThreadId: string | null;
 }
@@ -507,6 +511,7 @@ export interface Report {
   reportedStoryIdeaId: string | null;
   reportedUserId: string | null;
   reportedWritingGroupId: string | null;
+  reportedWritingPageId: string | null;
   reportedWritingPostId: string | null;
   reportedWritingThreadId: string | null;
   reporterId: string | null;
@@ -662,11 +667,23 @@ export interface UserToken {
   userId: string;
 }
 
+<<<<<<< HEAD
 export interface WatchlistEntry {
   addedAt: Generated<string>;
   addedBy: string | null;
   note: string;
   userId: string;
+=======
+export interface WritingFolder {
+  createdAt: Generated<string>;
+  createdBy: string | null;
+  depth: number;
+  description: string | null;
+  id: Generated<string>;
+  parentFolderId: string | null;
+  title: string;
+  writingGroupId: string;
+>>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
 }
 
 export interface WritingGroup {
@@ -705,10 +722,11 @@ export interface WritingPage {
   createdAt: Generated<string>;
   createdBy: string | null;
   document: unknown;
+  folderId: string | null;
   id: Generated<string>;
+  lastActivityAt: Generated<string>;
   text: string;
   title: string;
-  updatedAt: Generated<string>;
   updatedBy: string | null;
   writingGroupId: string;
 }
@@ -728,6 +746,7 @@ export interface WritingPost {
 export interface WritingThread {
   createdAt: Generated<string>;
   createdBy: string | null;
+  folderId: string | null;
   id: Generated<string>;
   lastActivityAt: Generated<string>;
   title: string;
@@ -771,7 +790,11 @@ export interface DB {
   userInWritingGroup: UserInWritingGroup;
   userSession: UserSession;
   userToken: UserToken;
+<<<<<<< HEAD
   watchlistEntry: WatchlistEntry;
+=======
+  writingFolder: WritingFolder;
+>>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
   writingGroup: WritingGroup;
   writingGroupNextStep: WritingGroupNextStep;
   writingPage: WritingPage;
@@ -780,7 +803,11 @@ export interface DB {
 }
 import * as z from "zod";
 
+<<<<<<< HEAD
 const int32 = z.int().min(-2147483648).max(2147483647);
+=======
+const int16 = z.int().min(-32768).max(32767);
+>>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
 
 export const WRITING_GROUP_VISIBILITIES = ["private", "public"] as const;
 export const WRITING_GROUP_VISIBILITY_SCHEMA = z.enum(
@@ -992,6 +1019,7 @@ export const NOTIFICATION_TYPES = [
   "invitation_accepted",
   "invited_to_chat_group",
   "invited_to_writing_group",
+  "new_writing_page",
   "new_writing_post",
   "new_writing_thread",
   "role_changed_in_writing_group",
@@ -1023,6 +1051,7 @@ export const REPORT_TARGET_TYPES = [
   "story_idea",
   "user",
   "writing_group",
+  "writing_page",
   "writing_post",
   "writing_thread",
 ] as const;
@@ -1255,6 +1284,7 @@ export const FAVOURITE_SCHEMA = z.object({
   writingGroupId: z.uuidv7().nullable(),
   writingThreadId: z.uuidv7().nullable(),
   writingPostId: z.uuidv7().nullable(),
+  writingPageId: z.uuidv7().nullable(),
   storyIdeaId: z.uuidv7().nullable(),
   chatGroupId: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -1297,6 +1327,7 @@ export const NOTIFICATION_SCHEMA = z.object({
   writingGroupId: z.uuidv7().nullable(),
   chatGroupId: z.uuidv7().nullable(),
   writingThreadId: z.uuidv7().nullable(),
+  writingPageId: z.uuidv7().nullable(),
   writingPostId: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   occurredAt: z.iso.datetime({ offset: true }),
@@ -1332,6 +1363,7 @@ export const REPORT_SCHEMA = z.object({
   reportedWritingGroupId: z.uuidv7().nullable(),
   reportedWritingThreadId: z.uuidv7().nullable(),
   reportedWritingPostId: z.uuidv7().nullable(),
+  reportedWritingPageId: z.uuidv7().nullable(),
   reportedStoryIdeaId: z.uuidv7().nullable(),
   reportedChatGroupId: z.uuidv7().nullable(),
   reportedChatMessageId: z.uuidv7().nullable(),
@@ -1497,11 +1529,23 @@ export const USER_TOKEN_SCHEMA = z.object({
   newEmailAddress: z.string().nullable(),
 });
 
+<<<<<<< HEAD
 export const WATCHLIST_ENTRY_SCHEMA = z.object({
   userId: z.uuidv7(),
   note: z.string(),
   addedBy: z.uuidv7().nullable(),
   addedAt: z.iso.datetime({ offset: true }),
+=======
+export const WRITING_FOLDER_SCHEMA = z.object({
+  id: z.uuidv7(),
+  writingGroupId: z.uuidv7(),
+  parentFolderId: z.uuidv7().nullable(),
+  depth: int16,
+  title: z.string(),
+  description: z.string().nullable(),
+  createdBy: z.uuidv7().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+>>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
 });
 
 export const WRITING_GROUP_SCHEMA = z.object({
@@ -1544,8 +1588,9 @@ export const WRITING_PAGE_SCHEMA = z.object({
   text: z.string(),
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
-  updatedAt: z.iso.datetime({ offset: true }),
+  lastActivityAt: z.iso.datetime({ offset: true }),
   updatedBy: z.uuidv7().nullable(),
+  folderId: z.uuidv7().nullable(),
 });
 
 export const WRITING_POST_SCHEMA = z.object({
@@ -1567,4 +1612,5 @@ export const WRITING_THREAD_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
+  folderId: z.uuidv7().nullable(),
 });

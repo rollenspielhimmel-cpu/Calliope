@@ -10,6 +10,7 @@ import {
   USER_IN_WRITING_GROUP_SCHEMA,
   USER_SCHEMA,
   USER_SESSION_SCHEMA,
+  WRITING_FOLDER_SCHEMA,
   WRITING_GROUP_NEXT_STEP_SCHEMA,
   WRITING_GROUP_SCHEMA,
   WRITING_PAGE_SCHEMA,
@@ -98,13 +99,19 @@ export const MEMBERSHIP_RESPONSE = USER_IN_WRITING_GROUP_SCHEMA.extend({
   avatarUrl: AVATAR_URL,
 });
 
+/** A folder as the tree reads it. `depth` is derived by the server and never sent by a client. */
+export const FOLDER_RESPONSE = WRITING_FOLDER_SCHEMA.extend(
+  CREATED_BY_USERNAME,
+);
+
 /**
- * A page without its prose, for the rail. `updatedAt` is also what an edit is conditional on,
- * so the client has to keep the value it loaded.
+ * A page without its prose, for the tree. `lastActivityAt` is also what an edit is conditional
+ * on, so the client has to keep the value it loaded.
  */
 export const PAGE_SUMMARY_RESPONSE = WRITING_PAGE_SCHEMA
   .omit({ document: true, text: true })
   .extend(CREATED_BY_USERNAME)
+  .extend(OWN_FAVOURITE)
   .extend({ updatedByUsername: z.string().nullable() });
 
 // `text` stays server-side: it exists for search, and the client renders the document.
@@ -254,6 +261,11 @@ const THREAD_SUBJECT = {
   writingThreadTitle: z.string(),
 };
 
+const PAGE_SUBJECT = {
+  writingPageId: NOTIFICATION_SCHEMA.shape.writingPageId.unwrap(),
+  writingPageTitle: z.string(),
+};
+
 export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
   /**
    * The one notification with no actor: a Blind-Date is arranged by the team, and naming an
@@ -326,6 +338,13 @@ export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
   }),
   z.object({
     ...NOTIFICATION_BASE,
+    ...GROUP_SUBJECT,
+    ...PAGE_SUBJECT,
+    // A page belongs to its group, not to a thread, so it carries no thread subject.
+    type: z.literal("new_writing_page"),
+  }),
+  z.object({
+    ...NOTIFICATION_BASE,
     type: z.literal("invited_to_chat_group"),
     chatGroupId: NOTIFICATION_SCHEMA.shape.chatGroupId.unwrap(),
     chatGroupTitle: z.string(),
@@ -378,3 +397,8 @@ export const STATUS_UPDATE_COMMENT_RESPONSE = STATUS_UPDATE_COMMENT_SCHEMA
   .extend({
     createdByUsername: z.string(),
   });
+ * A page as search returns it: the summary, without its prose. The body is what the term may
+ * have matched, but the row shows a title like every other kind's.
+ */
+export const FOUND_PAGE_RESPONSE = PAGE_SUMMARY_RESPONSE
+  .extend({ writingGroupTitle: z.string() });

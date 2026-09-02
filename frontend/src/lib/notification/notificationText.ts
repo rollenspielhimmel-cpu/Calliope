@@ -57,10 +57,12 @@ export function notificationText(notification: ListNotifications200ResultsItem):
         ROLE_CLAUSES[notification.role] ?? notification.role
       }`
     case 'new_writing_thread':
-      return `${actor} hat den Thread „${notification.writingThreadTitle}“ in „${notification.writingGroupTitle}“ angelegt.`
+      return `${actor} hat das Thema „${notification.writingThreadTitle}“ in „${notification.writingGroupTitle}“ angelegt.`
     case 'new_writing_post':
       // Both names: somebody in several groups cannot place a thread title on its own.
       return `${actor} hat in „${notification.writingThreadTitle}“ in „${notification.writingGroupTitle}“ geschrieben.`
+    case 'new_writing_page':
+      return `${actor} hat die Seite „${notification.writingPageTitle}“ in „${notification.writingGroupTitle}“ angelegt.`
     case 'invited_to_chat_group':
       // The two invitations are different things and land in different places.
       return `${actor} hat dich zum Chat „${notification.chatGroupTitle}“ eingeladen.`
@@ -97,6 +99,17 @@ export function notificationAction(
     case 'blind_date_matched':
     case 'blind_date_reveal_requested':
     case 'blind_date_ended':
+    case 'new_writing_page':
+      return {
+        kind: 'route',
+        to: {
+          name: 'page',
+          params: {
+            groupId: notification.writingGroupId,
+            pageId: notification.writingPageId,
+          },
+        },
+      }
     case 'invited_to_writing_group':
     case 'invitation_accepted':
     case 'visibility_changed_in_writing_group':

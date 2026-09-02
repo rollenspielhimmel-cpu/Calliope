@@ -122,6 +122,8 @@ const TARGET_LABELS: Record<Report['targetType'], string> = {
   writing_group: 'Gruppe',
   writing_thread: 'Thread',
   writing_post: 'Beitrag',
+  // Neu mit seinen Gruppen-Seiten: gepflegtes Material, kein Diskussionsbeitrag.
+  writing_page: 'Seite',
   story_idea: 'Storyidee',
   chat_group: 'Chat',
   chat_message: 'Nachricht',

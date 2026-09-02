@@ -8,7 +8,7 @@ import { WritingGroupService } from "@/src/service/writing_group_service.ts";
 import { WritingThreadService } from "@/src/service/writing_thread_service.ts";
 import { WritingPostService } from "@/src/service/writing_post_service.ts";
 import { BlindDateNameGuardService } from "@/src/service/blind_date_name_guard_service.ts";
-import { mayWrite } from "@/src/service/writing_group_authorization.ts";
+import { mayAct } from "@/src/service/writing_group_authorization.ts";
 import {
   BAD_REQUEST_RESPONSE,
   COMMON_RESPONSES,
@@ -95,7 +95,7 @@ export default new OpenAPIHono().openapi(
       return c.json({ error: "Group not found" }, STATUS_CODE.NotFound);
     }
 
-    if (!mayWrite(role)) {
+    if (!mayAct(role, "post:create")) {
       return c.json(
         { error: "Only writers and administrators can write a post" },
         STATUS_CODE.Forbidden,

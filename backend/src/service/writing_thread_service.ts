@@ -4,7 +4,7 @@ import { db, type Transaction } from "@/src/database/client.ts";
 import { NotificationService } from "@/src/service/notification_service.ts";
 import type { WritingThread as DatabaseWritingThread } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
-import { IS_FAVOURITE, withFavourite } from "@/src/query/favourite.ts";
+import { withFavourite } from "@/src/query/favourite.ts";
 import {
   type ListQuery,
   type ListResults,
@@ -33,6 +33,7 @@ export type Thread =
     | "createdBy"
     | "createdAt"
     | "lastActivityAt"
+    | "folderId"
   >
   // Null once the author has deleted their account, because created_by is ON DELETE SET NULL.
   & { createdByUsername: string | null }
@@ -51,6 +52,7 @@ const SELECTED_COLUMNS = [
   "writingThread.createdBy",
   "writingThread.createdAt",
   "writingThread.lastActivityAt",
+  "writingThread.folderId",
 ] as const;
 
 /**
@@ -80,11 +82,13 @@ async function insertThread(
   writingGroupId: string,
   title: string,
   createdBy: string,
+  /** Null puts it at the root of the group's tree, which is where a thread starts. */
+  folderId: string | null = null,
 ): Promise<Thread> {
   return await db.transaction().execute(async (transaction) => {
     const { id } = await transaction
       .insertInto("writingThread")
-      .values({ writingGroupId, title, createdBy })
+      .values({ writingGroupId, title, createdBy, folderId })
       .returning(["id"])
       .executeTakeFirstOrThrow();
 
@@ -161,10 +165,9 @@ async function selectThreads(
 ): Promise<Array<Thread>> {
   const threads = await threadsForReader(readerId)
     .where("writingThread.writingGroupId", "=", writingGroupId)
-    // Favourites first, then most recently written in. This strip is not a list endpoint — it
-    // returns every thread with no paging and no sort of the reader's own — so the term is written
-    // here rather than handed to `listResultsWithCount`.
-    .orderBy(db.dynamic.ref(IS_FAVOURITE), (orderBy) => orderBy.desc())
+    // Most recently written in first, and no longer favourites before that: the tree nests these
+    // by `folderId`, and a favourite jumping above its siblings makes a structure a member built
+    // themselves look unstable. `FavouriteMark` still marks the row.
     .orderBy("writingThread.lastActivityAt", "desc")
     .execute();
 
@@ -240,6 +243,32 @@ async function updateThread(
     .executeTakeFirstOrThrow();
 }
 
+/**
+ * Only `folder_id`, which is what keeps a move out of the activity trigger — see the comment on
+ * it in `20260816131054_last_activity_at.sql`. The reader is taken for the same reason
+ * `updateThread` takes it: the response carries their own favourite.
+ */
+async function moveThread(
+  threadId: string,
+  folderId: string | null,
+  readerId: string,
+): Promise<Thread | undefined> {
+  const moved = await db
+    .updateTable("writingThread")
+    .set({ folderId })
+    .where("id", "=", threadId)
+    .returning(["id"])
+    .executeTakeFirst();
+
+  if (moved === undefined) {
+    return undefined;
+  }
+
+  return await threadsForReader(readerId)
+    .where("writingThread.id", "=", moved.id)
+    .executeTakeFirstOrThrow();
+}
+
 async function deleteThread(threadId: string): Promise<boolean> {
   // Posts go with the thread through the foreign key's cascade.
   const deletion = await db
@@ -252,6 +281,7 @@ async function deleteThread(threadId: string): Promise<boolean> {
 
 export const WritingThreadService = {
   insertThread,
+  moveThread,
   selectThread,
   selectThreadForReader,
   selectThreads,
