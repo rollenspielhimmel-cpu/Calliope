@@ -16,6 +16,8 @@ export type ApiErrorBody = {
    */
   suspendedUntil?: string
   reason?: string
+  /** Who saved in the meantime, on `updatePage`'s 409 and nowhere else. */
+  updatedByUsername?: string | null
 }
 
 /**

@@ -33,7 +33,7 @@ const emit = defineEmits<{ apply: [offer: ListBlindDateOffers200Item]; applyFree
 <template>
   <div class="flex flex-col gap-5">
     <RouterLink
-      :to="{ name: 'page', params: { slug: 'blind-date-regelwerk' } }"
+      :to="{ name: 'customPage', params: { slug: 'blind-date-regelwerk' } }"
       class="flex items-center gap-2 text-[13px] text-oak-deep underline-offset-[5px] hover:underline"
     >
       <BookText :size="15" :stroke-width="1.5" aria-hidden="true" />

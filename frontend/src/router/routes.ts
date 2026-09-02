@@ -36,6 +36,11 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'thread',
     component: () => import('../views/ThreadView.vue'),
   },
+  {
+    path: '/groups/:groupId/pages/:pageId',
+    name: 'page',
+    component: () => import('../views/PageView.vue'),
+  },
   // As above: the bare path follows the bar, which for ideas is the carousel rather than a list.
   { path: '/story-ideas', redirect: { name: 'storyIdeasCarousel' } },
   {
@@ -84,8 +89,10 @@ export const routes: Array<RouteRecordRaw> = [
   // answers 404 for a private one read without a session, so the guard must not refuse first.
   {
     path: '/pages/:slug',
-    name: 'page',
-    component: () => import('../views/PageView.vue'),
+    // `customPage` rather than `page`: upstream now has a page *inside a group*, and that one is
+    // the `page` route. These are two different things that happened to want the same word.
+    name: 'customPage',
+    component: () => import('../views/CustomPageView.vue'),
     meta: { access: 'anyone' },
   },
   // Members only: applying needs an account, and the running Blind-Dates are shown to the

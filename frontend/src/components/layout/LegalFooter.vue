@@ -27,13 +27,13 @@ import { SOURCE_URL } from '@/lib/branding'
     class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-line-2 px-gutter py-2 text-[11.5px] text-ink-6"
   >
     <RouterLink
-      :to="{ name: 'page', params: { slug: 'impressum' } }"
+      :to="{ name: 'customPage', params: { slug: 'impressum' } }"
       class="underline-offset-[4px] hover:text-ink-4 hover:underline"
     >
       Impressum
     </RouterLink>
     <RouterLink
-      :to="{ name: 'page', params: { slug: 'datenschutz' } }"
+      :to="{ name: 'customPage', params: { slug: 'datenschutz' } }"
       class="underline-offset-[4px] hover:text-ink-4 hover:underline"
     >
       Datenschutz
