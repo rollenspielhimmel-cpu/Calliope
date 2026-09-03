@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import FormTextField from '@/components/common/FormTextField.vue'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
+import LegalFooter from '@/components/layout/LegalFooter.vue'
 
 const LIMIT = TEXT_LIMIT.requestPasswordReset
 
@@ -56,77 +57,81 @@ function startOver() {
 </script>
 
 <template>
-  <main class="flex min-h-svh items-center justify-center px-6 py-12">
-    <div class="w-full max-w-[380px]">
-      <div class="flex flex-col gap-2">
-        <CalliopeLogo :size="40" wordmark class="mb-1" />
-        <h1 class="text-h1">Passwort vergessen</h1>
-        <p v-if="!requested" class="text-note text-ink-5">
-          Wir schicken dir einen Link, mit dem du ein neues Passwort vergeben kannst.
-        </p>
-      </div>
+  <div class="flex min-h-svh flex-col">
+    <main class="flex flex-1 items-center justify-center px-6 py-12">
+      <div class="w-full max-w-[380px]">
+        <div class="flex flex-col gap-2">
+          <CalliopeLogo :size="40" wordmark class="mb-1" />
+          <h1 class="text-h1">Passwort vergessen</h1>
+          <p v-if="!requested" class="text-note text-ink-5">
+            Wir schicken dir einen Link, mit dem du ein neues Passwort vergeben kannst.
+          </p>
+        </div>
 
-      <!--
+        <!--
         Deliberately says "wenn es ein Konto gibt" rather than confirming one: the API answers
         the same way either way, and a page that said "Link verschickt" would give away who is
         registered.
       -->
-      <template v-if="requested">
-        <div class="mt-5 flex flex-col gap-3 text-note text-ink-5">
-          <p>
-            Wenn es ein Konto mit diesen Angaben gibt, ist ein Link an die hinterlegte
-            E-Mail-Adresse unterwegs. Sieh in deinem Postfach nach.
+        <template v-if="requested">
+          <div class="mt-5 flex flex-col gap-3 text-note text-ink-5">
+            <p>
+              Wenn es ein Konto mit diesen Angaben gibt, ist ein Link an die hinterlegte
+              E-Mail-Adresse unterwegs. Sieh in deinem Postfach nach.
+            </p>
+            <MailedLinkNote class="text-[13.5px]" />
+          </div>
+
+          <div class="mt-7 flex flex-col gap-3">
+            <Button as-child>
+              <RouterLink :to="{ name: 'login' }">Zur Anmeldung</RouterLink>
+            </Button>
+            <Button variant="ghost" @click="startOver"> Andere Angaben verwenden </Button>
+          </div>
+        </template>
+
+        <template v-else>
+          <form
+            ref="formElement"
+            class="mt-7 flex flex-col gap-5"
+            novalidate
+            @submit.prevent="form.handleSubmit()"
+          >
+            <Alert v-if="formError" variant="destructive" role="alert">
+              <AlertDescription>{{ formError }}</AlertDescription>
+            </Alert>
+
+            <FieldGroup>
+              <form.Field name="login" :validators="{ onSubmit: LOGIN }">
+                <template v-slot="{ field }">
+                  <FormTextField
+                    :field="field"
+                    label="Benutzername oder E-Mail-Adresse"
+                    :maxlength="LIMIT.login.maxLength"
+                    autocomplete="username"
+                    autocapitalize="none"
+                    spellcheck="false"
+                  />
+                </template>
+              </form.Field>
+            </FieldGroup>
+
+            <Button type="submit" :disabled="isPending">
+              <Spinner v-if="isPending" />
+              Link anfordern
+            </Button>
+          </form>
+
+          <p class="mt-6 text-[13px] leading-[1.5] text-ink-5">
+            Doch wieder eingefallen?
+            <RouterLink :to="{ name: 'login' }" class="text-oak-deep underline underline-offset-2">
+              Anmelden
+            </RouterLink>
           </p>
-          <MailedLinkNote class="text-[13.5px]" />
-        </div>
+        </template>
+      </div>
+    </main>
 
-        <div class="mt-7 flex flex-col gap-3">
-          <Button as-child>
-            <RouterLink :to="{ name: 'login' }">Zur Anmeldung</RouterLink>
-          </Button>
-          <Button variant="ghost" @click="startOver"> Andere Angaben verwenden </Button>
-        </div>
-      </template>
-
-      <template v-else>
-        <form
-          ref="formElement"
-          class="mt-7 flex flex-col gap-5"
-          novalidate
-          @submit.prevent="form.handleSubmit()"
-        >
-          <Alert v-if="formError" variant="destructive" role="alert">
-            <AlertDescription>{{ formError }}</AlertDescription>
-          </Alert>
-
-          <FieldGroup>
-            <form.Field name="login" :validators="{ onSubmit: LOGIN }">
-              <template v-slot="{ field }">
-                <FormTextField
-                  :field="field"
-                  label="Benutzername oder E-Mail-Adresse"
-                  :maxlength="LIMIT.login.maxLength"
-                  autocomplete="username"
-                  autocapitalize="none"
-                  spellcheck="false"
-                />
-              </template>
-            </form.Field>
-          </FieldGroup>
-
-          <Button type="submit" :disabled="isPending">
-            <Spinner v-if="isPending" />
-            Link anfordern
-          </Button>
-        </form>
-
-        <p class="mt-6 text-[13px] leading-[1.5] text-ink-5">
-          Doch wieder eingefallen?
-          <RouterLink :to="{ name: 'login' }" class="text-oak-deep underline underline-offset-2">
-            Anmelden
-          </RouterLink>
-        </p>
-      </template>
-    </div>
-  </main>
+    <LegalFooter />
+  </div>
 </template>

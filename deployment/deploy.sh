@@ -188,12 +188,6 @@ that is needed."
 	recreate=false
 	printf '%s\n' "$changed" | grep -qx 'docker-compose.deploy.yaml' && recreate=true
 
-	# Caddy reads its bind-mounted config once, at startup, and `up -d` compares the service
-	# definition — which a changed file does not alter. Without this the deploy reports success
-	# while the routing is unchanged.
-	recreate_caddy=false
-	printf '%s\n' "$changed" | grep -qx 'Caddyfile' && recreate_caddy=true
-
 	# ------------------------------------------------------------------------------ the plan
 
 	echo
@@ -222,7 +216,7 @@ that is needed."
 		echo "  migrations: the database matches the checkout"
 	fi
 	[ "$recreate" = true ] && echo "  --force-recreate (the compose file changed)"
-	[ "$recreate_caddy" = true ] && echo "  --force-recreate caddy (the Caddyfile changed)"
+	[ "$recreate" = false ] && echo "  --force-recreate caddy (its bind mount does not survive the frontend build)"
 	echo
 
 	if [ "$rebuild" = true ] && [ "$environment" != "$RESETTABLE" ]; then
@@ -262,8 +256,18 @@ it costs."
 
 	compose up -d --build ${up_flags[@]+"${up_flags[@]}"}
 
-	# Only when the compose file did not change; otherwise Caddy was just recreated with it.
-	if [ "$recreate_caddy" = true ] && [ "$recreate" = false ]; then
+	# Always, not only when the Caddyfile changed — unless the compose file did, which recreated
+	# Caddy along with everything else.
+	#
+	# `frontend/dist` is bind-mounted into Caddy, and the build empties and recreates that
+	# directory. The mount then points at an inode that no longer exists: Caddy sees an empty
+	# /srv and serves nothing, while every container reports healthy and the deploy reports
+	# success. Measured — the site went blank after a frontend-only deploy and came back the
+	# moment the container was replaced.
+	#
+	# The end-to-end check below would have caught it, but as "the frontend is not from this
+	# commit", which sends somebody looking at the build. Recreating costs a second.
+	if [ "$recreate" = false ]; then
 		compose up -d --force-recreate caddy
 	fi
 

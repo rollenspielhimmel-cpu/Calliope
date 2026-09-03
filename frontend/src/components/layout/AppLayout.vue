@@ -9,6 +9,7 @@ import RailLabel from '@/components/layout/RailLabel.vue'
 import RailToggle from '@/components/layout/RailToggle.vue'
 import ContextSheet from '@/components/layout/ContextSheet.vue'
 import BottomBar from '@/components/layout/BottomBar.vue'
+import LegalFooter from '@/components/layout/LegalFooter.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -160,6 +161,10 @@ const railSlack = computed<Record<string, string>>(() => ({
         </ContextSheet>
       </template>
     </div>
+
+    <!-- Under the whole shell and above the phone bar: the two pages the law wants reachable
+         from everywhere, at the size of a footnote. -->
+    <LegalFooter />
 
     <BottomBar />
   </div>

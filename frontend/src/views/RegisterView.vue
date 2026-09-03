@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import FormTextField from '@/components/common/FormTextField.vue'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
+import LegalFooter from '@/components/layout/LegalFooter.vue'
 
 const router = useRouter()
 
@@ -105,111 +106,115 @@ const form = useForm({
 </script>
 
 <template>
-  <main class="flex min-h-svh items-center justify-center px-6 py-12">
-    <div class="w-full max-w-[380px]">
-      <div class="flex flex-col gap-2">
-        <CalliopeLogo :size="40" wordmark class="mb-1" />
-        <h1 class="text-h1">Konto erstellen</h1>
-        <p class="text-note text-ink-5">Leg ein Konto an, um einer Schreibgruppe beizutreten.</p>
-      </div>
+  <div class="flex min-h-svh flex-col">
+    <main class="flex flex-1 items-center justify-center px-6 py-12">
+      <div class="w-full max-w-[380px]">
+        <div class="flex flex-col gap-2">
+          <CalliopeLogo :size="40" wordmark class="mb-1" />
+          <h1 class="text-h1">Konto erstellen</h1>
+          <p class="text-note text-ink-5">Leg ein Konto an, um einer Schreibgruppe beizutreten.</p>
+        </div>
 
-      <EnvironmentNotice class="mt-6" about-passwords />
+        <EnvironmentNotice class="mt-6" about-passwords />
 
-      <form
-        ref="formElement"
-        class="mt-7 flex flex-col gap-5"
-        novalidate
-        @submit.prevent="form.handleSubmit()"
-      >
-        <Alert v-if="formError" variant="destructive" role="alert">
-          <AlertDescription>{{ formError }}</AlertDescription>
-        </Alert>
+        <form
+          ref="formElement"
+          class="mt-7 flex flex-col gap-5"
+          novalidate
+          @submit.prevent="form.handleSubmit()"
+        >
+          <Alert v-if="formError" variant="destructive" role="alert">
+            <AlertDescription>{{ formError }}</AlertDescription>
+          </Alert>
 
-        <FieldGroup>
-          <form.Field name="username" :validators="{ onSubmit: USERNAME }">
-            <template v-slot="{ field }">
-              <FormTextField
-                :field="field"
-                label="Benutzername"
-                :minlength="LIMIT.username.minLength"
-                :maxlength="LIMIT.username.maxLength"
-                autocomplete="username"
-                autocapitalize="none"
-                spellcheck="false"
-              >
-                <!-- The permanence gets its own sentence: it is the only part of this choice that
+          <FieldGroup>
+            <form.Field name="username" :validators="{ onSubmit: USERNAME }">
+              <template v-slot="{ field }">
+                <FormTextField
+                  :field="field"
+                  label="Benutzername"
+                  :minlength="LIMIT.username.minLength"
+                  :maxlength="LIMIT.username.maxLength"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                >
+                  <!-- The permanence gets its own sentence: it is the only part of this choice that
                      cannot be undone, and two testers have registered with their address. -->
-                <template #description>
-                  Andere Mitglieder sehen deinen Benutzernamen und finden dich darüber. Wähle
-                  nichts, was privat bleiben soll.
-                  <strong>Ändern lässt er sich später nicht.</strong>
-                </template>
-              </FormTextField>
-            </template>
-          </form.Field>
+                  <template #description>
+                    Andere Mitglieder sehen deinen Benutzernamen und finden dich darüber. Wähle
+                    nichts, was privat bleiben soll.
+                    <strong>Ändern lässt er sich später nicht.</strong>
+                  </template>
+                </FormTextField>
+              </template>
+            </form.Field>
 
-          <form.Field name="emailAddress" :validators="{ onSubmit: EMAIL_ADDRESS }">
-            <template v-slot="{ field }">
-              <FormTextField
-                :field="field"
-                label="E-Mail-Adresse"
-                :maxlength="LIMIT.emailAddress.maxLength"
-                type="email"
-                autocomplete="email"
-                autocapitalize="none"
-                spellcheck="false"
-              >
-                <template #description>
-                  Deine E-Mail-Adresse sieht niemand außer dir. Sie wird weder anderen Mitgliedern
-                  angezeigt noch weitergegeben.
-                </template>
-              </FormTextField>
-            </template>
-          </form.Field>
+            <form.Field name="emailAddress" :validators="{ onSubmit: EMAIL_ADDRESS }">
+              <template v-slot="{ field }">
+                <FormTextField
+                  :field="field"
+                  label="E-Mail-Adresse"
+                  :maxlength="LIMIT.emailAddress.maxLength"
+                  type="email"
+                  autocomplete="email"
+                  autocapitalize="none"
+                  spellcheck="false"
+                >
+                  <template #description>
+                    Deine E-Mail-Adresse sieht niemand außer dir. Sie wird weder anderen Mitgliedern
+                    angezeigt noch weitergegeben.
+                  </template>
+                </FormTextField>
+              </template>
+            </form.Field>
 
-          <form.Field name="password" :validators="{ onSubmit: PASSWORD }">
-            <template v-slot="{ field }">
-              <FormTextField
-                :field="field"
-                label="Passwort"
-                :maxlength="LIMIT.password.maxLength"
-                type="password"
-                autocomplete="new-password"
-              />
-            </template>
-          </form.Field>
+            <form.Field name="password" :validators="{ onSubmit: PASSWORD }">
+              <template v-slot="{ field }">
+                <FormTextField
+                  :field="field"
+                  label="Passwort"
+                  :maxlength="LIMIT.password.maxLength"
+                  type="password"
+                  autocomplete="new-password"
+                />
+              </template>
+            </form.Field>
 
-          <form.Field
-            name="passwordConfirmation"
-            :validators="{
-              onSubmit: ({ value, fieldApi }) =>
-                passwordRepeatMessage(REPEAT, value, fieldApi.form.getFieldValue('password')),
-            }"
-          >
-            <template v-slot="{ field }">
-              <FormTextField
-                :field="field"
-                label="Passwort wiederholen"
-                :maxlength="LIMIT.password.maxLength"
-                type="password"
-                autocomplete="new-password"
-              />
-            </template>
-          </form.Field>
-        </FieldGroup>
+            <form.Field
+              name="passwordConfirmation"
+              :validators="{
+                onSubmit: ({ value, fieldApi }) =>
+                  passwordRepeatMessage(REPEAT, value, fieldApi.form.getFieldValue('password')),
+              }"
+            >
+              <template v-slot="{ field }">
+                <FormTextField
+                  :field="field"
+                  label="Passwort wiederholen"
+                  :maxlength="LIMIT.password.maxLength"
+                  type="password"
+                  autocomplete="new-password"
+                />
+              </template>
+            </form.Field>
+          </FieldGroup>
 
-        <Button type="submit" :disabled="isPending">
-          <Spinner v-if="isPending" />
-          Konto erstellen
-        </Button>
-      </form>
+          <Button type="submit" :disabled="isPending">
+            <Spinner v-if="isPending" />
+            Konto erstellen
+          </Button>
+        </form>
 
-      <p class="mt-6 text-[13px] leading-[1.5] text-ink-5">
-        Du hast schon ein Konto?
-        <RouterLink :to="{ name: 'login' }" class="text-oak-deep underline underline-offset-2">
-          Anmelden
-        </RouterLink>
-      </p>
-    </div>
-  </main>
+        <p class="mt-6 text-[13px] leading-[1.5] text-ink-5">
+          Du hast schon ein Konto?
+          <RouterLink :to="{ name: 'login' }" class="text-oak-deep underline underline-offset-2">
+            Anmelden
+          </RouterLink>
+        </p>
+      </div>
+    </main>
+
+    <LegalFooter />
+  </div>
 </template>

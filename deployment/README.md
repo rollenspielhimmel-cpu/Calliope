@@ -167,6 +167,25 @@ the rate limiter bucketed the whole platform together. Measured both ways: over 
 backend saw the true client, over IPv6 it did not. `enable_ipv6: true` on the default network
 gives IPv6 a DNAT path of its own and both families now arrive intact.
 
+### Caddy is recreated on every deploy
+
+`deploy.sh` passes `--force-recreate caddy` unless the compose file changed and recreated it
+anyway. Two separate reasons, and the second is the one that bites without warning.
+
+**The Caddyfile is read once, at startup.** `up -d` compares the *service definition*, which a
+changed bind-mounted file does not alter, so Caddy would keep serving the previous routing while
+the deploy reported success.
+
+**And `frontend/dist` does not survive its own rebuild.** The directory is bind-mounted into
+Caddy, and the frontend build empties and recreates it — the mount then points at an inode that no
+longer exists. Caddy sees an empty `/srv` and serves nothing at all, while every container reports
+healthy. Measured: the site went blank after a frontend-only deploy and came back the moment the
+container was replaced.
+
+The end-to-end check would have caught the second one, but as "the frontend Caddy serves is not
+from this commit" — which sends somebody to look at the build, where nothing is wrong. Recreating
+costs about a second and removes the whole class.
+
 ### After changing only the Caddyfile
 
 `deploy.sh` does this when the Caddyfile changed and the compose file did not.
