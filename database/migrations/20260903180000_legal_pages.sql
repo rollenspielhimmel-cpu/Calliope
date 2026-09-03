@@ -136,6 +136,12 @@ wird auch das mit Grund und Zeitpunkt festgehalten.
 Für die Moderation können IP-Adressen von Konten eingesehen und verglichen werden, um Mehrfach-
 konten und Umgehungen von Sperren zu erkennen.
 
+Zum Blind-Date führt das Team außerdem eine Übersicht: wie viele Blind-Dates ein Mitglied bis zur
+Enthüllung geführt hat, wie viele vorzeitig endeten, und wer sie beendet hat. Sie hilft, ein Muster
+von ein paar Runden zu unterscheiden, die einfach nicht gepasst haben — ein Blind-Date endet aus
+allerlei gewöhnlichen Gründen. Diese Übersicht sieht nur das Team. Auf deinem eigenen Profil steht
+lediglich, wie viele du abgeschlossen hast; andere Mitglieder sehen auch das nicht.
+
 Zweck: ein Umgang miteinander, der für alle tragbar ist. Rechtsgrundlage: Art. 6 Abs. 1 lit. f
 DSGVO.
 

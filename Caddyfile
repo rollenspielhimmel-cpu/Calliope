@@ -5,21 +5,21 @@
 
 	# ── The gate ────────────────────────────────────────────────────────────────────────────
 	#
-	# The whole site is behind one shared password while there is no Impressum. A German
-	# platform open to the public needs one; a closed test that people are let into is not open
-	# to the public, and this block is what makes that true rather than merely intended.
+	# The whole site is behind one shared password. This deployment is a closed test that people
+	# are let into one at a time, and this block is what makes that true rather than merely
+	# intended.
 	#
 	# **Here rather than in the application**, because it has to cover everything: the API, the
 	# OpenAPI document, the uploaded files, and any route added later without anybody thinking
 	# about this. An application-level gate covers what it was told to cover.
 	#
-	# It is not a substitute for the Impressum. It is what buys the time to write one — when
-	# that is written, delete this `route` wrapper and the two variables in `.env`.
+	# It comes down when the site opens to the public, together with the Impressum and the
+	# Datenschutzerklärung that go live with it: delete this `route` wrapper — the two `handle`
+	# blocks move back out one level — and the `GATE_*` variables from `.env`.
 	#
 	# Wrapped in `route` so the order is the order written here. Caddy sorts directives by its
 	# own table otherwise, and "does the password come before or after the routing" is not a
-	# question worth being unsure about on the one thing standing between an unfinished platform
-	# and the open internet.
+	# question worth being unsure about on the thing that decides who reaches the site at all.
 	route {
 		# ── The interim mailbox ─────────────────────────────────────────────────────────────
 		#

@@ -5,8 +5,8 @@
  * **Behind the operator gate, and it stays there.** The same figures side by side with names beside
  * them are a ranking, and the design system rules those out for anything a member can see — the
  * research behind that rule is about pressure, and a public version of this table would be exactly
- * that. Here it is casework: whether somebody leaves people mid-story often enough to be a pattern
- * is a question nobody can answer one application at a time.
+ * that. Here it is casework: whether a run of endings is a pattern or a few rounds that did not work
+ * out is a question nobody can answer one application at a time.
  *
  * **Left first by default**, not broken-off first: one of the two ended it and the other was
  * ended on, and only the first is a pattern about this member. Both numbers are shown, because the

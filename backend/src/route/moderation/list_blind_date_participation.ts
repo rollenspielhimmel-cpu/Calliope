@@ -26,8 +26,12 @@ import {
  *
  * **Operators only, and it stays that way.** These are three numbers per member with the members'
  * names beside them, ordered — a ranking, which is the one shape the design system rules out for
- * anything a member can see. Behind the gate the numbers answer a question casework needs: whether
- * somebody leaves people mid-story often enough to be a pattern rather than a bad round.
+ * anything a member can see. Behind the gate they answer a question casework needs: whether a run
+ * of endings is a pattern or a few rounds that did not work out.
+ *
+ * A Blind-Date ends for all sorts of ordinary reasons — no time, no spark, a life that moved on —
+ * which is why the table keeps what somebody ended themselves apart from what ended around them.
+ * The distinction is the whole point of reading it.
  */
 
 const PARTICIPATION_RESPONSE = z.object({

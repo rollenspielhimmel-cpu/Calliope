@@ -29,8 +29,7 @@ services:
       #
       # **The hashes contain `$`**, which compose reads as the start of a variable. They are written
       # `$$` in .env for that reason; compose turns each pair back into one. A hash that lost its
-      # dollars still looks like a hash and simply never matches, which is a bad way to spend an
-      # evening.
+      # dollars still looks like a hash and simply never matches.
       GATE_USERNAME: ${GATE_USERNAME:?set GATE_USERNAME in .env}
       GATE_PASSWORD_HASH: ${GATE_PASSWORD_HASH:?set GATE_PASSWORD_HASH in .env}
       MAILPIT_WEBROOT: ${MAILPIT_WEBROOT:-postfach}
@@ -102,9 +101,8 @@ services:
       APP_DESCRIPTION: ${APP_DESCRIPTION:-}
       APP_CONTACT_NAME: ${APP_CONTACT_NAME:-}
       APP_CONTACT_EMAIL: ${APP_CONTACT_EMAIL:-}
-      # The one account that exists before anybody registers. Without it a fresh deployment
-      # comes up with no administrator at all and no way in but editing rows by hand — which is
-      # exactly what this deployment would have done.
+      # The one account that exists before anybody registers. Without it a deployment comes up
+      # with no administrator at all, and no way in but editing rows by hand.
       #
       # Read once, at the first start that finds no administrator: it never resets the password of
       # an account that already exists, so editing this later changes nothing. Optional, because
