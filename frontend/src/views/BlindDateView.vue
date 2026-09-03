@@ -30,6 +30,7 @@ import {
 import type { GetBlindDateEligibility200Reason, ListBlindDateOffers200Item } from '@/api/models'
 import { useReadPage } from '@/api/pages/pages'
 import { queryClient } from '@/lib/api/queryClient'
+import { failureMessage } from '@/lib/format/failure'
 import { applicationsHaveClosed } from '@/lib/blindDate/offerDeadline'
 import { formatActivityTime, formatDeadline } from '@/lib/format/formatTime'
 import { formatCount } from '@/lib/format/formatNumber'
@@ -131,8 +132,29 @@ async function applied() {
   await refresh()
 }
 
+/**
+ * Said when withdrawing no longer applies, which is almost always the same reason: the team
+ * matched this application while the page was open. The page then still holds the version it
+ * fetched, button and all — so the answer is to say what happened and fetch again, after which
+ * the running Blind-Date is what the page shows.
+ */
+const withdrawalFailed = ref<string | undefined>(undefined)
+
 async function withdrawApplication() {
-  await withdraw()
+  withdrawalFailed.value = undefined
+
+  try {
+    await withdraw()
+  } catch (failure) {
+    withdrawalFailed.value = failureMessage(
+      failure,
+      'Das ging nicht mehr — vermutlich wurde deine Bewerbung inzwischen zugeordnet.',
+    )
+    // Refreshed even on failure, and *especially* then: the stale button is the whole problem.
+    await refresh()
+    return
+  }
+
   await refresh()
 }
 </script>
@@ -182,6 +204,10 @@ async function withdrawApplication() {
           >
             Zurückziehen
           </Button>
+        </p>
+
+        <p v-if="withdrawalFailed" class="mt-2 max-w-[65ch] text-note text-ink-5" role="alert">
+          {{ withdrawalFailed }}
         </p>
 
         <p

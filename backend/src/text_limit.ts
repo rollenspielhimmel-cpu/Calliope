@@ -59,9 +59,16 @@ export const TEXT_LIMIT = {
   blockedWordNote: 300,
   /** A Blind-Date plot: the name of an official RSH story, not a description of one. */
   blindDatePlotTitle: 120,
-  /** The plot the team offers, and the paragraph under it that says what it is about. */
+  /** The plot the team offers, and what it is about. */
   blindDateOfferTitle: 120,
-  blindDateOfferDescription: 2_000,
+  /**
+   * Room for a real plot rather than a paragraph. It began at 2,000, which a first offer reached
+   * and was silently cut at — the form's own `maxlength` stopped the typing, so nothing said so
+   * and the text simply ended mid-sentence.
+   *
+   * 8,000 is what a group's synopsis and a story idea's take, and this is the same kind of writing.
+   */
+  blindDateOfferDescription: 8_000,
   /**
    * One role in an offered plot, as it appears in the applicant's list of choices. A name and at
    * most a few words after it — „Die Wirtin", „Der Fremde (Ende offen)" — not a character sheet.

@@ -20,6 +20,10 @@ import {
   USER_IN_WRITING_GROUP_SCHEMA,
   WRITING_GROUP_SCHEMA,
 } from "@/src/database/schema.ts";
+import {
+  isPseudonymous,
+  PSEUDONYMOUS_GROUP_REFUSAL,
+} from "@/src/service/blind_date_group_lock.ts";
 
 const GROUP_PARAMS = z.object({ groupId: WRITING_GROUP_SCHEMA.shape.id });
 
@@ -80,6 +84,16 @@ export default new OpenAPIHono().openapi(
     );
     if (writingGroup === undefined) {
       return c.json({ error: "Group not found" }, STATUS_CODE.NotFound);
+    }
+
+    // Locked while the Blind-Date is anonymous, whatever the role says — see
+    // `blind_date_group_lock.ts`. Before the role check, so the answer does not depend on which
+    // of the two asked.
+    if (await isPseudonymous(groupId)) {
+      return c.json(
+        { error: PSEUDONYMOUS_GROUP_REFUSAL },
+        STATUS_CODE.Forbidden,
+      );
     }
 
     if (

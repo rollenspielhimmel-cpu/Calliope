@@ -62,9 +62,9 @@ const MATCH_BODY = z.object({
    * is the same kind of decision as the pairing itself.
    */
   plotTitle: notBlank(z.string().min(1).max(TEXT_LIMIT.blindDatePlotTitle)),
-  synopsis: notBlank(
-    z.string().min(1).max(TEXT_LIMIT.blindDateOfferDescription),
-  ),
+  // The group's own synopsis is what this becomes, so it takes that bound. It shared the offer's
+  // until the offer's was raised, which is when they stopped meaning the same thing.
+  synopsis: notBlank(z.string().min(1).max(TEXT_LIMIT.groupSynopsis)),
 });
 
 const EXCLUSION_RESPONSE = z.object({

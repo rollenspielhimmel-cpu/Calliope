@@ -42,7 +42,7 @@ VALUES ('blind-date-regelwerk',
 
 2.3 Eine Enthüllung der eigenen Identität ist erst möglich, wenn 50 gemeinsame Beiträge im eigentlichen Rollenspiel-Thread zusammengekommen sind, und nur wenn beide Beteiligten zustimmen. Niemand soll gespoilert werden, der:die es nicht möchte.
 
-2.4 Wird im gemeinsamen Austausch-Thread ein echter Benutzername erkannt, wird das automatisch der Moderation gemeldet. Bis eine menschliche Entscheidung getroffen wurde, bleibt das Blind-Date unverändert bestehen. Bestätigt sich der Verdacht, wird das Blind-Date beendet, die betroffene Person von künftigen Blind-Dates ausgeschlossen und per E-Mail informiert.
+2.4 Versucht eine oder versuchen beide beteiligte Personen, sich im Austausch-Thread zu erkennen zu geben, wird das automatisch an die Moderation gemeldet. Bestätigt sich der Verdacht, wird das Blind-Date beendet, die betroffene Person von künftigen Blind-Dates ausgeschlossen und per E-Mail informiert. Stellt sich der Verdacht als unbegründet heraus (z.B. weil ein Wort zufällig wie ein Nutzername klingt), läuft das Blind-Date unverändert weiter.
 
 3§ WEITERE BLIND-DATES
 
