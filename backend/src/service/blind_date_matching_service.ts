@@ -1,6 +1,7 @@
 import { sql } from "kysely";
 import { db } from "@/src/database/client.ts";
 import type {
+  BlindDatePairing,
   BlindDatePostLength,
   BlindDateWritingStyle,
 } from "@/src/database/schema.ts";
@@ -505,6 +506,8 @@ export type AdminOffer = {
   description: string;
   roles: string[];
   closesAt: string | null;
+  pairing: BlindDatePairing | null;
+  genres: string[];
   closedAt: string | null;
   createdAt: string;
 };
@@ -519,6 +522,8 @@ async function listAllOffers(): Promise<AdminOffer[]> {
       "description",
       "roles",
       "closesAt",
+      "pairing",
+      "genres",
       "closedAt",
       "createdAt",
     ])
@@ -534,19 +539,49 @@ async function listAllOffers(): Promise<AdminOffer[]> {
  * they are set when the plot is offered rather than described by each applicant in their own
  * words. An offer may name none, and then the role stays the free text it always was.
  */
+export type OfferValues = {
+  title: string;
+  description: string;
+  roles: string[];
+  closesAt: string | null;
+  pairing: BlindDatePairing | null;
+  genres: string[];
+};
+
 async function createOffer(
-  values: {
-    title: string;
-    description: string;
-    roles: string[];
-    closesAt: string | null;
-  },
+  values: OfferValues,
   createdBy: string,
 ): Promise<void> {
   await db
     .insertInto("blindDateOffer")
     .values({ ...values, createdBy })
     .execute();
+}
+
+/**
+ * Changes an offer that is still open.
+ *
+ * There was no way to do this at all, which made a typo permanent and a description that hit the
+ * old length limit unfixable — the only way out was to close the offer and write a second one,
+ * leaving the first in the list for ever.
+ *
+ * A closed one stays as it was: applications point at it, and it has to keep saying what somebody
+ * applied for months later. The roles may be edited, and an application keeps the text it chose, so
+ * a later edit cannot rewrite what anybody applied for.
+ */
+async function updateOffer(
+  offerId: string,
+  values: OfferValues,
+): Promise<"not_found" | undefined> {
+  const updated = await db
+    .updateTable("blindDateOffer")
+    .set(values)
+    .where("id", "=", offerId)
+    .where("closedAt", "is", null)
+    .returning("id")
+    .executeTakeFirst();
+
+  return updated === undefined ? "not_found" : undefined;
 }
 
 /** Closed rather than deleted: applications point at it, and it has to stay readable. */
@@ -572,5 +607,6 @@ export const BlindDateMatchingService = {
   listParticipation,
   listAllOffers,
   createOffer,
+  updateOffer,
   closeOffer,
 };

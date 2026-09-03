@@ -31,12 +31,12 @@ import type { GetBlindDateEligibility200Reason, ListBlindDateOffers200Item } fro
 import { useReadPage } from '@/api/pages/pages'
 import { queryClient } from '@/lib/api/queryClient'
 import { failureMessage } from '@/lib/format/failure'
-import { applicationsHaveClosed } from '@/lib/blindDate/offerDeadline'
-import { formatActivityTime, formatDeadline } from '@/lib/format/formatTime'
+import { formatActivityTime } from '@/lib/format/formatTime'
 import { formatCount } from '@/lib/format/formatNumber'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BlindDateApplicationForm from '@/components/blind-date/BlindDateApplicationForm.vue'
 import BlindDateFeedbackForm from '@/components/blind-date/BlindDateFeedbackForm.vue'
+import BlindDateOfferCard from '@/components/blind-date/BlindDateOfferCard.vue'
 import BlindDateRail from '@/components/blind-date/BlindDateRail.vue'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -241,29 +241,16 @@ async function withdrawApplication() {
           </p>
 
           <template v-else>
-            <div class="mt-3 grid gap-2.5 sm:grid-cols-2">
-              <article
+            <!-- One card component, shared with the team's own list: they show the same thing,
+                 and two of them would drift. The deadline stays after it passes — the team closes
+                 an offer, not the clock. -->
+            <div class="mt-3 grid gap-3.5 sm:grid-cols-2">
+              <BlindDateOfferCard
                 v-for="(offer, index) in offers"
                 :key="offer.id"
-                class="rounded-lg border border-line-3 bg-paper-0 p-4 shadow-card"
-              >
-                <p class="font-mono text-[11px] tracking-wide text-ink-label uppercase">
-                  Handlung {{ index + 1 }}
-                </p>
-                <p class="mt-1.5 text-h2 text-ink-1">{{ offer.title }}</p>
-                <p class="mt-1.5 max-w-[60ch] text-note text-ink-4">{{ offer.description }}</p>
-                <p v-if="offer.roles.length > 0" class="mt-2 max-w-[60ch] text-[12.5px] text-ink-5">
-                  Rollen: {{ offer.roles.join(' · ') }}
-                </p>
-                <!-- The deadline, and after it the plot stays here rather than disappearing: the
-                     team closes an offer, not the clock. -->
-                <p v-if="offer.closesAt" class="mt-2 text-[12px] text-ink-6">
-                  <template v-if="applicationsHaveClosed(offer.closesAt)">
-                    Bewerbungsfrist abgelaufen
-                  </template>
-                  <template v-else>Bewerbung bis {{ formatDeadline(offer.closesAt) }}</template>
-                </p>
-              </article>
+                :offer="offer"
+                :label="`Handlung ${index + 1}`"
+              />
             </div>
 
             <p v-if="mayApply" class="mt-3 max-w-[65ch] text-note text-ink-5">

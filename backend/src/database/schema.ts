@@ -30,6 +30,8 @@ export type BlindDateApplicationStatus =
   | "pending"
   | "withdrawn";
 
+export type BlindDatePairing = "any" | "dd" | "ff" | "fm" | "mm";
+
 export type BlindDatePostLength = "long" | "medium" | "short";
 
 export type BlindDateVerdict = "no" | "partly" | "yes";
@@ -344,7 +346,9 @@ export interface BlindDateOffer {
   createdAt: Generated<string>;
   createdBy: string | null;
   description: string;
+  genres: Generated<string[]>;
   id: Generated<string>;
+  pairing: BlindDatePairing | null;
   roles: Generated<string[]>;
   title: string;
 }
@@ -1096,6 +1100,9 @@ export const BLIND_DATE_VERDICT_SCHEMA = z.enum(BLIND_DATE_VERDICTS);
 export const BLIND_DATE_AGAINS = ["maybe", "no", "yes"] as const;
 export const BLIND_DATE_AGAIN_SCHEMA = z.enum(BLIND_DATE_AGAINS);
 
+export const BLIND_DATE_PAIRINGS = ["any", "dd", "ff", "fm", "mm"] as const;
+export const BLIND_DATE_PAIRING_SCHEMA = z.enum(BLIND_DATE_PAIRINGS);
+
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
   windowStart: z.iso.datetime({ offset: true }),
@@ -1163,6 +1170,8 @@ export const BLIND_DATE_OFFER_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   roles: z.array(z.string()),
   closesAt: z.iso.datetime({ offset: true }).nullable(),
+  pairing: BLIND_DATE_PAIRING_SCHEMA.nullable(),
+  genres: z.array(z.string()),
 });
 
 export const BLIND_DATE_PAIR_SCHEMA = z.object({

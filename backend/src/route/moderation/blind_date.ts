@@ -54,6 +54,36 @@ const PENDING_APPLICATION_RESPONSE = z.object({
   note: z.string().nullable(),
 });
 
+/**
+ * Everything the team sets on an offer, shared by creating one and editing one.
+ *
+ * One schema rather than two, because the two forms are the same form — and a field that reached
+ * only one of them would be a field nobody could correct after the fact.
+ */
+const OFFER_BODY = z.object({
+  title: notBlank(z.string().min(1).max(TEXT_LIMIT.blindDateOfferTitle)),
+  description: notBlank(
+    z.string().min(1).max(TEXT_LIMIT.blindDateOfferDescription),
+  ),
+  /**
+   * The roles applicants choose between. May be empty — a plot the team has not cast yet is a real
+   * thing to offer, and then the applicant describes the role in their own words as before.
+   */
+  roles: z
+    .array(notBlank(z.string().min(1).max(TEXT_LIMIT.blindDateOfferRole)))
+    .max(TEXT_LIMIT.blindDateOfferRoles)
+    .default([]),
+  /** When applying stops. Optional: „bis wir genug haben" is how most rounds run. */
+  closesAt: z.iso.datetime({ offset: true }).nullish(),
+  /** Which pairing the plot is written for. Optional, and then the card shows no such chip. */
+  pairing: BLIND_DATE_OFFER_SCHEMA.shape.pairing.nullish(),
+  /** What it feels like, in the team's own words. */
+  genres: z
+    .array(notBlank(z.string().min(1).max(TEXT_LIMIT.blindDateOfferGenre)))
+    .max(TEXT_LIMIT.blindDateOfferGenres)
+    .default([]),
+});
+
 const MATCH_BODY = z.object({
   firstApplicationId: BLIND_DATE_APPLICATION_SCHEMA.shape.id,
   secondApplicationId: BLIND_DATE_APPLICATION_SCHEMA.shape.id,
@@ -81,6 +111,13 @@ const OFFER_RESPONSE = z.object({
   roles: z.array(z.string()),
   /** The application deadline the team set, or null where it set none. */
   closesAt: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * The two things a card shows before anybody reads the plot: what kind of pairing it is, and
+   * what it feels like. The pairing is a closed question so the chips read the same on every card
+   * and can be scanned; the genres are the team's own words, because that list is never finished.
+   */
+  pairing: BLIND_DATE_OFFER_SCHEMA.shape.pairing,
+  genres: BLIND_DATE_OFFER_SCHEMA.shape.genres,
   /** When the team closed it by hand. Unrelated to the deadline above, which closes nothing. */
   closedAt: z.iso.datetime({ offset: true }).nullable(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -521,27 +558,7 @@ export default new OpenAPIHono()
       request: {
         body: {
           required: true,
-          content: jsonContent(z.object({
-            title: notBlank(
-              z.string().min(1).max(TEXT_LIMIT.blindDateOfferTitle),
-            ),
-            description: notBlank(
-              z.string().min(1).max(TEXT_LIMIT.blindDateOfferDescription),
-            ),
-            /**
-             * The roles applicants choose between. May be empty — a plot the team has not cast yet
-             * is a real thing to offer, and then the applicant describes the role in their own
-             * words as they always did.
-             */
-            roles: z
-              .array(
-                notBlank(z.string().min(1).max(TEXT_LIMIT.blindDateOfferRole)),
-              )
-              .max(TEXT_LIMIT.blindDateOfferRoles)
-              .default([]),
-            /** When applying stops. Optional: „bis wir genug haben" is how most rounds run. */
-            closesAt: z.iso.datetime({ offset: true }).nullish(),
-          })),
+          content: jsonContent(OFFER_BODY),
         },
       },
       responses: {
@@ -564,11 +581,59 @@ export default new OpenAPIHono()
           description: body.description,
           roles: body.roles,
           closesAt: body.closesAt ?? null,
+          pairing: body.pairing ?? null,
+          genres: body.genres,
         },
         c.get("user").id,
       );
 
       return c.json({ ok: true } as const, STATUS_CODE.OK);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "patch",
+      path: "/blind-date/offers/{offerId}",
+      tags: [MODERATION_TAG],
+      summary: "Change an offer that is still open",
+      description:
+        "Every field at once, the same ones creating it takes. Only an open offer: a closed one is what somebody applied to and has to keep saying so. Applications keep the role text they chose, so editing the list cannot rewrite what anybody applied for.",
+      operationId: "updateBlindDateOffer",
+      middleware: [authenticated, authorizedAsModerator] as const,
+      request: {
+        params: z.object({ offerId: BLIND_DATE_OFFER_SCHEMA.shape.id }),
+        body: { required: true, content: jsonContent(OFFER_BODY) },
+      },
+      responses: {
+        [STATUS_CODE.OK]: {
+          description: "The offer is changed",
+          content: jsonContent(OK_RESPONSE),
+        },
+        [STATUS_CODE.NotFound]: NOT_FOUND_RESPONSE,
+        [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
+        [STATUS_CODE.Forbidden]: NOT_AN_OPERATOR_RESPONSE,
+        ...BAD_REQUEST_RESPONSE,
+        ...COMMON_RESPONSES,
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+
+      const refusal = await BlindDateMatchingService.updateOffer(
+        c.req.valid("param").offerId,
+        {
+          title: body.title,
+          description: body.description,
+          roles: body.roles,
+          closesAt: body.closesAt ?? null,
+          pairing: body.pairing ?? null,
+          genres: body.genres,
+        },
+      );
+
+      return refusal === "not_found"
+        ? c.json({ error: "Not found" }, STATUS_CODE.NotFound)
+        : c.json({ ok: true } as const, STATUS_CODE.OK);
     },
   )
   .openapi(

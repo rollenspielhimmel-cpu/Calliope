@@ -30,6 +30,8 @@ function offer(roles: string[]) {
     description: 'Ein Plot zum Testen.',
     roles,
     closesAt: null,
+    pairing: null,
+    genres: [] as string[],
     createdAt: '2026-09-01T10:00:00Z',
   }
 }

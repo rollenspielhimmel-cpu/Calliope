@@ -1,5 +1,6 @@
 import { db } from "@/src/database/client.ts";
 import type {
+  BlindDatePairing,
   BlindDatePostLength,
   BlindDateWritingStyle,
 } from "@/src/database/schema.ts";
@@ -144,6 +145,10 @@ export type Offer = {
   roles: string[];
   /** When applying stops, where the team set a date. Null means „until we have enough". */
   closesAt: string | null;
+  /** Which pairing the plot is written for, or null where the team did not say. */
+  pairing: BlindDatePairing | null;
+  /** What it feels like, in the team's own words. Empty where it named none. */
+  genres: string[];
   createdAt: string;
 };
 
@@ -158,10 +163,47 @@ export type Offer = {
 async function listOpenOffers(): Promise<Offer[]> {
   return await db
     .selectFrom("blindDateOffer")
-    .select(["id", "title", "description", "roles", "closesAt", "createdAt"])
+    .select([
+      "id",
+      "title",
+      "description",
+      "roles",
+      "closesAt",
+      "pairing",
+      "genres",
+      "createdAt",
+    ])
     .where("closedAt", "is", null)
     .orderBy("createdAt", "desc")
     .execute();
+}
+
+/**
+ * One offer, for the page that shows a plot in full.
+ *
+ * The card truncates, because a card that grows with its text stops being a card — so there has to
+ * be somewhere the whole thing is readable, and a page rather than an expanding box because a plot
+ * worth eight thousand characters is worth a link somebody can send.
+ *
+ * Open ones only, like the list: an offer the team has closed is no longer on the page the link
+ * came from.
+ */
+async function selectOpenOffer(offerId: string): Promise<Offer | undefined> {
+  return await db
+    .selectFrom("blindDateOffer")
+    .select([
+      "id",
+      "title",
+      "description",
+      "roles",
+      "closesAt",
+      "pairing",
+      "genres",
+      "createdAt",
+    ])
+    .where("id", "=", offerId)
+    .where("closedAt", "is", null)
+    .executeTakeFirst();
 }
 
 /**
@@ -374,6 +416,7 @@ async function countCompletedBlindDates(userId: string): Promise<number> {
 export const BlindDateService = {
   eligibilityFor,
   listOpenOffers,
+  selectOpenOffer,
   listActiveBlindDates,
   selectOwnPendingApplication,
   apply,

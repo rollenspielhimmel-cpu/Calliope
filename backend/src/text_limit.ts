@@ -79,6 +79,9 @@ export const TEXT_LIMIT = {
    * the list stays a list somebody can read through before choosing.
    */
   blindDateOfferRoles: 20,
+  /** One genre chip, and how many an offer may carry. Chips are scanned, not read. */
+  blindDateOfferGenre: 40,
+  blindDateOfferGenres: 8,
   /**
    * The two preferences that are prose rather than a choice — which gender the role is, and what
    * pairing somebody is after. Room for a sentence, because real answers are one.

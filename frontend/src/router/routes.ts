@@ -95,6 +95,13 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'blindDate',
     component: () => import('../views/BlindDateView.vue'),
   },
+  // Where a card's „Weiterlesen" goes. Members only, like the page it comes from: the offers are
+  // what somebody applies to, and applying needs an account.
+  {
+    path: '/blind-date/handlungen/:offerId',
+    name: 'blindDateOffer',
+    component: () => import('../views/BlindDateOfferView.vue'),
+  },
   {
     path: '/members',
     name: 'members',

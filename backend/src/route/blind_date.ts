@@ -41,6 +41,13 @@ const OFFER_RESPONSE = z.object({
    * list on purpose — see `listOpenOffers` — and the page says so rather than losing the plot.
    */
   closesAt: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * The two things a card shows before anybody reads the plot: what kind of pairing it is, and
+   * what it feels like. The pairing is a closed question so the chips read the same on every card
+   * and can be scanned; the genres are the team's own words, because that list is never finished.
+   */
+  pairing: BLIND_DATE_OFFER_SCHEMA.shape.pairing,
+  genres: BLIND_DATE_OFFER_SCHEMA.shape.genres,
   createdAt: z.iso.datetime({ offset: true }),
 });
 
@@ -203,6 +210,43 @@ export default new OpenAPIHono()
     }),
     async (c) => {
       return c.json(await BlindDateService.listOpenOffers(), STATUS_CODE.OK);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/offers/{offerId}",
+      tags: [BLIND_DATE_TAG],
+      summary: "One offered plot, in full",
+      description:
+        "What the card on the overview shortens. Open offers only — a closed one is no longer on the page the link came from.",
+      operationId: "getBlindDateOffer",
+      middleware: authenticated,
+      request: {
+        params: z.object({ offerId: BLIND_DATE_OFFER_SCHEMA.shape.id }),
+      },
+      responses: {
+        [STATUS_CODE.OK]: {
+          description: "The plot, with everything the team wrote about it",
+          content: jsonContent(OFFER_RESPONSE),
+        },
+        [STATUS_CODE.NotFound]: {
+          description: "No such open offer",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
+        ...BAD_REQUEST_RESPONSE,
+        ...COMMON_RESPONSES,
+      },
+    }),
+    async (c) => {
+      const offer = await BlindDateService.selectOpenOffer(
+        c.req.valid("param").offerId,
+      );
+
+      return offer === undefined
+        ? c.json({ error: "Not found" }, STATUS_CODE.NotFound)
+        : c.json(offer, STATUS_CODE.OK);
     },
   )
   .openapi(
