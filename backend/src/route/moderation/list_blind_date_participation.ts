@@ -8,7 +8,7 @@ import {
   listResponseSchema,
 } from "@/src/list/list_endpoint.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsModerator } from "@/src/middleware/authorized_as_platform_role.ts";
+import { authorizedForBlindDate } from "@/src/middleware/authorized_for_blind_date.ts";
 import { BlindDateMatchingService } from "@/src/service/blind_date_matching_service.ts";
 import {
   BAD_REQUEST_RESPONSE,
@@ -89,7 +89,7 @@ export default new OpenAPIHono().openapi(
     description:
       "One row per member who has been in at least one Blind-Date, with how many they saw through to the reveal, how many ended without one, how many of those they ended themselves, and how many are still running. Sorted by the ones they ended themselves, first: being left is not the same as leaving, and only the second is a pattern about this member. Operators only — the same figures next to one another are a ranking, which members are deliberately never shown.",
     operationId: "listBlindDateParticipation",
-    middleware: [authenticated, authorizedAsModerator] as const,
+    middleware: [authenticated, authorizedForBlindDate] as const,
     request: {
       body: {
         required: true,

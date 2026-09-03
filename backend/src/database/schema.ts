@@ -593,6 +593,7 @@ export interface User {
   id: Generated<string>;
   invitedBy: string | null;
   isPrimordialAdmin: Generated<boolean>;
+  mayManageBlindDate: Generated<boolean>;
   platformRole: PlatformRole | null;
   postLength: string | null;
   suspendedUntil: string | null;
@@ -1423,6 +1424,7 @@ export const USER_SCHEMA = z.object({
   suspensionReason: z.string().nullable(),
   invitedBy: z.uuidv7().nullable(),
   isPrimordialAdmin: z.boolean(),
+  mayManageBlindDate: z.boolean(),
 });
 
 export const USER_AVATAR_SCHEMA = z.object({

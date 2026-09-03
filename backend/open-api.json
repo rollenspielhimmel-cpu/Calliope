@@ -33213,6 +33213,499 @@
         }
       }
     },
+    "/api/moderation/blind-date/managers": {
+      "get": {
+        "tags": ["moderation"],
+        "summary": "Who may work the Blind-Date desk",
+        "description": "Everybody holding the right, and whether each is currently suspended by an application of their own. The first administrator holds it by being that account and is not in this list.",
+        "operationId": "listBlindDateManagers",
+        "responses": {
+          "200": {
+            "description": "The people holding the right",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "format": "uuid" },
+                      "username": { "type": "string" },
+                      "isSuspended": { "type": "boolean" }
+                    },
+                    "required": ["id", "username", "isSuspended"]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the first administrator may change this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderation/blind-date/managers/{userId}": {
+      "put": {
+        "tags": ["moderation"],
+        "summary": "Give somebody the Blind-Date desk, or take it back",
+        "description": "Only the first administrator, and only for somebody who is already an operator: a right that decides what an operator may reach means nothing to a member who cannot reach the moderation at all. `mayManage` false takes it away again.",
+        "operationId": "setBlindDateManagement",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "mayManage": { "type": "boolean" } },
+                "required": ["mayManage"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The right is set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean", "enum": [true] } },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the first administrator may change this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No member has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/moderation/blind-date/applications": {
       "get": {
         "tags": ["moderation"],
@@ -33240,6 +33733,7 @@
                         "required": ["id", "username"]
                       },
                       "onlineMinutes": { "type": "integer" },
+                      "isBlindDateManager": { "type": "boolean" },
                       "offerTitle": { "type": ["string", "null"] },
                       "plotTitle": { "type": "string" },
                       "writingStyle": {
@@ -33259,6 +33753,7 @@
                       "createdAt",
                       "user",
                       "onlineMinutes",
+                      "isBlindDateManager",
                       "offerTitle",
                       "plotTitle",
                       "writingStyle",

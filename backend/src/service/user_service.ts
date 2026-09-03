@@ -36,6 +36,9 @@ export type User = Pick<
   | "suspensionReason"
   // The level above the roles: only this account grants and revokes the administrator role.
   | "isPrimordialAdmin"
+  // Carried for the same reason the role is: the Blind-Date desk checks it on every request it
+  // guards, and a right that costs a query would be a right somebody optimises away.
+  | "mayManageBlindDate"
 >;
 
 /** What one member may see of another. Deliberately narrower than {@link User}. */
@@ -130,6 +133,7 @@ async function insertUser(
       "suspendedUntil",
       "suspensionReason",
       "isPrimordialAdmin",
+      "mayManageBlindDate",
     ])
     .executeTakeFirst();
 }
@@ -150,6 +154,7 @@ async function selectUser(
       "suspendedUntil",
       "suspensionReason",
       "isPrimordialAdmin",
+      "mayManageBlindDate",
       "hashedPassword",
     ])
     // Addresses are stored lower-cased by the register route, so the comparison has to
@@ -183,6 +188,7 @@ async function selectUser(
     suspendedUntil: user.suspendedUntil,
     suspensionReason: user.suspensionReason,
     isPrimordialAdmin: user.isPrimordialAdmin,
+    mayManageBlindDate: user.mayManageBlindDate,
   };
 }
 
@@ -256,6 +262,7 @@ async function selectUserForSession(
       "suspendedUntil",
       "suspensionReason",
       "isPrimordialAdmin",
+      "mayManageBlindDate",
     ])
     .where("id", "=", databaseUserSession.userId)
     .executeTakeFirst();

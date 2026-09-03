@@ -116,7 +116,7 @@ async function aMatchedBlindDate() {
 
   await db
     .updateTable("user")
-    .set({ platformRole: "moderator" })
+    .set({ platformRole: "moderator", mayManageBlindDate: true })
     .where("username", "=", operator)
     .execute();
 

@@ -33,6 +33,18 @@ type Application = ListBlindDateApplications200Item
 
 const { data, isPending } = useListBlindDateApplications()
 
+/**
+ * Whose applications are from people who work this desk. They are blind to this queue while their
+ * own application is open, and whoever is pairing is told — see the note above the list.
+ */
+const suspendedManagers = computed<string[]>(() => [
+  ...new Set(
+    applications.value
+      .filter((application) => application.isBlindDateManager)
+      .map((application) => application.user.username),
+  ),
+])
+
 const applications = computed<Application[]>(() =>
   data.value?.status === 200 ? data.value.data : [],
 )
@@ -149,6 +161,30 @@ async function declineOne(id: string) {
     </p>
 
     <template v-else>
+      <!-- The recommendation, not a rule: nothing here enforces it, and it would be the wrong
+           thing to enforce — sometimes the later application is plainly the worse fit. It is said
+           because the person pairing cannot know what the suspended manager already saw, and the
+           applications that arrived after hers are the ones she certainly did not. -->
+      <div
+        v-if="suspendedManagers.length > 0"
+        class="mt-4 max-w-[70ch] rounded-lg border border-line-4 bg-paper-2 p-3.5"
+      >
+        <p class="font-mono text-[11px] tracking-wide text-ink-label uppercase">
+          Empfehlung zur Zuordnung
+        </p>
+        <p class="mt-2 text-note leading-[1.6] text-ink-4">
+          In dieser Warteschlange steht
+          {{ suspendedManagers.length === 1 ? 'eine Bewerbung' : 'mehrere Bewerbungen' }} von
+          {{ suspendedManagers.join(', ') }}, {{ suspendedManagers.length === 1 ? 'die' : 'die' }}
+          sonst selbst hier arbeitet. Sie sieht die Warteschlange gerade nicht.
+        </p>
+        <p class="mt-2 text-note leading-[1.6] text-ink-4">
+          Wähle als Gegenüber nach Möglichkeit eine Bewerbung, die <em>nach</em> ihrer eingegangen
+          ist — diese Person kennt sie aus ihrer Verwaltungstätigkeit nicht. Keine Garantie, aber
+          die beste Abschwächung, die es hier gibt.
+        </p>
+      </div>
+
       <ul class="mt-4 flex flex-col gap-2.5">
         <li
           v-for="application in applications"
@@ -170,6 +206,12 @@ async function declineOne(id: string) {
               </RouterLink>
               <span class="ml-2 text-[12px] text-ink-6">
                 {{ formatCount(application.onlineMinutes) }} Min. online (30 Tage)
+              </span>
+              <span
+                v-if="application.isBlindDateManager"
+                class="ml-2 rounded-full bg-paper-3 px-2 py-0.5 text-[10.5px] text-ink-3"
+              >
+                arbeitet sonst hier
               </span>
             </p>
             <span class="text-[12px] text-ink-6">

@@ -10,7 +10,7 @@ import {
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsModerator } from "@/src/middleware/authorized_as_platform_role.ts";
+import { authorizedForBlindDate } from "@/src/middleware/authorized_for_blind_date.ts";
 import { BlindDateMatchingService } from "@/src/service/blind_date_matching_service.ts";
 import { BlindDateEndingService } from "@/src/service/blind_date_ending_service.ts";
 import { BlindDateNameGuardService } from "@/src/service/blind_date_name_guard_service.ts";
@@ -45,6 +45,11 @@ const PENDING_APPLICATION_RESPONSE = z.object({
   user: MEMBER,
   /** Beside each application, so judging who is a regular takes no second page. */
   onlineMinutes: z.number().int(),
+  /**
+   * True where the applicant works this desk. They are blind to the queue while their own
+   * application is in it, and the interface uses this to say what a careful pairing looks like.
+   */
+  isBlindDateManager: z.boolean(),
   offerTitle: z.string().nullable(),
   plotTitle: z.string(),
   writingStyle: BLIND_DATE_APPLICATION_SCHEMA.shape.writingStyle,
@@ -182,7 +187,7 @@ export default new OpenAPIHono()
       description:
         "Oldest first: whoever has waited longest is who the team should be looking at. Each row carries the preferences a pairing is judged on and the applicant's online time over the last thirty days.",
       operationId: "listBlindDateApplications",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "Every open application",
@@ -209,7 +214,7 @@ export default new OpenAPIHono()
       description:
         "Creates the group, both memberships, the first thread carrying the plot, and the pair — all in one transaction, so a half-made Blind-Date cannot exist. The group is private and its authors pseudonymous; revealing is the pair's own decision later.",
       operationId: "matchBlindDateApplications",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: {
         body: { required: true, content: jsonContent(MATCH_BODY) },
       },
@@ -246,6 +251,16 @@ export default new OpenAPIHono()
           return c.json({ ok: true } as const, STATUS_CODE.OK);
         case "not_found":
           return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
+        // Said in words rather than as a token, because it is the one refusal here that is about
+        // the person reading it rather than about the two applications.
+        case "matching_oneself":
+          return c.json(
+            {
+              error:
+                "Du kannst dich nicht selbst zuordnen. Das übernimmt eine andere berechtigte Person oder der Ur-Admin.",
+            },
+            STATUS_CODE.Forbidden,
+          );
         case "same_member":
         case "already_matched":
         case "excluded":
@@ -264,7 +279,7 @@ export default new OpenAPIHono()
       description:
         "Kept as a declined row rather than deleted, like every other answer: who applied and how often is what the old spreadsheet carried implicitly. The note is for the team and is not shown to the applicant.",
       operationId: "declineBlindDateApplication",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: {
         params: z.object({
           applicationId: BLIND_DATE_APPLICATION_SCHEMA.shape.id,
@@ -311,7 +326,7 @@ export default new OpenAPIHono()
       description:
         "Raised automatically when one of the two usernames appears in a Blind-Date's exchange thread. **Nothing has happened yet**: the post is shown as written, both keep writing, and every consequence waits for confirmBlindDateSuspicion. A username can be an ordinary word, which is the whole reason a human decides.",
       operationId: "listBlindDateSuspicions",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "Every open suspicion, oldest first",
@@ -338,7 +353,7 @@ export default new OpenAPIHono()
       description:
         "Only now do the consequences land: the Blind-Date ends, both seats are freed, the author is excluded and told by mail, and the other is told it ended without being told why. **Nothing is deleted** — the group, its threads and every post stay, and the two names are masked from then on.",
       operationId: "confirmBlindDateSuspicion",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: { params: z.object({ suspicionId: z.uuidv7() }) },
       responses: {
         [STATUS_CODE.OK]: {
@@ -382,7 +397,7 @@ export default new OpenAPIHono()
       description:
         "A username that happens to be an ordinary word, a coincidence. Nothing happens to anybody: the notice beside the post disappears and the Blind-Date carries on.",
       operationId: "dismissBlindDateSuspicion",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: { params: z.object({ suspicionId: z.uuidv7() }) },
       responses: {
         [STATUS_CODE.OK]: {
@@ -426,7 +441,7 @@ export default new OpenAPIHono()
       description:
         "Its own list, deliberately not a flag on the watchlist: that list says of itself that it is neither an incident nor a consequence, and an exclusion is a consequence.",
       operationId: "listBlindDateExclusions",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "Everyone excluded, by name",
@@ -453,7 +468,7 @@ export default new OpenAPIHono()
       description:
         "Also withdraws whatever they have waiting: an application in the queue that can never be matched would be read again at every round. A Blind-Date already running is untouched — this lifts the bar for the next one, it does not end the current one.",
       operationId: "excludeFromBlindDate",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: {
         params: z.object({ userId: USER_SCHEMA.shape.id }),
         body: {
@@ -497,7 +512,7 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Let a member take part again",
       operationId: "removeBlindDateExclusion",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: { params: z.object({ userId: USER_SCHEMA.shape.id }) },
       responses: {
         [STATUS_CODE.OK]: {
@@ -527,7 +542,7 @@ export default new OpenAPIHono()
       description:
         "Unlike the members' own list, which shows only what is open: the team needs to see what it has already run.",
       operationId: "listAllBlindDateOffers",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "Every offer, open ones first",
@@ -554,7 +569,7 @@ export default new OpenAPIHono()
       description:
         "Typically two are open at a time. Applying to one is not the only way in — a member may name any official RSH plot themselves.",
       operationId: "createBlindDateOffer",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: {
         body: {
           required: true,
@@ -599,7 +614,7 @@ export default new OpenAPIHono()
       description:
         "Every field at once, the same ones creating it takes. Only an open offer: a closed one is what somebody applied to and has to keep saying so. Applications keep the role text they chose, so editing the list cannot rewrite what anybody applied for.",
       operationId: "updateBlindDateOffer",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: {
         params: z.object({ offerId: BLIND_DATE_OFFER_SCHEMA.shape.id }),
         body: { required: true, content: jsonContent(OFFER_BODY) },
@@ -645,7 +660,7 @@ export default new OpenAPIHono()
       description:
         "Closed rather than deleted: applications point at it, and a closed offer still has to say what somebody applied for months later.",
       operationId: "closeBlindDateOffer",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       request: {
         params: z.object({ offerId: BLIND_DATE_OFFER_SCHEMA.shape.id }),
       },
@@ -680,7 +695,7 @@ export default new OpenAPIHono()
       description:
         "The voluntary three-question form, newest first, with names — the point of reading it is to be able to ask somebody about what they wrote. Declines are in here too, with both answers empty: a form most people decline says something the answers cannot. The questions are about the format and never about the other person, so nothing here is a complaint about a member; those arrive as reports.",
       operationId: "listBlindDateFeedback",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedForBlindDate] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "Every answer and every decline, newest first",

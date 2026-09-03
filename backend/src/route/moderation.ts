@@ -11,6 +11,7 @@ import invitations from "./moderation/invitations.ts";
 import strikes from "./moderation/strikes.ts";
 import listIpAddressesForMember from "./moderation/list_ip_addresses_for_member.ts";
 import listBlindDateParticipation from "./moderation/list_blind_date_participation.ts";
+import blindDateManagers from "./moderation/blind_date_managers.ts";
 
 /**
  * The operators' own tools. Guarded as moderator except for the blocked email domains, the
@@ -27,6 +28,9 @@ export default new OpenAPIHono()
   .route("/", watchlist)
   .route("/", blockedEmailDomains)
   .route("/", blockedWords)
+  // Before the desk itself: `/blind-date/managers` is a literal segment, and the desk's own
+  // `/blind-date/offers/{offerId}` would otherwise be a candidate for it.
+  .route("/", blindDateManagers)
   .route("/", blindDate)
   .route("/", listBlindDateParticipation)
   .route("/", operators)
