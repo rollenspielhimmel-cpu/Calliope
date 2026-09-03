@@ -64,6 +64,9 @@ services:
       # Baked into the bundle at build time, so the tab title and the wordmark are right from
       # the first paint. Renaming means rebuilding, which a deploy does anyway.
       VITE_APP_NAME: ${APP_NAME:-Calliope}
+      # Where the footer offers the source. The AGPL's network clause asks that whoever uses this
+      # instance can get the version it is running, so a fork points at its own repository.
+      VITE_SOURCE_URL: ${SOURCE_URL:-https://github.com/maximilian-hammerl/calliope}
       # No fallback, unlike the name above: the build refuses to produce a bundle that cannot
       # say which instance it is for.
       VITE_ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT must be set}

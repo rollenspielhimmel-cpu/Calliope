@@ -31,6 +31,13 @@ process.env.VITE_APP_NAME ||= rootEnvironment.APP_NAME ?? 'Calliope'
 process.env.VITE_COMMIT ||= 'unknown'
 
 /**
+ * The repository this instance is built from. Defaulted to the fork rather than to upstream: an
+ * instance that offered its users somebody else's source would offer them the wrong program.
+ */
+process.env.VITE_SOURCE_URL ||=
+  rootEnvironment.SOURCE_URL ?? 'https://github.com/rollenspielhimmel-cpu/calliope'
+
+/**
  * No default on a *build*: an instance that cannot say what it is would claim to be production.
  * Serving defaults to development, so a checkout still runs with no setup.
  */
