@@ -29,6 +29,20 @@ export function notificationText(notification: ListNotifications200ResultsItem):
 
   // Narrowed by `type`, so each sentence can only reach for what its own kind carries.
   switch (notification.type) {
+    case 'blind_date_matched':
+      // **The one sentence here with no actor in it, and it must stay that way.** A Blind-Date is
+      // arranged by the team, and naming anybody would answer the question the whole thing exists
+      // to hold back — before the recipient has even opened it. The plot is named because that is
+      // what somebody wants to know and it gives nothing away.
+      return `Dein Blind-Date ist arrangiert: „${notification.writingGroupTitle}“. Wer mit dir schreibt, erfährst du erst, wenn ihr euch beide zu erkennen gebt.`
+    case 'blind_date_ended':
+      // Says that it ended and nothing about why. Whose slip it was belongs to that person, who
+      // is told by mail — putting it here would set one member in front of the other.
+      return `Dein Blind-Date „${notification.writingGroupTitle}“ wurde beendet. Die Gruppe und alles Geschriebene bleiben erhalten.`
+    case 'blind_date_reveal_requested':
+      // No actor here either: there is exactly one other person it could be, and naming them
+      // would answer the question the reveal exists to ask together.
+      return `In „${notification.writingGroupTitle}“ möchte sich die andere Person zu erkennen geben. Es passiert erst, wenn du es auch möchtest.`
     case 'invited_to_writing_group':
       return `${actor} hat dich zu „${notification.writingGroupTitle}“ eingeladen.`
     case 'invitation_accepted':
@@ -80,11 +94,15 @@ export function notificationAction(
           },
         },
       }
+    case 'blind_date_matched':
+    case 'blind_date_reveal_requested':
+    case 'blind_date_ended':
     case 'invited_to_writing_group':
     case 'invitation_accepted':
     case 'visibility_changed_in_writing_group':
     case 'role_changed_in_writing_group':
-      // An invitation lands on the group page, which is where accepting it lives.
+      // An invitation lands on the group page, which is where accepting it lives — and so does a
+      // Blind-Date, which is a group from the first moment.
       return {
         kind: 'route',
         to: { name: 'group', params: { groupId: notification.writingGroupId } },

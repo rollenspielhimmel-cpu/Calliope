@@ -50,11 +50,25 @@ export async function makeOperator(
   return cookie;
 }
 
+/**
+ * Newest first, unlike the queue itself.
+ *
+ * The endpoint is oldest-first on purpose — a queue worked newest-first lets its bottom rot — but
+ * every test here looks for the report it has just filed, and the shared database it looks in keeps
+ * every report any test ever filed. Past fifty of them the row a test just made falls off the first
+ * page and `ownRow` finds nothing, which reads as „closing a report does not record the outcome"
+ * rather than „your development database is full". That is what happened; the order is the fix.
+ */
 export const listReports = (
   cookie: string,
   body: Record<string, unknown> = {},
 ) =>
-  request("QUERY", "/api/reports", cookie, { limit: 50, offset: 0, ...body });
+  request("QUERY", "/api/reports", cookie, {
+    limit: 50,
+    offset: 0,
+    sortOrder: "desc",
+    ...body,
+  });
 
 export const fileReport = (
   cookie: string,

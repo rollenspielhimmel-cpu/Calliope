@@ -184,6 +184,36 @@ This only bites when the Caddyfile is the sole change. Anything that also alters
 compose file recreates Caddy along with it. Verify afterwards against a path the change
 should affect, not just that the container is up.
 
+## The gate, and why it is there
+
+The whole site sits behind one shared password: `GATE_USERNAME` and `GATE_PASSWORD_HASH` in
+`.env`, applied by the `route` block at the top of the `Caddyfile`.
+
+It exists because there is **no Impressum yet**. A platform open to the public in Germany needs
+one; a closed test that people are let into is not open to the public, and the gate is what makes
+that true rather than merely intended. It is not a substitute for the Impressum and it is not a
+security boundary worth much on its own — one password shared with a group of testers is one
+password. It is the thing that stops the site being *published* before it is ready to be.
+
+It sits in Caddy rather than in the application deliberately: it has to cover the API, the OpenAPI
+document, the uploaded files and any route added later by somebody who was not thinking about
+this. A gate inside the application covers what it was told to cover.
+
+Generate the hash on the server, so the password never lands in a file that syncs anywhere:
+
+```bash
+docker run --rm caddy:2 caddy hash-password --plaintext 'the-password'
+```
+
+`deploy.sh` reads `GATE_USERNAME` and `GATE_PASSWORD` from `.env` and sends them with its two
+end-to-end checks, which go through Caddy over the real address and therefore meet the gate like
+anybody else. A 401 there is reported as a 401 rather than as a stale deploy — the two are easy to
+confuse, because a refused request contains neither the release id nor the commit meta.
+
+**Removing it** once the Impressum is up: delete the `route` wrapper in the `Caddyfile` (the two
+`handle` blocks move back out one level) and the three `GATE_*` lines from `.env`. The deploy
+checks run unauthenticated when the variables are absent, so nothing else needs touching.
+
 ## The backend must stay a single instance
 
 Chat messages are fanned out to open streams inside the backend process. Running two

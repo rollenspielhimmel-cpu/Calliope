@@ -7,6 +7,7 @@
 import { APP_NAME } from '@/lib/branding'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import EnvironmentNotice from '@/components/common/EnvironmentNotice.vue'
+import StatusFeed from '@/components/status/StatusFeed.vue'
 </script>
 
 <template>
@@ -20,6 +21,8 @@ import EnvironmentNotice from '@/components/common/EnvironmentNotice.vue'
         gemeinsam, Beitrag für Beitrag. Und wer noch Mitschreibende sucht, stellt seine Idee als
         Storyidee vor.
       </p>
+
+      <StatusFeed class="mb-6 max-w-[420px]" />
 
       <div class="max-w-[60ch] border-t border-line-3 pt-6">
         <p class="text-body text-ink-4">

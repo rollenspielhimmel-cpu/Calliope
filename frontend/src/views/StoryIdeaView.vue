@@ -105,17 +105,24 @@ async function remove() {
     <div class="flex-1 overflow-auto px-gutter py-5 pb-8 md:px-10">
       <div v-if="isPending" class="text-[12.5px] text-ink-5">Einen Moment.</div>
 
-      <StoryIdeaDetail
+      <!-- The idea sat straight on the canvas, so nothing said where it began or ended. Raised
+           paper, the default hairline and the one card elevation — a sheet laid on the page
+           rather than a box drawn around it. -->
+      <div
         v-else-if="idea"
-        :idea="idea"
-        :own="isOwn"
-        @read-changed="refreshIdea"
-        @favourite-changed="refreshIdea"
-        @report="reporting = true"
-        @edit="editing = true"
-        @remove="deleting = true"
-        @found-group="foundingGroup = true"
-      />
+        class="rounded-lg border border-line-3 bg-paper-0 p-5 shadow-card md:p-6"
+      >
+        <StoryIdeaDetail
+          :idea="idea"
+          :own="isOwn"
+          @read-changed="refreshIdea"
+          @favourite-changed="refreshIdea"
+          @report="reporting = true"
+          @edit="editing = true"
+          @remove="deleting = true"
+          @found-group="foundingGroup = true"
+        />
+      </div>
 
       <template v-else-if="notFound">
         <h1 class="text-h1">Keine Idee gefunden</h1>

@@ -10,6 +10,12 @@ export type ApiErrorBody = {
   code?: string
   /** Which of the two rate-limit budgets refused it, on a 429 and nowhere else. */
   scope?: 'read' | 'write'
+  /**
+   * When a suspension ends and what it was for, on an `account_suspended` 403 and nowhere else.
+   * A ban carries neither on purpose — its note is written for operators.
+   */
+  suspendedUntil?: string
+  reason?: string
 }
 
 /**

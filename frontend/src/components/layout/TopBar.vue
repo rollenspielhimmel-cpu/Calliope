@@ -23,6 +23,7 @@ import NotificationsDialog from '@/components/notification/NotificationsDialog.v
 import ChatsDialog from '@/components/chat/ChatsDialog.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import { useIpAddressView } from '@/composables/useIpAddressView'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,13 @@ const router = useRouter()
 
 /** The menu is the only way in, so this is what makes the moderation queue reachable at all. */
 const isOperator = computed<boolean>(() => props.user.platformRole !== null)
+
+/**
+ * Whether the IP history is offered on member profiles. Only the addresses: the rest of the
+ * tools are ordinary moderation and are always there for somebody who may see them. A preference,
+ * never a permission — the panel checks the role and the API refuses independently.
+ */
+const { enabled: ipAddressViewEnabled } = useIpAddressView()
 
 const environment = computed<EnvironmentNotice | undefined>(() => environmentNotice(ENVIRONMENT))
 
@@ -210,6 +218,12 @@ async function signOut() {
               <DropdownMenuGroup>
                 <DropdownMenuItem as-child>
                   <RouterLink :to="{ name: 'moderation' }">Moderation</RouterLink>
+                </DropdownMenuItem>
+                <!-- A switch, so it says what it will do rather than what is true now. Named for
+                     what it actually reveals: an address is personal data, so it is looked up
+                     deliberately rather than carried on every profile that happens to open. -->
+                <DropdownMenuItem @select="ipAddressViewEnabled = !ipAddressViewEnabled">
+                  {{ ipAddressViewEnabled ? 'IP-Adressen ausblenden' : 'IP-Adressen einblenden' }}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             </template>

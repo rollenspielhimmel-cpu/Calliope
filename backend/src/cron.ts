@@ -1,3 +1,4 @@
+import { ActivityService } from "./service/activity_service.ts";
 import { UserAvatarService } from "./service/user_avatar_service.ts";
 import { UserTokenService } from "./service/user_token_service.ts";
 import { UserService } from "./service/user_service.ts";
@@ -23,6 +24,18 @@ export function scheduleCronJobs() {
     async () => {
       const deletedFiles = await UserAvatarService.sweepUnreferencedFiles();
       console.log(`Deleted ${deletedFiles} unreferenced file(s)`);
+    },
+  );
+
+  // Nightly, and off the hour like the file sweep: nothing waits on it, and what it deletes is
+  // already past what any question may reach.
+  Deno.cron(
+    "Delete activity windows past their retention",
+    "45 4 * * *",
+    { signal: getAbortSignalForShutdown() },
+    async () => {
+      const deleted = await ActivityService.deleteWindowsOlderThanRetention();
+      console.log(`Deleted ${deleted} activity window(s)`);
     },
   );
 

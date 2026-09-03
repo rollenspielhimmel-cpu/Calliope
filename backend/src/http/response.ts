@@ -34,14 +34,27 @@ export const ACCOUNT_BANNED = "account_banned" as const;
  */
 export const ACCOUNT_BANNED_MESSAGE = "Account banned" as const;
 
+/**
+ * A fourth meaning, and deliberately not the third one: a suspension ends by itself, so what the
+ * member has to be told is *when* — which a ban has no answer to.
+ */
+export const ACCOUNT_SUSPENDED = "account_suspended" as const;
+
+export const ACCOUNT_SUSPENDED_MESSAGE = "Account suspended" as const;
+
 /** Its own code because the form says this on the password field, not as a form error. */
 export const PASSWORD_BREACHED = "password_breached" as const;
+
+/** Its own code for the same reason, on the email field: the address is what has to change. */
+export const EMAIL_DOMAIN_BLOCKED = "email_domain_blocked" as const;
 
 /** Machine-readable reasons, for the few a client has to act on differently. */
 const ERROR_CODE = z.enum([
   INVALID_CREDENTIALS,
   ACCOUNT_BANNED,
+  ACCOUNT_SUSPENDED,
   PASSWORD_BREACHED,
+  EMAIL_DOMAIN_BLOCKED,
 ]);
 
 /**
@@ -100,10 +113,51 @@ export const ACCOUNT_BANNED_BODY = {
   code: ACCOUNT_BANNED,
 } as const;
 
+/**
+ * The 403 for a suspended account. Unlike the ban above it carries both the moment it ends and
+ * the reason, **and this difference is deliberate**: a suspension is meant to correct, so the
+ * member has to know what to change and how long it lasts, while a ban is final and its note is
+ * written for operators. Do not make the two agree.
+ *
+ * One flat shape with two optional fields rather than a union of the two bodies, which is the
+ * exception to the rule a few lines up: Orval generates the `code` enum from a single branch of
+ * a union, so the union quietly emitted a `LoginUser403Code` missing `account_suspended` — and
+ * that constant is precisely what the sign-in form reads, so renaming a code has to break
+ * compilation there rather than fall through to a generic failure.
+ */
+export const ACCOUNT_SUSPENDED_RESPONSE = ERROR_RESPONSE.extend({
+  suspendedUntil: z.iso.datetime({ offset: true }).optional(),
+  reason: z.string().optional(),
+});
+
+/**
+ * A function rather than a constant, because both values differ per account — but still a plain
+ * object rather than a `c.json(...)` helper, for the same reason the constants above are: a
+ * helper returning a `Response` widens the handler's return type and switches off the route's
+ * body and status checks.
+ */
+export function accountSuspendedBody(suspendedUntil: string, reason: string) {
+  return {
+    error: ACCOUNT_SUSPENDED_MESSAGE,
+    code: ACCOUNT_SUSPENDED,
+    suspendedUntil,
+    reason,
+  } as const;
+}
+
 /** A constant for the same reason as the two above: a helper widens the return type. */
 export const PASSWORD_BREACHED_BODY = {
   error: "That password appears in known breaches",
   code: PASSWORD_BREACHED,
+} as const;
+
+/**
+ * A constant for the same reason. Deliberately says the domain rather than the address is the
+ * problem: what somebody has to do is register with a different provider, not fix a typo.
+ */
+export const EMAIL_DOMAIN_BLOCKED_BODY = {
+  error: "That email provider cannot be used to register",
+  code: EMAIL_DOMAIN_BLOCKED,
 } as const;
 
 /**

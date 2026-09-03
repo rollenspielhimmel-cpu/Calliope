@@ -4,6 +4,7 @@ import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { UserService } from "@/src/service/user_service.ts";
 import { BlockService } from "@/src/service/block_service.ts";
+import { BlindDateService } from "@/src/service/blind_date_service.ts";
 import { BanService } from "@/src/service/ban_service.ts";
 import { mayModeratePlatform } from "@/src/service/platform_authorization.ts";
 import { USER_PROFILE_RESPONSE } from "@/src/http/response_schema.ts";
@@ -25,7 +26,7 @@ export default new OpenAPIHono().openapi(
     tags: [USERS_TAG],
     summary: "Read a member's profile",
     description:
-      "The name and the date they joined. An operator additionally sees whether the account is banned; nobody else does.",
+      "The name and the date they joined. An operator additionally sees whether the account is banned; nobody else does. Reading one's own profile additionally carries how many Blind-Dates one has completed, which is sent to nobody else.",
     operationId: "getUser",
     middleware: authenticated,
     request: { params: USER_PARAMS },
@@ -63,6 +64,15 @@ export default new OpenAPIHono().openapi(
       isBlocked,
       ...(mayModeratePlatform(reader.platformRole)
         ? { isBanned: await BanService.isBanned(userId) }
+        : {}),
+      // Their own profile only. Not an operator's business either: it is nobody's information but
+      // theirs, and an operator reading it would make it a thing that can be talked about.
+      ...(reader.id === userId
+        ? {
+          completedBlindDates: await BlindDateService.countCompletedBlindDates(
+            userId,
+          ),
+        }
         : {}),
     }, STATUS_CODE.OK);
   },

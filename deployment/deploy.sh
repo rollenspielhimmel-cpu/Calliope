@@ -276,8 +276,30 @@ it costs."
 
 	# -------------------------------------------------------------------------------- verify
 
-	host_url="$(sed -n 's/^[[:space:]]*HOST_URL[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" |
-		tail -n 1 | tr -d '"'"'" | tr -d '[:space:]')"
+	env_value() {
+		sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$ENV_FILE" |
+			tail -n 1 | tr -d '"'"'" | tr -d '[:space:]'
+	}
+
+	host_url="$(env_value HOST_URL)"
+
+	# The site sits behind a shared password while there is no Impressum — see the gate in the
+	# Caddyfile. The two checks below go through Caddy over the real address on purpose, so they
+	# meet that gate like anybody else does and have to answer it.
+	#
+	# Read from .env rather than passed in: they belong to the machine being deployed to, and a
+	# flag would be one more thing to remember correctly at three in the morning. Absent, the
+	# checks run unauthenticated, which is right for a deployment whose gate has been removed.
+	gate_username="$(env_value GATE_USERNAME)"
+	gate_password="$(env_value GATE_PASSWORD)"
+
+	gated_curl() {
+		if [ -n "$gate_username" ] && [ -n "$gate_password" ]; then
+			curl -sS --max-time 20 --user "$gate_username:$gate_password" "$@"
+		else
+			curl -sS --max-time 20 "$@"
+		fi
+	}
 
 	# Every migration the checkout defines must be applied by now. The backend already waits on
 	# `migrate` completing, so this is the second lock rather than the first — but a version
@@ -308,12 +330,20 @@ The schema is behind what this commit expects. \`compose logs migrate\`."
 	# separately: they are built by different services, and a current backend behind a stale
 	# bundle is exactly what a single 200 hides.
 	if [ -n "$host_url" ]; then
-		health="$(curl -sS --max-time 20 "$host_url/api/health")"
-		printf '%s' "$health" | grep -q "\"releaseId\":\"$GIT_COMMIT\"" ||
+		# A gate that refuses answers with neither the release id nor the commit meta, and both
+		# checks below would then blame the deploy for something the password did. Say what
+		# actually happened, once, before either of them runs.
+		status="$(gated_curl -o /dev/null -w '%{http_code}' "$host_url/api/health")"
+		[ "$status" != "401" ] ||
+			fail "$host_url answers 401. GATE_USERNAME and GATE_PASSWORD in $ENV_FILE do not match the GATE_PASSWORD_HASH the Caddyfile's gate was built with."
+
+		health="$(gated_curl "$host_url/api/health")"
+
+		printf '%s' "$health" | grep -q '"releaseId":"'"$GIT_COMMIT"'"' ||
 			fail "The backend reports $(printf '%s' "$health" | sed -n 's/.*"releaseId":"\([^"]*\)".*/\1/p' |
 				head -n 1), not $GIT_COMMIT. Something older is still answering."
 
-		frontend="$(curl -sS --max-time 20 "$host_url/")"
+		frontend="$(gated_curl "$host_url/")"
 		printf '%s' "$frontend" | grep -q "name=\"commit\" content=\"$GIT_COMMIT\"" ||
 			fail "The frontend Caddy serves is not from $GIT_COMMIT. The frontend build did not reach it."
 

@@ -1,7 +1,11 @@
 import { createMiddleware } from "hono/factory";
 import type { User } from "@/src/service/user_service.ts";
 import { resolveSessionUser } from "@/src/middleware/session_user.ts";
-import { ACCOUNT_BANNED_BODY } from "@/src/http/response.ts";
+import {
+  ACCOUNT_BANNED_BODY,
+  accountSuspendedBody,
+} from "@/src/http/response.ts";
+import { isSuspended } from "@/src/service/suspension.ts";
 
 /**
  * A session *and* a verified email address — both, deliberately, and this is why the pair is
@@ -26,8 +30,19 @@ export default createMiddleware<{
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  // The ban is checked first and answers on its own: an account that is banned for good has no
+  // use for a date it is suspended until, and saying both would offer a hope the ban denies.
   if (user.bannedAt !== null) {
     return c.json(ACCOUNT_BANNED_BODY, 403);
+  }
+
+  const suspension = isSuspended(user);
+
+  if (suspension !== undefined) {
+    return c.json(
+      accountSuspendedBody(suspension.suspendedUntil, suspension.reason),
+      403,
+    );
   }
 
   if (user.emailAddressVerifiedAt === null) {

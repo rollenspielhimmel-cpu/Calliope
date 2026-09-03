@@ -33,6 +33,94 @@ Deno.test("GET /api/users/{userId} returns the profile", async () => {
   );
 });
 
+/**
+ * A pair that is over, with the member in it. Cleans up every row it made, whatever the body does.
+ */
+async function withFinishedPair(
+  username: string,
+  state: { revealedAt?: string; endedReason?: string },
+  body: () => Promise<void>,
+): Promise<void> {
+  const group = await db
+    .insertInto("writingGroup")
+    .values({ title: "Abgeschlossen", synopsis: "x", visibility: "private" })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+
+  const pair = await db
+    .insertInto("blindDatePair")
+    .values({
+      writingGroupId: group.id,
+      ...(state.revealedAt === undefined
+        ? {}
+        : { revealedAt: state.revealedAt }),
+      ...(state.endedReason === undefined ? {} : {
+        endedAt: new Date().toISOString(),
+        endedReason: state.endedReason,
+      }),
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+
+  await db
+    .insertInto("blindDatePartner")
+    .values({
+      pairId: pair.id,
+      userId: await getUserId(username),
+      isActive: false,
+    })
+    .execute();
+
+  try {
+    await body();
+  } finally {
+    await db.deleteFrom("blindDatePartner").where("pairId", "=", pair.id)
+      .execute();
+    await db.deleteFrom("blindDatePair").where("id", "=", pair.id).execute();
+    await db.deleteFrom("writingGroup").where("id", "=", group.id).execute();
+  }
+}
+
+Deno.test("a finished Blind-Date is counted on one's own profile and on nobody else's", async () => {
+  const cookie = await registerUser(viewer);
+  const subjectCookie = await registerUser(subject);
+  const subjectId = await getUserId(subject);
+  const path = `/api/users/${subjectId}`;
+
+  await withFinishedPair(
+    subject,
+    { revealedAt: new Date().toISOString() },
+    async () => {
+      const own = await (await request("GET", path, subjectCookie)).json();
+      assertEquals(own.completedBlindDates, 1);
+
+      // Absent rather than zero. A field that is present but zeroed is still a field somebody can
+      // compare, and this one is nobody's business but theirs.
+      const seenByAnother = await (await request("GET", path, cookie)).json();
+      assertEquals("completedBlindDates" in seenByAnother, false);
+    },
+  );
+});
+
+Deno.test("a Blind-Date the name guard ended is not counted as completed", async () => {
+  const subjectCookie = await registerUser(subject);
+  const subjectId = await getUserId(subject);
+
+  // The one ending that is the ritual failing rather than finishing.
+  await withFinishedPair(
+    subject,
+    { endedReason: "name_revealed" },
+    async () => {
+      const own = await (await request(
+        "GET",
+        `/api/users/${subjectId}`,
+        subjectCookie,
+      )).json();
+      assertEquals(own.completedBlindDates, 0);
+    },
+  );
+});
+
 Deno.test("GET /api/users/{userId} never returns an email address", async () => {
   const cookie = await registerUser(viewer);
   await registerUser(subject);

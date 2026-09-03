@@ -101,15 +101,17 @@ const hasLoaded = computed<boolean>(() => data.value?.status === 200)
           {{ pluralize(totalResults ?? 0, 'Mitglied', 'Mitglieder') }}
         </p>
 
-        <ul>
+        <!-- Cards like the other lists, but tighter: a member row is one line, so it takes the
+             padding of a line rather than the padding of a paragraph. -->
+        <ul class="flex flex-col gap-1.5">
           <li
             v-for="member in members"
             :key="member.id"
-            class="border-b border-line-3 first:border-t"
+            class="rounded-lg border border-line-3 bg-paper-0 shadow-card"
           >
             <RouterLink
               :to="{ name: 'member', params: { userId: member.id } }"
-              class="flex min-h-[44px] items-center gap-3 py-2 hover:bg-paper-2"
+              class="flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2 hover:bg-paper-2"
             >
               <UserAvatar :username="member.username" :avatar-url="member.avatarUrl" />
               <span class="min-w-0 truncate text-[13.5px] text-ink-2">

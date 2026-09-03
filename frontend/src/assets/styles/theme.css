@@ -81,6 +81,15 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+
+  /* The one card elevation, as `shadow-card`. One token rather than a pair of literals repeated
+     per component, so the whole product can be re-tuned — or taken back out — in one place.
+     The value itself is per theme, in colors.css. */
+  --shadow-card: var(--elevation-card);
+
+  /* The alert surface, as `bg-surface-alert` / `border-line-alert`. Operators' tools only. */
+  --color-surface-alert: var(--surface-alert);
+  --color-line-alert: var(--line-alert);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);

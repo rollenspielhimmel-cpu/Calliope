@@ -60,6 +60,41 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'storyIdea',
     component: () => import('../views/StoryIdeaView.vue'),
   },
+  // `anyone`: a sub-forum may be readable without an account, and which ones those are is the
+  // data's own business — the API filters, so the guard here must not refuse first.
+  {
+    path: '/forum',
+    name: 'forum',
+    component: () => import('../views/ForumView.vue'),
+    meta: { access: 'anyone' },
+  },
+  {
+    path: '/forum/sub-forums/:subForumId',
+    name: 'subForum',
+    component: () => import('../views/SubForumView.vue'),
+    meta: { access: 'anyone' },
+  },
+  {
+    path: '/forum/threads/:threadId',
+    name: 'forumThread',
+    component: () => import('../views/ForumThreadView.vue'),
+    meta: { access: 'anyone' },
+  },
+  // `anyone`: a page may be public, and which ones are is the data's own business — the API
+  // answers 404 for a private one read without a session, so the guard must not refuse first.
+  {
+    path: '/pages/:slug',
+    name: 'page',
+    component: () => import('../views/PageView.vue'),
+    meta: { access: 'anyone' },
+  },
+  // Members only: applying needs an account, and the running Blind-Dates are shown to the
+  // community rather than to the internet.
+  {
+    path: '/blind-date',
+    name: 'blindDate',
+    component: () => import('../views/BlindDateView.vue'),
+  },
   {
     path: '/members',
     name: 'members',
@@ -71,10 +106,81 @@ export const routes: Array<RouteRecordRaw> = [
     component: () => import('../views/MemberView.vue'),
   },
   {
+    // The one way in to everything the team does. The report queue is a page *inside* it rather
+    // than an area of its own, which is why it moved down to /moderation/reports.
     path: '/moderation',
     name: 'moderation',
     component: () => import('../views/ModerationView.vue'),
     meta: { access: 'operator' },
+  },
+  {
+    path: '/moderation/reports',
+    name: 'moderationReports',
+    component: () => import('../views/ReportsView.vue'),
+    meta: { access: 'operator' },
+  },
+  // The pages of that one area. Flat rather than nested children, because each stands on its
+  // own and none of them shares a frame with the overview.
+  {
+    path: '/moderation/ip-addresses',
+    name: 'moderationIpAddresses',
+    component: () => import('../views/moderation/IpAddressesView.vue'),
+    meta: { access: 'operator' },
+  },
+  {
+    path: '/moderation/blind-date',
+    name: 'moderationBlindDate',
+    component: () => import('../views/moderation/BlindDateView.vue'),
+    meta: { access: 'operator' },
+  },
+  {
+    path: '/moderation/strikes',
+    name: 'moderationStrikes',
+    component: () => import('../views/moderation/StrikesView.vue'),
+    meta: { access: 'operator' },
+  },
+  {
+    path: '/moderation/roles',
+    name: 'moderationRoles',
+    component: () => import('../views/moderation/RolesView.vue'),
+    meta: { access: 'operator' },
+  },
+  {
+    path: '/moderation/invitations',
+    name: 'moderationInvitations',
+    component: () => import('../views/moderation/InvitationsView.vue'),
+    meta: { access: 'operator' },
+  },
+  // What changes the platform itself, rather than one account: administrator only.
+  {
+    path: '/moderation/content-filters',
+    name: 'moderationContentFilters',
+    component: () => import('../views/moderation/ContentFiltersView.vue'),
+    meta: { access: 'administrator' },
+  },
+  {
+    path: '/moderation/broadcast',
+    name: 'moderationBroadcast',
+    component: () => import('../views/moderation/BroadcastView.vue'),
+    meta: { access: 'administrator' },
+  },
+  {
+    path: '/moderation/pages',
+    name: 'moderationPages',
+    component: () => import('../views/moderation/PagesView.vue'),
+    meta: { access: 'administrator' },
+  },
+  {
+    path: '/moderation/forum',
+    name: 'moderationForum',
+    component: () => import('../views/moderation/ForumStructureView.vue'),
+    meta: { access: 'administrator' },
+  },
+  {
+    path: '/moderation/profile-fields',
+    name: 'moderationProfileFields',
+    component: () => import('../views/moderation/ProfileFieldsView.vue'),
+    meta: { access: 'administrator' },
   },
   {
     path: '/login',

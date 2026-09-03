@@ -104,6 +104,7 @@ export default new OpenAPIHono().openapi(
       threadId,
       user.id,
       listQuery(c.req.valid("json")),
+      groupId,
     );
 
     return c.json(page, STATUS_CODE.OK);

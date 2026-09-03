@@ -1,3 +1,4 @@
+import { PseudonymService } from "@/src/service/pseudonym_service.ts";
 import type { Selectable } from "kysely";
 import { db } from "@/src/database/client.ts";
 import { NotificationService } from "@/src/service/notification_service.ts";
@@ -45,6 +46,7 @@ export type WritingGroup =
     | "createdBy"
     | "createdAt"
     | "lastActivityAt"
+    | "authorsArePseudonymous"
   >
   // Null once the author has deleted their account, because created_by is ON DELETE SET NULL.
   & { createdByUsername: string | null }
@@ -86,6 +88,10 @@ const SELECTED_COLUMNS = [
   "writingGroup.createdBy",
   "writingGroup.createdAt",
   "writingGroup.lastActivityAt",
+  // Whether this group's authors are shown under pseudonyms. Returned rather than kept back: the
+  // interface has to know whether it is drawing a Blind-Date, and the two people in one already
+  // know they are in it. It says nothing about *who* the other is, which is the part that matters.
+  "writingGroup.authorsArePseudonymous",
 ] as const;
 
 /**
@@ -273,7 +279,7 @@ async function selectWritingGroupForReader(
   user: User,
   writingGroupId: string,
 ): Promise<WritingGroup | undefined> {
-  return await visibleToUser(user)
+  const group = await visibleToUser(user)
     .$call((builder) =>
       withFavourite(builder, "writing_group", "writingGroup.id", user.id)
     )
@@ -284,9 +290,53 @@ async function selectWritingGroupForReader(
     ])
     .where("writingGroup.id", "=", writingGroupId)
     .executeTakeFirst();
+
+  if (group === undefined || !group.authorsArePseudonymous) {
+    return group;
+  }
+
+  // Whoever created a Blind-Date group is one of the two people in it, so their name goes the
+  // same way every other name in it does.
+  const mask = await PseudonymService.maskForGroup(group.id);
+
+  return mask === undefined
+    ? group
+    : { ...group, createdByUsername: mask(group.createdBy).username };
 }
 
-function listVisibleWritingGroups(
+async function listVisibleWritingGroups(
+  user: User,
+  query: ListQuery & StoryVocabularyFilter & {
+    membership: MembershipFilter;
+    favourite: FavouriteFilter;
+  },
+): Promise<ListResults<WritingGroup>> {
+  const page = await visibleWritingGroupsPage(user, query);
+
+  // One resolution for the whole page: a list of twenty groups must not be twenty pairs of
+  // queries, and all but the Blind-Dates among them need none at all.
+  const masks = await PseudonymService.masksForGroups(
+    page.results.filter((group) => group.authorsArePseudonymous).map((group) =>
+      group.id
+    ),
+  );
+
+  if (masks.size === 0) {
+    return page;
+  }
+
+  return {
+    ...page,
+    results: page.results.map((group) => {
+      const mask = masks.get(group.id);
+      return mask === undefined
+        ? group
+        : { ...group, createdByUsername: mask(group.createdBy).username };
+    }),
+  };
+}
+
+function visibleWritingGroupsPage(
   user: User,
   query: ListQuery & StoryVocabularyFilter & {
     membership: MembershipFilter;

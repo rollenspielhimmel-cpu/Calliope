@@ -29,9 +29,12 @@ const route = useRoute()
         class="relative flex-1"
       >
         <NavigationMenuLink as-child>
+          <!-- `whitespace-nowrap`: a label that wraps makes its item taller than the rest and
+               breaks the row's baseline. „Blind-Date" did exactly that, because a hyphen is a
+               legal break point — and no label here is ever worth two lines. -->
           <RouterLink
             :to="{ name: destination.name }"
-            class="flex min-h-[56px] w-full flex-col items-center justify-center gap-[3px] border-t-2 text-[11.5px] leading-[1.2]"
+            class="flex min-h-[56px] w-full flex-col items-center justify-center gap-[3px] border-t-2 text-[11.5px] leading-[1.2] whitespace-nowrap"
             :class="
               isCurrent(destination, route.name)
                 ? 'border-oak font-semibold text-ink-1'

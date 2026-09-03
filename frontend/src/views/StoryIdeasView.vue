@@ -274,13 +274,9 @@ const creating = ref<boolean>(false)
         </template>
       </p>
 
-      <div v-else-if="hasLoaded">
-        <StoryIdeaRow
-          v-for="(idea, index) in ideas"
-          :key="idea.id"
-          :idea="idea"
-          :class="index > 0 ? 'border-t border-line-2' : 'pt-0'"
-        />
+      <!-- Spaced rather than ruled, as in GroupsView: the cards carry their own edges. -->
+      <div v-else-if="hasLoaded" class="flex flex-col gap-3">
+        <StoryIdeaRow v-for="idea in ideas" :key="idea.id" :idea="idea" />
       </div>
 
       <div v-if="hasLoaded && pageCount > 1" class="mt-7 border-t border-line-2 pt-3">

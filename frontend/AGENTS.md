@@ -427,6 +427,31 @@ Vitest, in `__tests__/` beside the code as `<module>.spec.ts` — this is what
 npx vitest run
 ```
 
+### A failure names itself in `test-failures.log`
+
+Both runners append every failure to `test-failures.log` at the repository root, and write nothing
+on a green run. It is **never truncated** — not even of failures that were found and fixed, which
+is the reasoning that would empty it. What is in it is everything that has ever failed in this
+checkout, oldest first. Git-ignored, because one checkout's flakes are nobody else's.
+
+This exists because a test that fails once and passes on the next run leaves nothing behind — the
+terminal has scrolled, the next run reports only itself, and the *name*, the one thing an
+investigation starts from, is gone. It happened twice before this was written, and both times the
+name was lost.
+
+```bash
+grep FAILED test-failures.log
+```
+
+`scripts/failureLog.ts` is a reporter registered in `vitest.config.ts` **beside** `default`, so the
+terminal output is unchanged and there is no flag to remember — it covers `npx vitest run` and watch
+mode alike, and the entry says which of the two it was. Unhandled errors get an entry of their own,
+since one can fail a run while naming no test.
+
+The two halves share no code: one runs in Node and one in Deno. What has to agree is the four-line
+shape — a `───` header, `FAILED  <file>`, the test's full name, the message indented under it — and
+it is small enough to keep by hand.
+
 ## What the automated browser cannot tell you
 
 The browser these tools drive is not a fair witness for anything that moves. Three behaviours
@@ -681,8 +706,8 @@ take a member off the page they are on.
 
 ## Favourites
 
-One mark over five kinds. The wording lives in `lib/format/favourite.ts` — never write „Favorit" at
-a call site; it was copied by hand once already.
+One mark over six kinds, forum posts included. The wording lives in `lib/format/favourite.ts` —
+never write „Favorit" at a call site; it was copied by hand once already.
 
 - **`FavouriteToggle` emits its success and shows its own failure.** What to refetch belongs to the
   caller and differs; the message is the same sentence everywhere, and delegating it is how it went
@@ -719,6 +744,97 @@ a call site; it was copied by hand once already.
   Only *reading* moves an idea in or out of that set, so the favourite's version adjusts no total.
 - **`lib/format/group.ts` holds both group vocabularies.** `MEMBERSHIP_LABELS` is for the search
   popover, which reaches past the groups the reader belongs to with nothing else saying so.
+
+## The forum
+
+Three views — `ForumView` (the front page), `SubForumView` (a thread list), `ForumThreadView` (the
+posts) — plus `views/moderation/ForumStructureView.vue`, which is administration and lives with the
+other moderation pages.
+
+**All three carry `meta: { access: 'anyone' }`.** A sub-forum may be readable without an account,
+and which ones those are is the data's own business — the API filters, so the router's guard must
+not refuse first. The pages cope with there being no session: the sign-in link takes the top bar's
+place, and there is deliberately **no "you may not see this" state to render**. A sub-forum the
+reader may not see is absent from the overview rather than shown as refused, and a category left
+with nothing in it does not appear at all.
+
+### `ForumPostItem` is a sibling of `PostItem`, not a reuse of it
+
+The two are drawn identically on purpose — a post is read the same way wherever it is, so both
+follow the hard rule: **not boxed, no avatar, no role badge, recessed metadata over a hairline.**
+They are still not the same thing. A `writing_post` may be a draft and is authorised through a
+group's membership, neither of which exists here, and the favourite kind is baked into each. What is
+genuinely worth sharing is shared as components: `PostBody` and `PostEditor`.
+
+The row of actions under a post — Bearbeiten, Löschen, Favorit, Melden — is text actions on one
+baseline, so it uses raw buttons rather than `FavouriteToggle`, the same exception this file already
+makes for a group's post row. The words still come from `favouriteToggle()`.
+
+**What the row offers is what the API would accept**, computed the same way: your own post, or
+moderation's hand, may be changed; anything but your own may be reported; nothing at all is offered
+to a reader without an account. A button offered wrongly is a member told they may do something and
+then refused.
+
+### `lib/format/forumVisibility.ts` holds the vocabulary and the reach rule
+
+Two copies of the four labels existed before this file did — the administration form's own map and
+the front page's badge, worded differently from each other — and the moderation dialogs would have
+been the third. Never write „Nur Moderation" at a call site.
+
+- **`FORUM_VISIBILITY_LABELS` keeps the enum's order**, open to closed, because it is iterated to
+  build a form's choices and that order is what somebody reads.
+- **`restrictedForumLabel` says nothing for the ordinary cases.** A badge on every row is noise;
+  the mark appears once, next to the title, and only where it is not what a forum ordinarily is —
+  the same rule a group's privacy mark follows.
+- **`reachableVisibilities` mirrors the API's own refusal.** A moderator is not offered
+  `administration`, because setting it would hide the thread from the person who hid it with no way
+  back, and the endpoint answers 403. Offering it and letting the request fail would be telling
+  somebody they may do something and then refusing.
+
+### The moderation tools are two icon buttons and two dialogs
+
+`ModerationToolButton` — formerly `ProfileToolButton`, renamed when it stopped being only a
+profile's — sits beside the thread title behind `v-if="mayModerate"`. Small and quiet, as on a
+profile: these are the operators' tools, not the page. The Eye button is drawn as on when the thread
+carries a visibility of its own.
+
+- **`MoveThreadDialog` offers only what the account may read.** Its choices come from
+  `getForumOverview`, which the API has already filtered, so a sub-forum that would be refused is
+  never in the list. Grouped under their categories, because a flat list of a dozen names is not how
+  the forum is read.
+- **Its warning is said only when it is true.** A thread carrying its own visibility keeps it
+  through a move and the stricter of the two still wins, so who reads it cannot change; only one
+  with *no* setting of its own takes on wherever it lands. Warning on the safe case would train
+  people to ignore it.
+- **`ThreadVisibilityDialog` calls `null` „Wie das Abteil", with what that currently means.** It is
+  not a fifth level and not an empty field: a thread either carries a setting or follows its
+  sub-forum, and naming it that way is what stops the inherited value reading as a choice somebody
+  made. A local `INHERIT` sentinel stands in for it in the `Select`, because `SelectItem` cannot
+  take `null` as a value — the wire value is still `null`, and a test holds that.
+- **Both dialogs own their invalidation**, as `WatchlistDialog` does. A second invalidation in the
+  view was the same call twice.
+
+### Testing these
+
+- **Dialog content is portalled**, so it is in the document a tick after the mount rather than at
+  it. Assert against `document.body`, and let a `setTimeout(0)` settle first — an assertion made
+  right after `mount` reads an empty body and looks like a rendering bug that is not there.
+- **Choosing in a reka-ui `Select` is not worth driving.** The listbox is built on a real pointer
+  sequence that jsdom does not produce; the dialogs' tests set the component's own state instead,
+  because what is under test is the warning and the wire value, not reka-ui.
+- **The forum's views have no specs**, in line with the rest of `views/`. The logic that is worth
+  holding — the action row's gating, the move warning, the reach rule — lives in components and in
+  `lib/format/`, and is tested there.
+
+### Two generated-client notes
+
+- **`listForumThreads` and `listForumPosts` are in `orval.config.ts`'s QUERY allowlist.** They use
+  the HTTP QUERY method, and Orval classifies anything that is not GET as a mutation — which would
+  mean no caching, no query key and no fetch on mount. Adding a list endpoint means adding a line
+  there.
+- **Orval writes a separate visibility enum per operation**, all four identical because the spec has
+  one `FORUM_VISIBILITY_SCHEMA` behind them. `ForumVisibility` in `lib/format/forumVisibility.ts`
+  picks one and is the name the interface uses.
 
 ## Length limits
 

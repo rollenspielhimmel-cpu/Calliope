@@ -5,12 +5,14 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useForm } from '@tanstack/vue-form'
+import { APP_NAME } from '@/lib/branding'
 import { useDeleteAvatar, useSetAvatar, useUpdateOwnProfile } from '@/api/users/users'
 import type { GetUser200, SetAvatarBodyOrigin } from '@/api/models'
 import { ApiError } from '@/lib/api/apiFetch'
 import { getGetCurrentUserQueryKey } from '@/api/auth/auth'
 import { queryClient } from '@/lib/api/queryClient'
 import AvatarPicker from '@/components/user/AvatarPicker.vue'
+import ProfileAnswersForm from '@/components/user/ProfileAnswersForm.vue'
 import {
   AVATAR_NEEDS_CREDIT,
   AVATAR_NOT_AN_IMAGE,
@@ -228,8 +230,8 @@ watch(
         <DialogTitle>Profil bearbeiten</DialogTitle>
         <DialogDescription>
           Alles freiwillig. Was du hier schreibst, können alle Mitglieder mit einem Konto lesen —
-          außerhalb von Calliope ist nichts davon sichtbar. Genau dafür ist es da: Leute, die dich
-          noch nicht kennen, sehen so, ob ihr zusammenpasst.
+          außerhalb von {{ APP_NAME }} ist nichts davon sichtbar. Genau dafür ist es da: Leute, die
+          dich noch nicht kennen, sehen so, ob ihr zusammenpasst.
         </DialogDescription>
       </DialogHeader>
 
@@ -315,6 +317,15 @@ watch(
                 </Button>
               </DialogFooter>
             </form>
+          </AccordionContent>
+        </AccordionItem>
+
+        <!-- Its own section, and absent entirely while no questions are defined: these are set
+             by the administration, so unlike the fields above they may not exist at all. -->
+        <AccordionItem value="fragen">
+          <AccordionTrigger>Fragen</AccordionTrigger>
+          <AccordionContent>
+            <ProfileAnswersForm :user-id="profile.id" @saved="emit('saved')" />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

@@ -37,7 +37,8 @@ const story = computed<string>(() =>
 </script>
 
 <template>
-  <div class="py-[26px]">
+  <!-- A card rather than the hairline row this used to be — see GroupRow, which pairs with it. -->
+  <div class="rounded-lg border border-line-3 bg-paper-0 px-5 py-5 shadow-card">
     <div class="text-h2">
       <RouterLink
         :to="{ name: 'storyIdea', params: { ideaId: idea.id } }"

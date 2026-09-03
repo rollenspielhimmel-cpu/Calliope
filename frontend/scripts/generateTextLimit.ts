@@ -20,7 +20,15 @@ import { resolve } from 'node:path'
  * is registered as a component — the post document is, because it is described once and referred
  * to from both routes — so a `$ref` has to be followed to find the bound behind it.
  */
-type Bound = { minLength?: number; maxLength?: number; $ref?: string }
+type Bound = {
+  minLength?: number
+  maxLength?: number
+  /** How many entries an array property takes — `createBlindDateOffer.roles` is the first. */
+  maxItems?: number
+  /** An array's element schema, whose own length bound is a separate number an input needs. */
+  items?: Bound
+  $ref?: string
+}
 
 type Schema = {
   properties?: Record<string, Bound>
@@ -74,6 +82,18 @@ function collectBounds(
     const bound: Bound = {}
     if (typeof definition.minLength === 'number') bound.minLength = definition.minLength
     if (typeof definition.maxLength === 'number') bound.maxLength = definition.maxLength
+    if (typeof definition.maxItems === 'number') bound.maxItems = definition.maxItems
+
+    // An array carries two bounds that are not the same question: how many entries it takes, and
+    // how long one entry may be. Both reach an input, so both are written rather than collapsed.
+    if (definition.items !== undefined) {
+      const element = resolveReference(definition.items)
+      const inner: Bound = {}
+      if (typeof element.minLength === 'number') inner.minLength = element.minLength
+      if (typeof element.maxLength === 'number') inner.maxLength = element.maxLength
+      if (Object.keys(inner).length > 0) bound.items = inner
+    }
+
     if (Object.keys(bound).length === 0) continue
 
     const existing = into[property]
@@ -105,6 +125,14 @@ function boundsOf(operation: Operation, operationId: string): Record<string, Bou
   return bounds
 }
 
+/** One bound as source. Nested because an array's element bound is a bound of its own. */
+function render(bound: Bound): string {
+  const parts = Object.entries(bound).map(([key, value]) =>
+    typeof value === 'number' ? `${key}: ${value}` : `${key}: ${render(value as Bound)}`,
+  )
+  return `{ ${parts.join(', ')} }`
+}
+
 const operations: Record<string, Record<string, Bound>> = {}
 for (const methods of Object.values(specification.paths)) {
   for (const operation of Object.values(methods)) {
@@ -117,8 +145,7 @@ for (const methods of Object.values(specification.paths)) {
 const body = Object.entries(operations)
   .map(([operationId, properties]) => {
     const lines = Object.entries(properties).map(([property, bound]) => {
-      const parts = Object.entries(bound).map(([key, value]) => `${key}: ${value}`)
-      return `    ${property}: { ${parts.join(', ')} },`
+      return `    ${property}: ${render(bound)},`
     })
     return `  ${operationId}: {\n${lines.join('\n')}\n  },`
   })

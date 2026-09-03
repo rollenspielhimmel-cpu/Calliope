@@ -18,9 +18,11 @@ const BACKEND_URL = `http://localhost:${BACKEND_PORT}`
 
 /**
  * Into `process.env`, or the `%VITE_APP_NAME%` placeholder survives into the page as literal text.
- * The default cannot live in `frontend/.env`, which the repository ignores.
+ * The default cannot live in `frontend/.env`, which the repository ignores — so it reads the
+ * same `APP_NAME` the backend does, off the repository's own root `.env`, and falls back to the
+ * upstream project's name only where neither sets one.
  */
-process.env.VITE_APP_NAME ||= 'Calliope'
+process.env.VITE_APP_NAME ||= rootEnvironment.APP_NAME ?? 'Calliope'
 
 /**
  * Stamped by `deployment/deploy.sh` and read back off the page to prove Caddy is serving what was

@@ -52,7 +52,7 @@ timestamps are **stamped from fixture position**, five minutes apart, because on
 statement shares a single `now()` — a column full of ties has no defined sort order, and paging
 over it repeats rows across pages.
 
-**Favourites are seeded across all five kinds** (`seed/favourites.ts`), because every filter in
+**Favourites are seeded across every kind the seed writes** (`seed/favourites.ts`), because every filter in
 the interface is otherwise an empty list on a fresh checkout and the flag is never true anywhere.
 Three posts spread through the 105-post thread are the ones that earn the fixture: coming back to
 marked passages across six pages is what the post filter is *for*, and `write.ts` asserts every
@@ -805,9 +805,9 @@ somebody blocked the reader is exactly the disclosure the neutral 403 avoids.
 
 ## Favourites
 
-One mark over five kinds, private to the member who set it. `PUT`/`DELETE
-/favourites/{targetType}/{targetId}` is the whole API — one pair of routes rather than five, the
-argument that makes `ReportDialog` one component for seven kinds.
+One mark over six kinds, private to the member who set it. `PUT`/`DELETE
+/favourites/{targetType}/{targetId}` is the whole API — one pair of routes rather than six, the
+argument that makes `ReportDialog` one component for eight kinds.
 
 - **`favourite` carries no `target_type` column**, unlike `report`, whose references are `SET NULL`
   and so leave a row naming nothing. These cascade, so the kind is readable off the data and
@@ -880,11 +880,14 @@ it, when they closed it, with what outcome and note.
 **The category is part of the one-report-per-member index key**, which is the line between
 correcting a report and making a second claim. Without it a member who reported a post as harassment
 and then noticed it was also plagiarism had the first claim silently overwritten. Two consequences,
-and the second has bitten three times: the predicate is `closed_at IS NULL` rather than a status, or
+and the second has bitten four times: the predicate is `closed_at IS NULL` rather than a status, or
 taking a report would drop it out of the index and let the same member file it again; and
-`insertReport`'s `ON CONFLICT` clause has to restate that predicate *the same way*, because any
-disagreement makes Postgres answer "no unique or exclusion constraint matching the ON CONFLICT
-specification" for every report anybody files.
+`insertReport`'s `ON CONFLICT` clause has to restate that predicate *and that column list* the same
+way, because any disagreement makes Postgres answer "no unique or exclusion constraint matching the
+ON CONFLICT specification" for **every** report anybody files. The fourth time was the column list:
+adding `forum_post` widened the index and left the clause one column short, which took the whole of
+reporting down rather than only reports of forum posts. `favourite`'s insert cannot make this
+mistake, deriving its list from `FAVOURITE_COLUMN`.
 
 ## Paths in mailed links must exist in the frontend
 
@@ -916,6 +919,170 @@ Three things about it:
   trimmed, blanks dropped, and repeats removed case-insensitively with the first spelling
   kept. Doing it in the schema would put a transform in `open-api.json` that the client cannot
   see.
+
+## The forum
+
+A public forum of categories, sub-forums and threads, parts of it readable without an account at
+all. Most of what follows falls out of that last part. It is not the only thing here that answers
+to nobody — `pages/read_page.ts` came first and `route/forum/shared.ts` borrows its shape — but it
+is the only one where *which* parts answer is a per-row decision.
+
+**It has its own tables, and reuses `writing_thread` for nothing.** The alternative — making
+`writing_thread.writing_group_id` nullable and letting a forum thread be a group thread with no
+group — was rejected: every existing query authorises through
+`WritingGroupService.selectRoleForUser` and relies on that column being `NOT NULL`, so nullability
+would add a branch to each of them where a forgotten one fails *open*. What is worth sharing is
+shared instead — the `document` format, its text extraction, and (on the frontend) the editor —
+none of which knows what a group is.
+
+**There are no drafts.** `writing_post` has `is_draft` and a one-draft-per-thread rule; `forum_post`
+deliberately has neither. A forum answer is written and sent, and the absence is why deleting the
+last post of a thread deletes the thread with it: a thread with nothing in it would be an empty row
+nobody could answer, and there is no draft state to explain it away.
+
+### Visibility is one rule in one file
+
+Two things carry a visibility — the sub-forum and, optionally, the thread — and they combine by
+taking the **stricter** of the two. `forum_visibility.ts` is the whole of it: `visibilityCeiling`,
+`effectiveVisibility`, `maySee`, `mayPost`.
+
+- **The enum is declared open to closed**, so "stricter" is simply "greater" and Postgres compares
+  it without a mapping table. `greatest(sub_forum.visibility, coalesce(forum_thread.visibility,
+  sub_forum.visibility)) <= <ceiling>` is the entire filter, and it is applied **in SQL** so a list,
+  its count and a single lookup cannot disagree about what is visible. There is no separate
+  "is it visible" call for a route to forget.
+- **A thread's own visibility can only narrow.** `forum_thread.visibility` is nullable, and null
+  means "follow the sub-forum" rather than "everyone". That direction is the point: a thread marked
+  `everyone` inside an administration sub-forum stays administration-only, which is what makes
+  moving a thread into a closed sub-forum a way to hide it. The opposite rule would turn one
+  careless move into a disclosure.
+- **The reader is a `platformRole`, not a `User`.** `ForumReader` is `{ platformRole } | undefined`,
+  and `undefined` is nobody signed in — a real case here rather than a defensive one.
+  `listPosts` is the one exception and takes the account, because whose favourite a post is is a
+  question about an id.
+
+### Reading needs no session
+
+The forum routes do **not** sit behind `authenticated`. They call `readerOf(c)` from
+`route/forum/shared.ts`, which resolves the session by hand and treats a banned account as nobody —
+not as the member it was. The two moderation routes are the exception: they list
+`[authenticated, authorizedAsModerator]` and read `c.get("user")`, because the middleware has
+already resolved the session and refused a banned or suspended account.
+
+**Everything answers 404, never 403, for what a reader may not see** — a sub-forum, a thread, a post
+in one. A 403 would confirm that the thing exists, which is exactly what a closed sub-forum is for.
+The one deliberate 403 is `beyond_your_reach`, below.
+
+### One route per file, and here it is load-bearing
+
+`route/forum.ts` mounts seven files. The convention asks for this anyway, but here it is not
+cosmetic: **two `query` routes chained onto one `OpenAPIHono` leave the second one's body typed
+`Record<string, unknown>`**, silently, and `c.req.valid("json")` then carries no shape at all.
+`listForumThreads` and `listForumPosts` are in separate files for that reason, and both
+`shared.ts` and `list_forum_posts.ts` say so at the top of their own.
+
+Two more traps the same inference hit:
+
+- **`listQuerySchema` must be passed `{}` explicitly** where a list has no filters. The parameter
+  defaults to `{} as Filters`, and *omitting* it leaves the generic unresolved — which widens the
+  handler's body the same way. This cost three wrong diagnoses before it was found.
+- **`DOCUMENT_SCHEMA` inside a nested response object exhausts the route's inference.** Wrapping the
+  thread and its posts in one response was tried and dropped; `getForumThread` and `listForumPosts`
+  are two calls for that reason, which is also the split a group's thread view already uses.
+
+### Moderation acts on a thread; administration owns the structure
+
+Which categories and sub-forums exist is what the platform *is* — `manage_structure.ts`,
+`authorizedAsAdministrator`. Moving one thread is the moderation half and
+lives in `moderate_thread.ts`, `authorizedAsModerator`. Both moderation routes go through the reader
+rather than the role alone, because a moderator's reach ends below an administrator's.
+
+- **`PATCH /forum/threads/{threadId}/sub-forum`.** The target is resolved against the mover's own
+  ceiling, so a sub-forum they may not read is `not_found` — the same answer reading it would give.
+  Moving a thread where it already is is not an error.
+- **`PUT /forum/threads/{threadId}/visibility`.** `null` is the way back to the sub-forum's setting,
+  not a fifth level. Anything stricter than the setter's own reach is refused **403**, not 404: the
+  thread is plainly there — they are reading it — and what is refused is being left unable to undo
+  it. A moderator who could mark a thread `administration` would have hidden it from themselves.
+- **Nothing guards a move against publishing a thread**, because nothing needs to: a thread carrying
+  its own visibility keeps it through the move and the stricter of the two still wins. Only a thread
+  with no marking of its own takes on wherever it lands — which is the point of moving, and what the
+  interface says out loud before it happens.
+
+### `last_activity_at` is written by posts, and by nothing else
+
+`forum_thread` had the shared `set_last_activity_at` trigger for two migrations. It fires
+`BEFORE UPDATE` on any distinct change, so renaming a thread, narrowing it or — once moving
+existed — moving it stamped it as freshly active and lifted it to the top of the list it landed in.
+Worse, it fired on a write to that column itself, which made `last_activity_at` **unsettable**:
+even `SET last_activity_at = <a date>` was overwritten with `now()` before it landed.
+
+`20260902200000` drops it. Nothing needs it — a thread is born with `DEFAULT now()`, and every post
+moves it through `set_last_activity_at_for_forum_thread`, which writes the column explicitly from
+the `forum_post` trigger. `writing_thread` next door keeps its own: a thread there is renamed inside
+the group reading it, nobody moves one between groups, and changing that column's meaning would
+reorder every group's thread list on a deployment.
+
+### `RESTRICT`, not `CASCADE`, on the structure
+
+`forum_category → sub_forum` and `sub_forum → forum_thread` are both `ON DELETE RESTRICT`. Deleting
+a category holding six sub-forums holding a year of writing must be refused rather than obeyed;
+`forum_thread → forum_post` cascades, because a thread without its posts is the empty row the
+delete-the-last-post rule exists to prevent.
+
+### A forum post is a report and a favourite target
+
+`forum_post` is the eighth `report_target_type` and the sixth favourite kind. Three things about
+adding it that will recur for a ninth:
+
+- **A new enum value needs its own migration.** A value added to a type cannot be *used* in the
+  transaction that adds it, and the rebuilt `report_target_matches_type` CHECK names it — so
+  `20260902190000` adds the value and does nothing else, and `20260902190001` does the rest. The
+  `ADD VALUE` is `IF NOT EXISTS` because the down migration cannot take it away again: Postgres
+  cannot remove an enum value, so without it re-applying after a rollback fails.
+- **`insertReport`'s `ON CONFLICT` has to name the new column too.** It restates the unique index's
+  column list by hand, and a list one column short of the index matches no index at all — which made
+  **every** report anybody filed answer 500, not only reports of forum posts. The report lifecycle
+  section above counts the times that coupling has bitten; this was the fourth.
+- **`resolveVisibleTarget` reaches a post through its thread**, `ForumThreadService.selectThread`,
+  so the forum's own rule stays in one place rather than being restated in `visible_target.ts`.
+
+### The tests own only the rows they make
+
+A deployment has a real forum in these tables, and an `afterEach` that empties them deletes it —
+which is exactly what happened once, and cost the sample structure. Every forum test file tracks the
+category ids it created and scopes both its cleanup and its assertions to them. Never assert on
+`categories[0]`.
+
+## Online time is counted in windows, not measured
+
+`activity_window` holds one row per member per fifteen minutes in which a request of theirs
+arrived. `ActivityService.onlineMinutesInLast30Days` counts them and multiplies — that is the whole
+metric, and it exists for one rule: Blind-Date's entry condition of 1000 minutes in thirty days.
+
+It had to be built. Nothing already stored could answer it: `user_session` carries a single
+`updated_at` per session and is touched at most every fifteen minutes, so it says when somebody was
+last here and nothing at all about how long.
+
+- **A window means "did something", not "had a tab open".** It is written the first time a request
+  lands inside it and never topped up, so an open browser earns nothing — the right shape for a
+  rule about taking part, and not gameable by leaving a page up overnight.
+- **The write hangs off `resolveSessionUser`**, which is the one path every signed-in request
+  already goes through. Not a middleware of its own, for the reason `authenticated` gives for not
+  decomposing: a second one would have to be listed on sixty routes, and every omission would be a
+  silent hole. It is awaited rather than left floating, because a floating promise here is an
+  unhandled rejection whenever the database is unwell.
+- **It is one statement per member per fifteen minutes, not one per request.** A per-instance memo
+  of the last window written short-circuits the repeat. Being per-instance costs nothing: the worst
+  a cold instance does is write a row that is already there, which the primary key absorbs.
+- **Coarse and short-lived on purpose.** Fifteen minutes is too blunt to reconstruct a person's day
+  from, a nightly sweep drops everything past thirty-two days, and **nothing exposes the individual
+  windows over the API** — only the total. "When is this member at their computer" is not a question
+  this platform should be able to answer about anybody, and the shape of the table is what keeps it
+  from being able to.
+- **The two-day margin between the metric's reach and the retention** is deliberate: a sweep that
+  deleted a window the rule still counts would quietly lock somebody out of the feature it serves.
+  `activity_service_test.ts` holds both sides of that boundary.
 
 ## Tokens in links
 
@@ -994,3 +1161,34 @@ they cannot be mistaken for production code. `database/test/support.ts` does the
 
 Prefer assertions that would fail for the right reason: check that a *different* user still
 sees the group, not just that the status code is 200.
+
+### A failure names itself in `test-failures.log`
+
+Both runners append every failure to `test-failures.log` at the repository root, and write nothing
+on a green run. It is **never truncated** — not even of failures that were found and fixed, which
+is the reasoning that would empty it. What is in it is everything that has ever failed in this
+checkout, oldest first. Git-ignored, because one checkout's flakes are nobody else's.
+
+This exists because a test that fails once and passes on the next run leaves nothing behind — the
+terminal has scrolled, the next run reports only itself, and the *name*, the one thing an
+investigation starts from, is gone. It happened twice before this was written, and both times the
+name was lost.
+
+```bash
+grep FAILED test-failures.log
+```
+
+`deno task test` goes through `run_tests.ts`, which runs `deno test --junit-path` and parses the
+failures out of the report. A **wrapper script rather than a longer task string**, because the exit
+code has to survive: chaining a logger after `deno test` with `;` makes the task report success on
+a failing suite, and no logging is worth that. Arguments pass through unchanged, so
+`deno task test src/route/forum/moderate_thread_test.ts` and `--filter` work as they did — and the
+flags the task used to spell out (`--parallel`, the permission set, the env file, the port-1
+`PWNED_PASSWORDS_URL`) now live in the script.
+
+A run that dies without writing a report — a compile error, a crash, a Ctrl-C — gets an entry
+saying so. Silence in this file has to mean "nothing failed", or it is not worth reading.
+
+`parseFailures` is regex over generated XML, which is fine for one writer's output and is held to
+it by `run_tests_test.ts` against a recorded report: a name with an umlaut and escaped brackets, a
+failing step and its parent, and an `<error>` rather than a `<failure>` each broke a naive version.

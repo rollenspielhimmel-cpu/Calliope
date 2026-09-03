@@ -1,4 +1,4 @@
-import { BookOpen, Lightbulb, Users } from '@lucide/vue'
+import { BookOpen, Lightbulb, MessagesSquare, Users, VenetianMask } from '@lucide/vue'
 import type { RouteRecordName } from 'vue-router'
 
 /**
@@ -18,6 +18,12 @@ export const DESTINATIONS: ReadonlyArray<{
   belongsTo: readonly string[]
 }> = [
   {
+    label: 'Forum',
+    icon: MessagesSquare,
+    name: 'forum',
+    belongsTo: ['forum'],
+  },
+  {
     label: 'Gruppen',
     icon: BookOpen,
     name: 'myGroups',
@@ -31,6 +37,17 @@ export const DESTINATIONS: ReadonlyArray<{
     // The carousel, not a list: reading through unread ideas is what members come here to do.
     name: 'storyIdeasCarousel',
     belongsTo: ['discoverStoryIdeas', 'myStoryIdeas', 'storyIdea', 'storyIdeasCarousel'],
+  },
+  // Fifth, and last, because it is the one somebody visits deliberately rather than daily. The
+  // bottom bar carries five at 375px with every label on one line — measured in the real bar,
+  // after `Blind-Date` was found breaking at its hyphen and `whitespace-nowrap` was added there.
+  // A sixth would not fit, and is the point at which this list needs a different shape rather
+  // than one more entry.
+  {
+    label: 'Blind-Date',
+    icon: VenetianMask,
+    name: 'blindDate',
+    belongsTo: ['blindDate'],
   },
   {
     label: 'Mitglieder',

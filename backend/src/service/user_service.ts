@@ -1,3 +1,4 @@
+import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import type { Selectable } from "kysely";
 import { db } from "@/src/database/client.ts";
 import { withAvatar } from "@/src/query/user_avatar.ts";
@@ -29,6 +30,12 @@ export type User = Pick<
   // Belt to the braces: banning ends every session, so a banned member should have none. This
   // refuses the one that somehow outlived it, and costs nothing to check.
   | "bannedAt"
+  // Carried for the same reason: a suspension is checked on every request, and reading it off
+  // the session user is what keeps that check free.
+  | "suspendedUntil"
+  | "suspensionReason"
+  // The level above the roles: only this account grants and revokes the administrator role.
+  | "isPrimordialAdmin"
 >;
 
 /** What one member may see of another. Deliberately narrower than {@link User}. */
@@ -79,10 +86,30 @@ const SESSION_REFRESH_INTERVAL = Temporal.Duration.from({ minutes: 15 });
  */
 const ABSENT_USER_HASH = await hashPassword(generateToken());
 
+/**
+ * Resolves the inviter named by an invitation link. A link that names nobody real is ignored
+ * rather than refused: a mistyped or stale invitation must never be the reason somebody cannot
+ * join, and what is lost by ignoring it is a number on a list.
+ */
+async function selectInviterId(
+  username: string,
+): Promise<string | undefined> {
+  const inviter = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", username)
+    // Somebody banned does not get credited with bringing people in.
+    .where("bannedAt", "is", null)
+    .executeTakeFirst();
+
+  return inviter?.id;
+}
+
 async function insertUser(
   username: string,
   password: string,
   emailAddress: string,
+  invitedBy?: string,
 ): Promise<User | undefined> {
   return await db
     .insertInto("user")
@@ -90,6 +117,7 @@ async function insertUser(
       username,
       hashedPassword: await hashPassword(password),
       emailAddress,
+      invitedBy: invitedBy ?? null,
     })
     .onConflict((oc) => oc.doNothing())
     .returning([
@@ -99,6 +127,9 @@ async function insertUser(
       "emailAddressVerifiedAt",
       "platformRole",
       "bannedAt",
+      "suspendedUntil",
+      "suspensionReason",
+      "isPrimordialAdmin",
     ])
     .executeTakeFirst();
 }
@@ -116,6 +147,9 @@ async function selectUser(
       "emailAddressVerifiedAt",
       "platformRole",
       "bannedAt",
+      "suspendedUntil",
+      "suspensionReason",
+      "isPrimordialAdmin",
       "hashedPassword",
     ])
     // Addresses are stored lower-cased by the register route, so the comparison has to
@@ -146,6 +180,9 @@ async function selectUser(
     emailAddressVerifiedAt: user.emailAddressVerifiedAt,
     platformRole: user.platformRole,
     bannedAt: user.bannedAt,
+    suspendedUntil: user.suspendedUntil,
+    suspensionReason: user.suspensionReason,
+    isPrimordialAdmin: user.isPrimordialAdmin,
   };
 }
 
@@ -216,6 +253,9 @@ async function selectUserForSession(
       "emailAddressVerifiedAt",
       "platformRole",
       "bannedAt",
+      "suspendedUntil",
+      "suspensionReason",
+      "isPrimordialAdmin",
     ])
     .where("id", "=", databaseUserSession.userId)
     .executeTakeFirst();
@@ -368,7 +408,14 @@ async function selectUserProfile(
   }
 
   const { avatarFileId, ...profile } = row;
-  return { ...profile, avatarUrl: avatarUrlOf({ avatarFileId }) };
+
+  return {
+    ...profile,
+    // The blocked-word list, applied at the read like every other prose surface. Only the free
+    // prose: a username is an identity, and masking one would leave a profile nobody can name.
+    aboutMe: await WordFilterService.maskNullableText(profile.aboutMe),
+    avatarUrl: avatarUrlOf({ avatarFileId }),
+  };
 }
 
 /** Absent means unchanged, blank means cleared — a member can empty what they filled in. */
@@ -403,6 +450,7 @@ async function updateProfile(
 
 export const UserService = {
   insertUser,
+  selectInviterId,
   listUsers,
   selectUserProfile,
   updateProfile,

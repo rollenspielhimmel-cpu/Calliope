@@ -11,6 +11,7 @@ import corsOptions from "./cors_options.ts";
 import { describeError, logger } from "@/src/logging.ts";
 import openApiSpecification from "./open_api_specification.ts";
 import { readRateLimit, writeRateLimit } from "./middleware/rate_limit.ts";
+import ipBan from "./middleware/ip_ban.ts";
 import {
   REQUEST_BODY_LIMIT_BYTES,
   UPLOAD_BODY_LIMIT_BYTES,
@@ -28,6 +29,12 @@ import reports from "@/src/route/reports.ts";
 import favourites from "@/src/route/favourites.ts";
 import users from "./route/users.ts";
 import avatars from "./route/avatars.ts";
+import statusUpdates from "./route/status_updates.ts";
+import moderation from "./route/moderation.ts";
+import pages from "./route/pages.ts";
+import profileQuestions from "./route/profile_questions.ts";
+import forum from "./route/forum.ts";
+import blindDate from "./route/blind_date.ts";
 
 // Everything the API serves, without the prefix it is mounted under. Keeping the prefix out
 // of here means a resource is added in one place and cannot be mounted at the wrong depth.
@@ -69,7 +76,13 @@ const api = new OpenAPIHono({
   .route("/avatars", avatars)
   .route("/notifications", notifications)
   .route("/chats", chats)
-  .route("/search", search);
+  .route("/search", search)
+  .route("/status-updates", statusUpdates)
+  .route("/moderation", moderation)
+  .route("/pages", pages)
+  .route("/profile-questions", profileQuestions)
+  .route("/forum", forum)
+  .route("/blind-date", blindDate);
 
 const app = new OpenAPIHono();
 
@@ -142,6 +155,9 @@ app.use(methodNotAllowed({ app }));
 // After `cors`, which answers preflights and returns: a preflight is cross-site by nature
 // and carries no content type, so this would otherwise refuse it as a forgery.
 app.use(csrf({ origin: corsOptions.origin }));
+// Before both limiters: a banned address should not spend its own request budget before being
+// turned away, and a budget it can spend is a budget it can exhaust to hide behind a 429.
+app.use(ipBan);
 // Two budgets, split by method; each skips what the other counts.
 app.use(readRateLimit);
 app.use(writeRateLimit);

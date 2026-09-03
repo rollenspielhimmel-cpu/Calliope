@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
-import { Flag, Pencil, Trash2 } from '@lucide/vue'
+import { Eye, Flag, Pencil, Trash2 } from '@lucide/vue'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { favouriteToggle } from '@/lib/format/favourite'
 import { useFavourite } from '@/composables/useFavourite'
@@ -130,6 +130,19 @@ const meta = computed<string>(() => {
     </div>
 
     <PostBody v-else :document="post.document" />
+
+    <!-- A suspicion is not a finding. The post is shown exactly as written and this sits beside
+         it, because a username can be an ordinary word and masking on suspicion would disfigure
+         somebody's prose before a person had looked at it. Neutral on purpose: it says what is
+         happening, not what anybody did. -->
+    <p
+      v-if="post.isUnderReview"
+      class="mt-2.5 flex items-center gap-1.5 text-[12px] text-ink-5"
+      role="status"
+    >
+      <Eye :size="13" :stroke-width="1.5" aria-hidden="true" />
+      Dieser Beitrag wird gerade von der Moderation geprüft.
+    </p>
 
     <!-- The row the placeholder actions used to occupy, in the same place and at the same
          weight (47cce00): below the writing, recessed to the metadata's size and colour, so it

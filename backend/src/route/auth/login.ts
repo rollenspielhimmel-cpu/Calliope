@@ -7,6 +7,8 @@ import { sessionProvenance } from "@/src/util/session_provenance.ts";
 import { SessionCookieService } from "@/src/service/session_cookie_service.ts";
 import {
   ACCOUNT_BANNED_BODY,
+  ACCOUNT_SUSPENDED_RESPONSE,
+  accountSuspendedBody,
   BAD_REQUEST_RESPONSE,
   COMMON_RESPONSES,
   ERROR_RESPONSE,
@@ -14,6 +16,7 @@ import {
   jsonContent,
   OK_RESPONSE,
 } from "@/src/http/response.ts";
+import { isSuspended } from "@/src/service/suspension.ts";
 
 const LOGIN_BODY = z.object({
   // Either identifier is accepted, so a member need not remember which they signed up with,
@@ -41,8 +44,8 @@ export default new OpenAPIHono().openapi(
       },
       [STATUS_CODE.Forbidden]: {
         description:
-          "The credentials were right and the account is banned. Answered only after the password verifies, so it discloses nothing to somebody guessing.",
-        content: jsonContent(ERROR_RESPONSE),
+          "The credentials were right and the account is banned or suspended. Answered only after the password verifies, so it discloses nothing to somebody guessing. A suspension additionally carries when it ends and why, which a ban deliberately does not.",
+        content: jsonContent(ACCOUNT_SUSPENDED_RESPONSE),
       },
       [STATUS_CODE.Unauthorized]: {
         description: "Invalid credentials",
@@ -66,6 +69,18 @@ export default new OpenAPIHono().openapi(
     // above, so the address is never confirmed to somebody guessing.
     if (user.bannedAt !== null) {
       return c.json(ACCOUNT_BANNED_BODY, STATUS_CODE.Forbidden);
+    }
+
+    // After the ban, and unlike it this one says when it ends and why: a suspension is meant to
+    // correct, so withholding the reason would leave nothing to correct. See the note in
+    // `response.ts` — the two behaving differently is the point, not an inconsistency.
+    const suspension = isSuspended(user);
+
+    if (suspension !== undefined) {
+      return c.json(
+        accountSuspendedBody(suspension.suspendedUntil, suspension.reason),
+        STATUS_CODE.Forbidden,
+      );
     }
 
     const sessionToken = await UserService.insertSessionForUser(

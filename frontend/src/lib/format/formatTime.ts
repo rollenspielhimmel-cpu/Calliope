@@ -27,6 +27,14 @@ const DAY_MONTH_AND_YEAR = new Intl.DateTimeFormat(LOCALE, {
 
 const MONTH_AND_YEAR = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' })
 
+const DAY_MONTH_AND_YEAR_AND_TIME = new Intl.DateTimeFormat(LOCALE, {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
@@ -59,4 +67,23 @@ export function formatActivityTime(isoTimestamp: string, now: Date = new Date())
 /** Absolute, and only to the month: `formatActivityTime` would say "gerade eben" here. */
 export function formatJoinedDate(isoTimestamp: string): string {
   return MONTH_AND_YEAR.format(new Date(isoTimestamp))
+}
+
+/**
+ * The last day something is possible: when applying to a Blind-Date plot stops.
+ *
+ * To the day, not the minute. The team sets a date, which is stored as that day's last moment, so
+ * a time here would only ever read „23:59" and would make a deadline look more exact than it is.
+ */
+export function formatDeadline(isoTimestamp: string): string {
+  return DAY_MONTH_AND_YEAR.format(new Date(isoTimestamp))
+}
+
+/**
+ * A moment in the future, to the minute: when a suspension ends. Absolute and never relative —
+ * "in 2 Tagen" is not something somebody can plan around, and this is the one time in the
+ * interface a member is told to come back later.
+ */
+export function formatUntil(isoTimestamp: string): string {
+  return DAY_MONTH_AND_YEAR_AND_TIME.format(new Date(isoTimestamp))
 }

@@ -14,7 +14,7 @@ import {
 } from "@/src/http/response.ts";
 
 /**
- * One pair of routes for all five kinds rather than a `/favourite` under each of them. The act is
+ * One pair of routes for all six kinds rather than a `/favourite` under each of them. The act is
  * identical whatever it names, and the issue's whole point is that there is one mechanism — ten
  * routes saying the same thing would be the three-schemas problem in another shape, and would
  * reach the client as five hooks instead of one.

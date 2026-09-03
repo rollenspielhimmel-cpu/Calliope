@@ -11,6 +11,10 @@ import {
   searchPattern,
 } from "@/src/list/list_endpoint_query.ts";
 import { type FavouriteFilter, withFavourite } from "@/src/query/favourite.ts";
+import { WordFilterService } from "@/src/service/word_filter_service.ts";
+import { PseudonymService } from "@/src/service/pseudonym_service.ts";
+import { BlindDateNameGuardService } from "@/src/service/blind_date_name_guard_service.ts";
+import { applyMask } from "@/src/service/word_filter_service.ts";
 
 export type Post =
   & Pick<
@@ -32,7 +36,14 @@ export type Post =
     isFavourite: boolean;
   }
   // Both null once that account is deleted, because the columns are ON DELETE SET NULL.
-  & { createdByUsername: string | null; editedByUsername: string | null };
+  & { createdByUsername: string | null; editedByUsername: string | null }
+  & {
+    /**
+     * True while moderation is looking at an automatically raised Blind-Date name suspicion for
+     * this post. The post is shown as written either way — a suspicion is not a finding.
+     */
+    isUnderReview: boolean;
+  };
 
 const SELECTED_COLUMNS = [
   "writingPost.id",
@@ -110,8 +121,10 @@ async function insertPost(
     }
 
     // Re-read rather than RETURNING, which cannot reach the joined author name.
-    return await postWithAuthorById(id, createdBy, transaction)
-      .executeTakeFirstOrThrow();
+    return await withReviewFlag(
+      await postWithAuthorById(id, createdBy, transaction)
+        .executeTakeFirstOrThrow(),
+    );
   });
 }
 
@@ -164,22 +177,52 @@ async function selectPost(
   postId: string,
   viewerId: string,
 ): Promise<Post | undefined> {
-  return await postsWithAuthor(viewerId)
+  const post = await postsWithAuthor(viewerId)
     .where("writingPost.writingThreadId", "=", threadId)
     .where("writingPost.id", "=", postId)
     .executeTakeFirst();
+
+  return post === undefined ? undefined : await withReviewFlag(post);
 }
 
-function listPosts(
+/** A post nobody is looking at, which is every post outside a Blind-Date's exchange thread. */
+function notUnderReview<Row>(post: Row): Row & { isUnderReview: boolean } {
+  return { ...post, isUnderReview: false };
+}
+
+/**
+ * The same question for a single post, which the create, read and edit routes each answer once.
+ *
+ * One indexed lookup rather than skipping it: a post fetched on its own is read by the same two
+ * people, and a notice that appears in the list but not on the post itself would look like a bug
+ * in the page rather than a thing moderation is doing.
+ */
+async function withReviewFlag<Row extends { id: string }>(
+  post: Row,
+): Promise<Row & { isUnderReview: boolean }> {
+  const underReview = await BlindDateNameGuardService.postsUnderReview([
+    post.id,
+  ]);
+
+  return { ...post, isUnderReview: underReview.has(post.id) };
+}
+
+async function listPosts(
   threadId: string,
   viewerId: string,
   query: ListQuery & { isDraft: boolean; favourite: FavouriteFilter },
+  /**
+   * The group the thread belongs to, so the authors can be masked where it is a Blind-Date. The
+   * caller has it — every route reaching this has already resolved the group to authorise the
+   * read — and passing it beats a second query for a fact already in hand.
+   */
+  writingGroupId: string,
 ): Promise<ListResults<Post>> {
   // **No favourites-first ordering here, deliberately.** A thread is prose and reads in the order
   // it was written, so hoisting a favourited post above the paragraph before it would break the
   // reading. What a favourite earns a post is the thread's own filter, which is what #37 asked
   // for before this issue absorbed it.
-  return listResultsWithCount(
+  const page = await listResultsWithCount(
     postsWithAuthor(viewerId)
       .where("writingPost.writingThreadId", "=", threadId)
       .where("writingPost.isDraft", "=", query.isDraft)
@@ -197,6 +240,41 @@ function listPosts(
         )),
     query,
   );
+
+  // The blocked-word list, applied at the read. The search above deliberately runs against the
+  // stored text: a member looking for a word should find the post that holds it, and masking
+  // before searching would make the list quietly un-findable.
+  const masked = await WordFilterService.maskPosts(page.results);
+
+  // And the authors, where this group hides them. Both editors too: "bearbeitet von <name>" would
+  // name the very person the pseudonym exists to hide.
+  const mask = await PseudonymService.fullMaskForGroup(writingGroupId);
+
+  if (mask === undefined) {
+    return { ...page, results: masked.map(notUnderReview) };
+  }
+
+  // Which of these moderation is currently looking at, so the interface can say so beside them.
+  // One query for the page, and only for a Blind-Date's posts.
+  const underReview = await BlindDateNameGuardService.postsUnderReview(
+    masked.map((post) => post.id),
+  );
+
+  return {
+    ...page,
+    results: masked.map((post) => ({
+      ...post,
+      createdByUsername: mask.author(post.createdBy).username,
+      editedByUsername: post.editedByUsername === null
+        ? null
+        : mask.author(post.editedBy).username,
+      // Only once a leak was confirmed, and then in every post: `mask.names` is undefined until
+      // then, and masking on a suspicion would disfigure innocent prose before anybody looked.
+      document: BlindDateNameGuardService.mask(post.document, mask.names),
+      text: applyMask(post.text, mask.names),
+      isUnderReview: underReview.has(post.id),
+    })),
+  };
 }
 
 /** Returns nothing when there is no such post. Authorisation is the caller's job. */
@@ -266,8 +344,10 @@ async function updatePost(
       });
     }
 
-    return await postWithAuthorById(updated.id, context.actorId, transaction)
-      .executeTakeFirstOrThrow();
+    return await withReviewFlag(
+      await postWithAuthorById(updated.id, context.actorId, transaction)
+        .executeTakeFirstOrThrow(),
+    );
   });
 }
 

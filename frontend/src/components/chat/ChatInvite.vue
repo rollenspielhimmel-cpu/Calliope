@@ -35,10 +35,19 @@ async function invite(user: ListUsers200ResultsItem) {
   try {
     await inviteToChat({ chatId: props.chatGroupId, data: { userId: user.id } })
   } catch (error) {
+    // 403 is final, so it must not read as "try again". It is deliberately the same sentence for
+    // every reason the API refuses contact — a block, a ban, or a Blind-Date running between these
+    // two — because a message that told them apart would say which one applies, and for the last
+    // of the three that would name somebody's Blind-Date partner outright.
+    //
+    // The partner cannot be filtered out of the picker instead: doing so would mean telling this
+    // browser who they are, which is the one thing the whole feature holds back.
     formError.value =
       error instanceof ApiError && error.status === 409
         ? `${user.username} ist schon eingeladen oder schon dabei.`
-        : 'Die Einladung wurde nicht verschickt. Versuche es noch einmal.'
+        : error instanceof ApiError && error.status === 403
+          ? `Mit ${user.username} ist zurzeit kein Chat möglich.`
+          : 'Die Einladung wurde nicht verschickt. Versuche es noch einmal.'
     return
   }
 

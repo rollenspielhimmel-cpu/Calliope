@@ -12,6 +12,7 @@ export const FAVOURITE_TARGET_TYPES = [
   "writing_post",
   "story_idea",
   "chat_group",
+  "forum_post",
 ] as const;
 
 export type FavouriteTargetType = (typeof FAVOURITE_TARGET_TYPES)[number];
@@ -26,6 +27,7 @@ export const FAVOURITE_COLUMN = {
   writing_post: "writingPostId",
   story_idea: "storyIdeaId",
   chat_group: "chatGroupId",
+  forum_post: "forumPostId",
 } as const satisfies Record<FavouriteTargetType, keyof Favourite>;
 
 /** One constant, because the select alias and the sort term have to agree and nothing checks. */

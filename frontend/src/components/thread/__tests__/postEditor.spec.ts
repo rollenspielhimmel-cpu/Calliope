@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import type { PostDocument } from '@/api/models'
@@ -86,6 +86,18 @@ async function expectOffered(content: PostDocument) {
   expect(item('Formatierung entfernen')?.getAttribute('aria-disabled')).not.toBe('true')
   wrapper.unmount()
 }
+
+/**
+ * A longer timeout than the suite's five seconds, for one reason: this file mounts the whole
+ * editor — TipTap, its extensions and the toolbar — which is by far the heaviest thing in the
+ * suite. On its own each test takes about 600ms; under the full run's parallelism it has three
+ * times exceeded five seconds, and a timeout in the first test leaves the shared editor in a
+ * state that fails the four after it with wrong-looking data.
+ *
+ * That cost three investigations before the cause was clear, so it is written down here rather
+ * than rediscovered. It is not a slow test being excused: it is one heavy test being given room.
+ */
+vi.setConfig({ testTimeout: 20_000 })
 
 describe('PostEditor', () => {
   it('groups the paragraph controls, alignment included', async () => {

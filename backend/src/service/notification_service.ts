@@ -1,3 +1,4 @@
+import { PseudonymService } from "@/src/service/pseudonym_service.ts";
 import { z } from "@hono/zod-openapi";
 import type {
   NotificationType,
@@ -82,6 +83,9 @@ function toNotification(row: NotificationRow): Notification {
   });
 
   switch (row.type) {
+    case "blind_date_matched":
+    case "blind_date_reveal_requested":
+    case "blind_date_ended":
     case "invited_to_writing_group":
     case "invitation_accepted":
       return { ...base, ...writingGroup(), type: row.type };
@@ -179,6 +183,10 @@ function notificationsFor(recipientId: string) {
       "notification.occurredAt",
       "notification.readAt",
       "user.username as actorUsername",
+      // Selected for the pseudonym lookup below and nowhere else. `toNotification` builds each
+      // shape explicitly, so it never reaches the response — which matters: an actor id in the
+      // body would let any client fetch the profile behind a Blind-Date pseudonym and undo it.
+      "notification.actorId",
       "notification.writingGroupId",
       "writingGroup.title as writingGroupTitle",
       "writingGroup.visibility",
@@ -218,8 +226,35 @@ async function listNotifications(
 
   const page = await listResultsWithCount(notifications, query);
 
+  // **The one surface that would give the whole thing away.** A notification saying „Sahara hat
+  // geantwortet" breaks a Blind-Date the instant it appears, before anybody has opened anything —
+  // so the actor is masked here, on the same rule the group's own pages use.
+  //
+  // Nothing had to be migrated for this: a notification stores `actor_id` and `writing_group_id`,
+  // never a finished sentence, so the name is resolved at read time and this is that time.
+  const masks = await PseudonymService.masksForGroups([
+    ...new Set(
+      page.results
+        .map((row) => row.writingGroupId)
+        .filter((id): id is string => id !== null),
+    ),
+  ]);
+
+  const masked = masks.size === 0 ? page.results : page.results.map((row) => {
+    const mask = row.writingGroupId === null
+      ? undefined
+      : masks.get(row.writingGroupId);
+
+    // `actorId` null means there was no actor — a Blind-Date is arranged by the team, not by a
+    // person the recipient should be told about. Masking that would print „Blind-Date-Partner ?"
+    // where the sentence needs no name at all.
+    return mask === undefined || row.actorId === null
+      ? row
+      : { ...row, actorUsername: mask(row.actorId).username };
+  });
+
   // The query returns one flat shape; the union is narrowed here, once.
-  return { ...page, results: page.results.map(toNotification) };
+  return { ...page, results: masked.map(toNotification) };
 }
 
 /** Shown beside the entry to the list, so it runs on every page it appears on. */
@@ -437,7 +472,81 @@ async function insertChatInvitationNotifications(
     .execute();
 }
 
+/**
+ * Both partners are told their Blind-Date is arranged.
+ *
+ * No actor: the team put them together, and naming an operator would answer the one question the
+ * whole feature exists to hold back. The group is named, because its title is the plot — which is
+ * exactly what somebody wants to know and gives nothing away.
+ *
+ * In the matching transaction, so a Blind-Date that exists is always one both people were told
+ * about.
+ */
+async function insertBlindDateMatchedNotifications(
+  transaction: Transaction,
+  writingGroupId: string,
+  recipientIds: string[],
+): Promise<void> {
+  await transaction
+    .insertInto("notification")
+    .values(recipientIds.map((recipientId) => ({
+      recipientId,
+      type: "blind_date_matched" as const,
+      writingGroupId,
+      actorId: null,
+    })))
+    .execute();
+}
+
+/**
+ * The other side wants to be revealed.
+ *
+ * Without this the decision sat in the group waiting for somebody who had no reason to look — the
+ * bug this was written for. Actorless like the match: naming who asked would answer the question
+ * the reveal exists to ask together.
+ */
+async function insertRevealRequestedNotification(
+  transaction: Transaction,
+  writingGroupId: string,
+  recipientId: string,
+): Promise<void> {
+  await transaction
+    .insertInto("notification")
+    .values({
+      recipientId,
+      type: "blind_date_reveal_requested" as const,
+      writingGroupId,
+      actorId: null,
+    })
+    .execute();
+}
+
+/**
+ * The Blind-Date ended, told to the person it did not concern.
+ *
+ * No actor and no reason. Why it ended is between the platform and whoever gave their name away;
+ * putting it here would set one member in front of the other over what is usually a slip.
+ */
+async function insertBlindDateEndedNotification(
+  transaction: Transaction,
+  writingGroupId: string,
+  recipientId: string,
+): Promise<void> {
+  await transaction
+    .insertInto("notification")
+    .values({
+      recipientId,
+      type: "blind_date_ended" as const,
+      writingGroupId,
+      actorId: null,
+    })
+    .execute();
+}
+
 export const NotificationService = {
+  insertBlindDateMatchedNotifications,
+  insertBlindDateEndedNotification,
+  insertRevealRequestedNotification,
   listNotifications,
   countUnread,
   markAllRead,

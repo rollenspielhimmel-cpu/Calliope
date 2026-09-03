@@ -69,6 +69,19 @@ const form = useForm({
         }))
         return
       }
+      // On the address field rather than above the form, for the same reason as the password:
+      // the field is what has to change, and the provider is the part that is refused.
+      if (error instanceof ApiError && error.body.code === 'email_domain_blocked') {
+        form.setFieldMeta('emailAddress', (meta) => ({
+          ...meta,
+          errorMap: {
+            ...meta.errorMap,
+            onServer:
+              'Mit diesem E-Mail-Anbieter ist keine Anmeldung möglich. Nutze eine andere Adresse.',
+          },
+        }))
+        return
+      }
       if (error instanceof ApiError) {
         if (error.status === 409) {
           // Which of the two collided is not disclosed, so neither is named here.

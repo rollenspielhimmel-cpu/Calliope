@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { TEXT_LIMIT, TEXT_MINIMUM } from "@/src/text_limit.ts";
 import { AUTH_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
+import { BlockedEmailDomainService } from "@/src/service/blocked_email_domain_service.ts";
 import { BreachedPasswordService } from "@/src/service/breached_password_service.ts";
 import { UserService } from "@/src/service/user_service.ts";
 import { sessionProvenance } from "@/src/util/session_provenance.ts";
@@ -12,6 +13,7 @@ import { EMAIL_ADDRESS_SCHEMA, notBlank } from "@/src/http/request_schema.ts";
 import {
   BAD_REQUEST_RESPONSE,
   COMMON_RESPONSES,
+  EMAIL_DOMAIN_BLOCKED_BODY,
   ERROR_RESPONSE,
   jsonContent,
   OK_RESPONSE,
@@ -31,6 +33,10 @@ const REGISTER_BODY = USER_SCHEMA
     emailAddress: EMAIL_ADDRESS_SCHEMA,
     // Never stored as given, so it has no column of its own.
     password: z.string().min(TEXT_MINIMUM.password).max(TEXT_LIMIT.password),
+    // Who invited them, from the link they followed. A username, because that is already the
+    // public handle members share with one another. Optional, and a name that matches nobody is
+    // ignored rather than refused: a stale link must never stop somebody joining.
+    invitedBy: USER_SCHEMA.shape.username.optional(),
   });
 
 export default new OpenAPIHono().openapi(
@@ -51,7 +57,8 @@ export default new OpenAPIHono().openapi(
         content: jsonContent(OK_RESPONSE),
       },
       [STATUS_CODE.UnprocessableEntity]: {
-        description: "The password appears in known breaches",
+        description:
+          "The password appears in known breaches, or the email domain is blocked from registering",
         content: jsonContent(ERROR_RESPONSE),
       },
       [STATUS_CODE.Conflict]: {
@@ -63,13 +70,29 @@ export default new OpenAPIHono().openapi(
     },
   }),
   async (c) => {
-    const { username, password, emailAddress } = c.req.valid("json");
+    const { username, password, emailAddress, invitedBy } = c.req.valid("json");
 
     if (await BreachedPasswordService.isBreached(password)) {
       return c.json(PASSWORD_BREACHED_BODY, STATUS_CODE.UnprocessableEntity);
     }
 
-    const user = await UserService.insertUser(username, password, emailAddress);
+    // Beside the password check and answering the same way, because it is the same kind of
+    // refusal: the request is well formed, and what it asks for is not allowed.
+    if (await BlockedEmailDomainService.isBlocked(emailAddress)) {
+      return c.json(
+        EMAIL_DOMAIN_BLOCKED_BODY,
+        STATUS_CODE.UnprocessableEntity,
+      );
+    }
+
+    const user = await UserService.insertUser(
+      username,
+      password,
+      emailAddress,
+      invitedBy === undefined
+        ? undefined
+        : await UserService.selectInviterId(invitedBy),
+    );
 
     if (user === undefined) {
       return c.json(

@@ -243,15 +243,12 @@ const creating = ref<boolean>(false)
         </p>
       </div>
 
-      <div v-else-if="hasLoaded">
+      <!-- Spaced rather than ruled: the cards carry their own edges now, and a rule between two
+           of them would draw a third line where there are already two. -->
+      <div v-else-if="hasLoaded" class="flex flex-col gap-3">
         <!-- No action button: the title is the link, and nothing else in the product says
              "x öffnen". -->
-        <GroupRow
-          v-for="(group, index) in groups"
-          :key="group.id"
-          :group="group"
-          :class="index > 0 ? 'border-t border-line-2' : 'pt-0'"
-        />
+        <GroupRow v-for="group in groups" :key="group.id" :group="group" />
       </div>
 
       <div v-if="hasLoaded && pageCount > 1" class="mt-7 border-t border-line-2 pt-3">

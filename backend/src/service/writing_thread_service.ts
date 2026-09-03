@@ -1,3 +1,4 @@
+import { PseudonymService } from "@/src/service/pseudonym_service.ts";
 import type { Selectable } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
 import { NotificationService } from "@/src/service/notification_service.ts";
@@ -127,10 +128,23 @@ async function selectThreadForReader(
   threadId: string,
   readerId: string,
 ): Promise<Thread | undefined> {
-  return await threadsForReader(readerId)
+  const thread = await threadsForReader(readerId)
     .where("writingThread.writingGroupId", "=", writingGroupId)
     .where("writingThread.id", "=", threadId)
     .executeTakeFirst();
+
+  if (thread === undefined) {
+    return undefined;
+  }
+
+  // Its own masking rather than the list's: this reads one thread directly, so it never passes
+  // through `selectThreads`. `blind_date_leak_test.ts` is what found that, which is the argument
+  // for the test existing at all.
+  const mask = await PseudonymService.maskForGroup(writingGroupId);
+
+  return mask === undefined
+    ? thread
+    : { ...thread, createdByUsername: mask(thread.createdBy).username };
 }
 
 /**
@@ -141,11 +155,11 @@ async function selectThreadForReader(
  * is gone. Threads do accumulate, unlike members — when a strip gets unwieldy the answer is a
  * list of its own rather than a page of tabs, and this is where to start.
  */
-function selectThreads(
+async function selectThreads(
   writingGroupId: string,
   readerId: string,
 ): Promise<Array<Thread>> {
-  return threadsForReader(readerId)
+  const threads = await threadsForReader(readerId)
     .where("writingThread.writingGroupId", "=", writingGroupId)
     // Favourites first, then most recently written in. This strip is not a list endpoint — it
     // returns every thread with no paging and no sort of the reader's own — so the term is written
@@ -153,6 +167,13 @@ function selectThreads(
     .orderBy(db.dynamic.ref(IS_FAVOURITE), (orderBy) => orderBy.desc())
     .orderBy("writingThread.lastActivityAt", "desc")
     .execute();
+
+  const mask = await PseudonymService.maskForGroup(writingGroupId);
+
+  return mask === undefined ? threads : threads.map((thread) => ({
+    ...thread,
+    createdByUsername: mask(thread.createdBy).username,
+  }));
 }
 
 /**

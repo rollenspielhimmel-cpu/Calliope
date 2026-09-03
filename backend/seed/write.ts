@@ -93,6 +93,9 @@ function assertFavouritesNameSomething(): void {
     ),
     story_idea: new Set(STORY_IDEAS.map((idea) => idea.id)),
     chat_group: new Set(CHATS.map((chat) => chat.id)),
+    // The seed writes no forum content yet, so nothing here can be favourited — but the map has
+    // to name every kind, which is what makes adding one a compile error rather than a surprise.
+    forum_post: new Set<string>(),
   } as const satisfies Record<FavouriteTargetType, ReadonlySet<string>>;
 
   for (const favourite of FAVOURITES) {
@@ -419,6 +422,7 @@ const REPORT_TARGET_COLUMN = {
   chat_group: "reportedChatGroupId",
   chat_message: "reportedChatMessageId",
   user: "reportedUserId",
+  forum_post: "reportedForumPostId",
 } as const;
 
 /** Three hours apart and oldest first, so the queue's oldest-first sort has something to sort. */

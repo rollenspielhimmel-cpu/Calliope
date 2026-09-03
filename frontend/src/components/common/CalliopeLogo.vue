@@ -49,7 +49,7 @@ const baselineOffset = computed<number>(() => props.size * ((64 - 57.14) / 64))
       :src="mark"
       :width="size"
       :height="size"
-      alt="Calliope"
+      :alt="APP_NAME"
       :style="{
         width: `${size}px`,
         height: `${size}px`,

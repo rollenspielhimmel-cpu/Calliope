@@ -20,9 +20,16 @@ const NAMES = routeNames(routes)
 describe('DESTINATIONS', () => {
   it('opens the view members actually want, in one press', () => {
     expect(DESTINATIONS.map((destination) => [destination.label, destination.name])).toEqual([
+      // First, ahead of the groups: the forum is the open half of the site, and the one place
+      // somebody without an account can arrive at.
+      ['Forum', 'forum'],
       ['Gruppen', 'myGroups'],
       // The carousel rather than either list: reading through unread ideas is the point of the page.
       ['Storyideen', 'storyIdeasCarousel'],
+      // Fifth and last: a destination somebody visits deliberately rather than daily. Five fit the
+      // bottom bar at 375px with their labels; a sixth would not, and is where this list needs a
+      // different shape rather than one more entry.
+      ['Blind-Date', 'blindDate'],
       ['Mitglieder', 'members'],
     ])
   })
@@ -39,7 +46,9 @@ describe('DESTINATIONS', () => {
   })
 
   it('marks a destination while any of its pages is open', () => {
-    const groups = DESTINATIONS[0]
+    // Found by name rather than by index, so adding a destination ahead of it does not silently
+    // move the assertion onto a different one.
+    const groups = DESTINATIONS.find((destination) => destination.label === 'Gruppen')
     expect(groups && isCurrent(groups, 'discoverGroups')).toBe(true)
     expect(groups && isCurrent(groups, 'thread')).toBe(true)
     expect(groups && isCurrent(groups, 'members')).toBe(false)

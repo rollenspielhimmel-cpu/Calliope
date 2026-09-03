@@ -3,50 +3,99 @@
 {$HOST_URL} {
 	encode zstd gzip
 
-	# Everything the backend serves lives under one prefix, so adding a resource needs no
-	# change here and no route can be forgotten.
-	handle /api/* {
-		reverse_proxy backend:8000 {
-			# Caddy buffers by default, which holds an endless text/event-stream forever.
-			# Works locally without it, so this is unverifiable before deploying.
-			flush_interval -1
-
-			# Holds a request across a backend restart rather than answering 502; only a failed
-			# dial is retried. Nothing when Caddy itself is down, which the interface handles.
-			lb_try_duration 5s
-
-			# The limiter buckets by the first X-Forwarded-For entry, so this must replace
-			# what the client sent, not append. Caddy's default does; not left to it.
-			header_up X-Forwarded-For {remote_host}
+	# ── The gate ────────────────────────────────────────────────────────────────────────────
+	#
+	# The whole site is behind one shared password while there is no Impressum. A German
+	# platform open to the public needs one; a closed test that people are let into is not open
+	# to the public, and this block is what makes that true rather than merely intended.
+	#
+	# **Here rather than in the application**, because it has to cover everything: the API, the
+	# OpenAPI document, the uploaded files, and any route added later without anybody thinking
+	# about this. An application-level gate covers what it was told to cover.
+	#
+	# It is not a substitute for the Impressum. It is what buys the time to write one — when
+	# that is written, delete this `route` wrapper and the two variables in `.env`.
+	#
+	# Wrapped in `route` so the order is the order written here. Caddy sorts directives by its
+	# own table otherwise, and "does the password come before or after the routing" is not a
+	# question worth being unsure about on the one thing standing between an unfinished platform
+	# and the open internet.
+	route {
+		# ── The interim mailbox ─────────────────────────────────────────────────────────────
+		#
+		# Mailpit, while there is no SMTP account: nothing the platform sends reaches a real
+		# inbox, and this is where the team fetches a confirmation link for somebody.
+		#
+		# **Its own password, and never the site's.** Every password-reset link in the platform
+		# passes through here, so whoever can read this mailbox can take over any account. The
+		# site password is meant to be handed to a group of testers; this one is not.
+		#
+		# First in the `route`, so it answers before the site gate does. Two `basic_auth`
+		# blocks in sequence could never both be satisfied — a request carries one
+		# Authorization header, and it cannot be two different credentials at once.
+		handle /{$MAILPIT_WEBROOT:postfach}* {
+			# Its own realm. A browser files credentials under origin *and* realm, and both gates
+			# defaulted to "restricted" — so the site's password and the mailbox's landed in the
+			# same drawer on the same domain, and each would be offered where the other belongs.
+			basic_auth bcrypt "Rollenspielhimmel Postfach" {
+				{$MAILBOX_USERNAME} {$MAILBOX_PASSWORD_HASH}
+			}
+			reverse_proxy mailpit:8025
 		}
-	}
 
-	# The single page application. Unknown paths fall back to its entry point, so a
-	# client-side route survives a reload.
-	handle {
-		root * /srv
-
-		# `secureHeaders` never runs for static files, so without this the document loading all
-		# the JavaScript would be the only unprotected response. Kept in step with it.
-		header {
-			Strict-Transport-Security "max-age=15552000; includeSubDomains"
-			X-Content-Type-Options nosniff
-			X-Frame-Options SAMEORIGIN
-			Referrer-Policy no-referrer
-			Cross-Origin-Opener-Policy same-origin
-			Cross-Origin-Resource-Policy same-origin
-
-			# Inline styles because the dropdown positions itself through the attribute;
-			# scripts stay strict. `blob:` is the upload preview. No third party is named.
-			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# Both interpolated from `.env`. An empty hash makes Caddy refuse to start, which fails
+		# the deploy rather than quietly serving the site to everybody — the same direction
+		# `ENVIRONMENT` fails in, and for the same reason.
+		basic_auth bcrypt "Rollenspielhimmel" {
+			{$GATE_USERNAME} {$GATE_PASSWORD_HASH}
 		}
 
-		# Everything under /assets is content-hashed, so a name cannot change meaning and a
-		# year is safe. The entry point stays uncached, which is what lets a deploy land.
-		@fingerprinted path /assets/*
-		header @fingerprinted Cache-Control "public, max-age=31536000, immutable"
+		# Everything the backend serves lives under one prefix, so adding a resource needs no
+		# change here and no route can be forgotten.
+		handle /api/* {
+			reverse_proxy backend:8000 {
+				# Caddy buffers by default, which holds an endless text/event-stream forever.
+				# Works locally without it, so this is unverifiable before deploying.
+				flush_interval -1
 
-		try_files {path} /index.html
-		file_server
+				# Holds a request across a backend restart rather than answering 502; only a
+				# failed dial is retried. Nothing when Caddy itself is down, which the interface
+				# handles.
+				lb_try_duration 5s
+
+				# The limiter buckets by the first X-Forwarded-For entry, so this must replace
+				# what the client sent, not append. Caddy's default does; not left to it.
+				header_up X-Forwarded-For {remote_host}
+			}
+		}
+
+		# The single page application. Unknown paths fall back to its entry point, so a
+		# client-side route survives a reload.
+		handle {
+			root * /srv
+
+			# `secureHeaders` never runs for static files, so without this the document loading
+			# all the JavaScript would be the only unprotected response. Kept in step with it.
+			header {
+				Strict-Transport-Security "max-age=15552000; includeSubDomains"
+				X-Content-Type-Options nosniff
+				X-Frame-Options SAMEORIGIN
+				Referrer-Policy no-referrer
+				Cross-Origin-Opener-Policy same-origin
+				Cross-Origin-Resource-Policy same-origin
+
+				# Inline styles because the dropdown positions itself through the attribute;
+				# scripts stay strict. `blob:` is the upload preview. No third party is named.
+				Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+			}
+
+			# Everything under /assets is content-hashed, so a name cannot change meaning and a
+			# year is safe. The entry point stays uncached, which is what lets a deploy land.
+			@fingerprinted path /assets/*
+			header @fingerprinted Cache-Control "public, max-age=31536000, immutable"
+
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }

@@ -6,6 +6,14 @@
 # Local scratch notes; never commit
 abc
 abc.*
+
+# Appended to by both test runners, and never truncated — so it is a record of this checkout's
+# flaky failures, which is nobody else's. See the Tests section of either AGENTS.md.
+test-failures.log
+
+# The JUnit report `deno task test` parses the log out of, overwritten every run.
+backend/.test-report.xml
+
 node_modules/
 
 # Uploaded files in development; the deployed one is a Docker volume.

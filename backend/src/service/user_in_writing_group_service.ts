@@ -1,3 +1,4 @@
+import { PseudonymService } from "@/src/service/pseudonym_service.ts";
 import type { Selectable } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
 import { withAvatar } from "@/src/query/user_avatar.ts";
@@ -167,7 +168,19 @@ async function selectMemberships(
     .orderBy("user.username", "asc")
     .execute();
 
-  return rows.map(withAvatarUrl);
+  const members = rows.map(withAvatarUrl);
+  const mask = await PseudonymService.maskForGroup(writingGroupId);
+
+  if (mask === undefined) {
+    return members;
+  }
+
+  // Sorted again after masking, and by the pseudonym: the query sorted by real name, so leaving
+  // that order would put the two partners in alphabetical order of the names being hidden. On a
+  // list of two that is one bit, and one bit is what this feature is made of.
+  return members
+    .map((member) => ({ ...member, ...mask(member.userId) }))
+    .toSorted((a, b) => a.username.localeCompare(b.username));
 }
 
 /** Returns nothing when there is no such membership. Authorisation is the caller's job. */

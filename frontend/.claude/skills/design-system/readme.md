@@ -661,13 +661,30 @@ says recedes.
 `--accent-deep` `#4f4132` for solid actions. **No second hue.** Per-group colour coding was tried
 and rejected ("Gruppen benötigen keine unterschiedliche Farben"). Colour never signals status,
 quality or achievement. `--signal-error` / `--signal-ok` exist for form validation only and appear
-in none of the mockups. The single exception is `--destructive` as a button fill, for the few acts
-that destroy writing irreversibly — see Buttons.
+in none of the mockups. There are two exceptions, and both are narrow: `--destructive` as a button
+fill, for the few acts that destroy writing irreversibly — see Buttons — and the alert surface
+below, which no member ever sees.
+
+**The alert surface, and where it ends.** `--surface-alert` `#fbf0ed` with `--line-alert`
+`#e0b6ad` tints one box red: the abuse-report queue at the top of the moderation page, and only
+while a report is unanswered. At zero it is an ordinary card, because a box that is always red is a
+box nobody sees.
+
+This is colour signalling status, which the paragraph above forbids, so the boundary is the whole
+of the rule: **it lives behind the role gate and nowhere else.** The argument for that line is what
+the ban is protecting. The reading room is for members, and the case against a second hue is that
+it competes with their prose and spends the one signal the product has. The operators' tools are
+not a reading room — they are a shift, and an unanswered report is the one thing in the product
+that is a person waiting. Nothing a member can reach may use these two tokens; if a third place
+ever wants them, that is the moment to ask whether this exception was right rather than to widen it
+a second time.
+
+Requested by the platform owner, who was told of the conflict first.
 
 Surface hierarchy is inverted from the usual convention: rails are **recessed** (`--paper-2`), the
 canvas sits above them (`--paper-1`), and the raised surfaces (`--paper-0`) are the top bar, the
-composer, the active tab and inset panel cards. Depth comes from these three values plus
-hairlines — never from shadow.
+composer, the active tab and the cards. Depth comes mostly from these three values plus hairlines;
+content cards add `--elevation-card` on top of them — see Shadow.
 
 **Type.** Newsreader (serif) for everything a member writes and for all headings; IBM Plex Sans for
 all interface chrome; IBM Plex Mono only for uppercase rail labels and file-type tags. Posts are
@@ -703,12 +720,27 @@ active tab still wins on thickness as well as colour.
 `--radius-xs` 4px (rail toggles), `--radius-control` 6px (buttons, inputs, filter menu, panel
 cards), `--radius-circle` for avatars only. **Reading surfaces are never rounded.**
 
-**Cards.** There are no cards in the reading column. In the right rail, "panel cards" are
-`--surface-raised` on `--surface-rail`, 1px `--border-subtle`, `--radius-control`, 9–10px padding,
-**no shadow**.
+**Cards.** Panel cards in the right rail are `--surface-raised` on `--surface-rail`, 1px
+`--border-subtle`, `--radius-control`, 9–10px padding. Since the change below, a **content** card
+— a story idea, a group or member row, an administration tile, a status update — is the same
+recipe on the canvas, with `--elevation-card` under it.
 
-**Shadow.** Effectively unused. `--shadow-drag` appears only under an element being dragged;
-`--shadow-sheet` only under a mobile bottom sheet. Nothing at rest casts a shadow.
+**Shadow.** `--shadow-drag` appears only under an element being dragged and `--shadow-sheet` only
+under a mobile bottom sheet. `--elevation-card` is the third, and the only one a resting element
+carries: two soft layers tinted in the same brown, `0 1px 3px rgba(90,70,40,.08), 0 1px 2px
+rgba(90,70,40,.05)`, going nearly black and stronger on a dark ground where the brown vanishes.
+It is one token, exposed as the `shadow-card` utility, so the whole product retunes — or reverts —
+in one place.
+
+**This replaced "nothing at rest casts a shadow", and the reason is worth keeping.** Depth used to
+come only from the three paper values plus hairlines. In use that left a story idea's detail page
+with no edges at all, and made it hard to see where one post or row ended and the next began — the
+hairline alone was not enough separation once a page held several. The shadow is deliberately
+lighter than a card shadow usually is: a sheet laid on paper, not a box lifted off it.
+
+**What did *not* change: posts in a thread are still not boxed.** They keep the recessed metadata
+and the hairline divider, because that rule comes from member testing about the reading column
+rather than from a preference about depth — see "What the research demands".
 
 **Transparency and blur.** None. No glass, no scrims, no protection gradients. Sticky elements
 (the tab strip, the sticky Mitglieder block) sit on solid paper so text never overlaps text.

@@ -7,6 +7,7 @@ import authenticated from "@/src/middleware/authenticated.ts";
 import { WritingGroupService } from "@/src/service/writing_group_service.ts";
 import { WritingThreadService } from "@/src/service/writing_thread_service.ts";
 import { WritingPostService } from "@/src/service/writing_post_service.ts";
+import { BlindDateNameGuardService } from "@/src/service/blind_date_name_guard_service.ts";
 import { mayWrite } from "@/src/service/writing_group_authorization.ts";
 import {
   BAD_REQUEST_RESPONSE,
@@ -112,6 +113,27 @@ export default new OpenAPIHono().openapi(
       isDraft,
       user.id,
     );
+
+    /**
+     * The Blind-Date name guard, after the post is stored and never before it.
+     *
+     * The post is kept exactly as written, and it stays that way: a match only files a report for
+     * moderation, and nothing happens to anybody until a human has looked. It runs only for
+     * published posts — a draft is visible to nobody but its author, so there is nothing to report
+     * yet.
+     *
+     * It is a basic check and says so in its own file. Deliberately not in `insertPost`'s
+     * transaction: filing a report is its own act, and a post that was accepted must not be rolled
+     * back by what follows from it.
+     */
+    if (!isDraft) {
+      await BlindDateNameGuardService.guard(
+        threadId,
+        user.id,
+        post.id,
+        document,
+      );
+    }
 
     return c.json(post, STATUS_CODE.Created);
   },

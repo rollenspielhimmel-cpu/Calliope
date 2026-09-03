@@ -6,6 +6,7 @@ import { useLoginUser } from '@/api/auth/auth'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { ApiError } from '@/lib/api/apiFetch'
 import { failureMessage } from '@/lib/format/failure'
+import { formatUntil } from '@/lib/format/formatTime'
 // From the generated client, so renaming the code in the backend breaks compilation
 // here rather than quietly turning the message back into a generic failure.
 import { LoginUser403Code } from '@/api/models'
@@ -63,6 +64,19 @@ const form = useForm({
         if (error.status === 403 && error.body.code === LoginUser403Code.account_banned) {
           formError.value =
             'Dieses Konto wurde gesperrt. Wende dich an uns, wenn du das für einen Fehler hältst.'
+          return
+        }
+        // The opposite of the ban above, deliberately: a suspension ends by itself and is meant
+        // to correct, so it says both when it ends and what it was for. The two behaving
+        // differently is the point — see the note beside the schema in the backend.
+        if (error.status === 403 && error.body.code === LoginUser403Code.account_suspended) {
+          const until = error.body.suspendedUntil
+          const reason = error.body.reason
+          formError.value =
+            until === undefined
+              ? 'Dieses Konto ist vorübergehend gesperrt.'
+              : `Dieses Konto ist bis ${formatUntil(until)} gesperrt.` +
+                (reason === undefined ? '' : ` Begründung: ${reason}`)
           return
         }
       }

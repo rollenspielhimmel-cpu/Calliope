@@ -11,6 +11,7 @@ import type { GetUser200 } from '@/api/models'
 import { Flag, Pencil, ShieldBan, ShieldCheck, UserCheck, UserX } from '@lucide/vue'
 import { ApiError } from '@/lib/api/apiFetch'
 import { formatJoinedDate } from '@/lib/format/formatTime'
+import { formatCount } from '@/lib/format/formatNumber'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BanMemberDialog from '@/components/user/BanMemberDialog.vue'
 import ReportDialog from '@/components/report/ReportDialog.vue'
@@ -18,6 +19,8 @@ import BlockMemberDialog from '@/components/user/BlockMemberDialog.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { platformRoleLabel } from '@/lib/format/platformRole'
 import ProfileFields from '@/components/user/ProfileFields.vue'
+import ProfileAnswers from '@/components/user/ProfileAnswers.vue'
+import MemberModerationTools from '@/components/moderation/MemberModerationTools.vue'
 import ProfileDialog from '@/components/user/ProfileDialog.vue'
 import { answeredFields } from '@/lib/profile/profileFields'
 import { Button } from '@/components/ui/button'
@@ -73,6 +76,15 @@ async function liftTheBan() {
   await queryClient.invalidateQueries({ queryKey: getGetUserQueryKey(userId.value) })
 }
 
+/**
+ * How many Blind-Dates they have seen through, and only ever on their own profile — the API sends
+ * it nowhere else, so this is the second lock rather than the only one.
+ *
+ * Absent at zero rather than „0 Blind-Dates". A zero on a page that otherwise says nothing about
+ * numbers reads as a target, which is how a record turns into a scoreboard.
+ */
+const completedBlindDates = computed<number>(() => member.value?.completedBlindDates ?? 0)
+
 const editingProfile = ref<boolean>(false)
 
 async function refreshProfile() {
@@ -118,6 +130,16 @@ async function allowContactAgain() {
                 {{ platformRoleLabel(member.platformRole) }} ·
               </template>
               Dabei seit {{ formatJoinedDate(member.createdAt) }}
+            </p>
+            <!-- Their own, and nobody else's: see the comment on `completedBlindDates`. A sentence
+                 rather than a label and a figure, because a figure beside a name is a score. -->
+            <p v-if="isOwnProfile && completedBlindDates > 0" class="text-[12px] text-ink-6">
+              {{
+                completedBlindDates === 1
+                  ? 'Ein Blind-Date'
+                  : formatCount(completedBlindDates) + ' Blind-Dates'
+              }}
+              abgeschlossen
             </p>
           </div>
 
@@ -173,6 +195,15 @@ async function allowContactAgain() {
               Konto sperren
             </Button>
           </div>
+
+          <!-- The rest of the operators' tools, as small icons: they are looked up occasionally
+               and should not outweigh the profile they sit on. Each says what it does on hover. -->
+          <MemberModerationTools
+            :user-id="member.id"
+            :username="member.username"
+            :may-moderate="mayModerate"
+            :is-own-profile="isOwnProfile"
+          />
         </div>
 
         <p v-if="blockError" class="mt-3 text-[12.5px] text-destructive" role="alert">
@@ -195,6 +226,10 @@ async function allowContactAgain() {
 
         <ProfileFields :profile="member" />
 
+        <!-- Absent entirely when nothing is answered: the questions are optional, and a list of
+             blanks would say less than nothing. -->
+        <ProfileAnswers :user-id="member.id" />
+
         <!-- Said outright rather than left as blank space: an empty page reads as an error.
              Their own profile says where to fill it in; somebody else's cannot. -->
         <p
@@ -207,6 +242,9 @@ async function allowContactAgain() {
           </template>
           <template v-else> {{ member.username }} hat noch nichts über sich erzählt. </template>
         </p>
+
+        <!-- Last on the page, after everything a member reads: these are the operators' own
+             tools, and they are absent entirely unless the admin view is switched on. -->
       </template>
 
       <template v-else-if="notFound">

@@ -6,6 +6,7 @@ import { runHealthCheck } from "@/health_check.ts";
 import { seedDatabase } from "@/seed.ts";
 import { getOptionalEnvVariable } from "@/src/util/env.ts";
 import { grantRole, revokeRole } from "@/grant_role.ts";
+import { ensureRootAdmin } from "@/src/service/root_admin_service.ts";
 
 if (import.meta.main) {
   await configureLogging();
@@ -36,6 +37,10 @@ if (import.meta.main) {
   if (Deno.args.includes("--revoke-role")) {
     await revokeRole();
   }
+
+  // Before the server answers anything, so a fresh deployment is never briefly reachable with
+  // nobody able to administer it. Idempotent, so this is a no-op on every start but the first.
+  await ensureRootAdmin();
 
   scheduleCronJobs();
 

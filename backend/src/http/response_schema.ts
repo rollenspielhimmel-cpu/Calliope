@@ -3,6 +3,8 @@ import {
   CHAT_GROUP_SCHEMA,
   CHAT_MESSAGE_SCHEMA,
   NOTIFICATION_SCHEMA,
+  STATUS_UPDATE_COMMENT_SCHEMA,
+  STATUS_UPDATE_SCHEMA,
   STORY_IDEA_SCHEMA,
   USER_IN_CHAT_GROUP_SCHEMA,
   USER_IN_WRITING_GROUP_SCHEMA,
@@ -65,6 +67,14 @@ export const POST_RESPONSE = WRITING_POST_SCHEMA.extend(CREATED_BY_USERNAME)
   .extend({
     // The generated column is `z.unknown()`, which would reach the client as `unknown`.
     document: DOCUMENT_SCHEMA,
+    /**
+     * True while moderation is looking at an automatically raised Blind-Date name suspicion for
+     * this post. The post itself is shown exactly as written — a suspicion is not a finding, and
+     * a username can be an ordinary word — so this is a notice beside it and nothing more.
+     *
+     * False everywhere else, which is almost everywhere.
+     */
+    isUnderReview: z.boolean(),
     /**
      * Who changed it, which is not implied by the row: `mayModify` lets the author or somebody
      * administering the group edit. Null when nothing has been edited, and null once that
@@ -193,6 +203,10 @@ export const USER_PROFILE_RESPONSE = USER_SCHEMA.pick({
   // the platform acting, and telling one member that another was banned is not this page's
   // business. Operators need it because the control that bans must also be able to lift.
   isBanned: z.boolean().optional(),
+  // Present only on one's own profile, and absent — not zero — everywhere else, including for an
+  // operator. A count beside somebody else's name is a score whatever the label says, and this
+  // platform has decided against scores. As one's own it is a record, which is a different thing.
+  completedBlindDates: z.number().int().optional(),
 });
 
 /**
@@ -227,6 +241,38 @@ const THREAD_SUBJECT = {
 };
 
 export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
+  /**
+   * The one notification with no actor: a Blind-Date is arranged by the team, and naming an
+   * operator would answer the question the whole feature exists to hold back. `actorUsername` is
+   * null on this kind, which the sentence in `notificationText.ts` is written not to need.
+   *
+   * The group is named because its title is the plot — exactly what somebody wants to know, and
+   * it gives nothing away about who is on the other side.
+   */
+  z.object({
+    ...NOTIFICATION_BASE,
+    ...GROUP_SUBJECT,
+    type: z.literal("blind_date_matched"),
+  }),
+  /**
+   * The other side has agreed to be revealed. Actorless for the same reason the match is: naming
+   * who wants it would answer the question, and the recipient already knows there is exactly one
+   * other person it could be.
+   */
+  z.object({
+    ...NOTIFICATION_BASE,
+    ...GROUP_SUBJECT,
+    type: z.literal("blind_date_reveal_requested"),
+  }),
+  /**
+   * The Blind-Date ended without a reveal. Actorless, and deliberately says nothing about why:
+   * the reason belongs to the person it concerns, who is told it by mail.
+   */
+  z.object({
+    ...NOTIFICATION_BASE,
+    ...GROUP_SUBJECT,
+    type: z.literal("blind_date_ended"),
+  }),
   z.object({
     ...NOTIFICATION_BASE,
     ...GROUP_SUBJECT,
@@ -302,3 +348,19 @@ export const CHAT_MEMBERSHIP_RESPONSE = USER_IN_CHAT_GROUP_SCHEMA
  */
 export const FOUND_THREAD_RESPONSE = THREAD_RESPONSE
   .extend({ writingGroupTitle: z.string() });
+
+/**
+ * A status update on the logged-in home page, the way Yooco's LiNet status worked. The comment
+ * count travels with it so the feed never has to load a status update's comments just to show
+ * how many there are. Never null: `created_by` is NOT NULL and CASCADE, so a status update
+ * cannot outlive its author, unlike a group's posts.
+ */
+export const STATUS_UPDATE_RESPONSE = STATUS_UPDATE_SCHEMA.extend({
+  createdByUsername: z.string(),
+  commentCount: z.number().int().nonnegative(),
+});
+
+export const STATUS_UPDATE_COMMENT_RESPONSE = STATUS_UPDATE_COMMENT_SCHEMA
+  .extend({
+    createdByUsername: z.string(),
+  });

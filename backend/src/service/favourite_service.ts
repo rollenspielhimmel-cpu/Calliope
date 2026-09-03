@@ -7,7 +7,7 @@ import {
 } from "@/src/query/favourite.ts";
 
 /**
- * One member marking one thing to come back to, across all five kinds that have one. The union and
+ * One member marking one thing to come back to, across all six kinds that have one. The union and
  * the column map live in `query/favourite.ts`, which imports nothing that imports this.
  */
 

@@ -10,7 +10,24 @@ import RailToggle from '@/components/layout/RailToggle.vue'
 import ContextSheet from '@/components/layout/ContextSheet.vue'
 import BottomBar from '@/components/layout/BottomBar.vue'
 
-const props = defineProps<{ activeGroupId?: string }>()
+const props = withDefaults(
+  defineProps<{
+    activeGroupId?: string
+    /**
+     * What the rail is called, in its heading and in the control that opens it on a narrow
+     * screen. „Gruppen-Kontext" is what it was built for and stays the default; a page that is
+     * not a group says what its own rail holds.
+     */
+    railLabel?: string
+    /**
+     * No collapsing where the rail *is* the way to act on the page — Blind-Date's is how somebody
+     * applies, and a control that hides it would hide the point of the page. It still becomes the
+     * sheet below `lg`, because there is no room for a rail on a phone either way.
+     */
+    railAlwaysOpen?: boolean
+  }>(),
+  { railLabel: 'Gruppen-Kontext', railAlwaysOpen: false },
+)
 // Both rails' blocks are accordions, and `collapsible` is true only where the rail is a rail —
 // in the sheet they are stacked.
 defineSlots<{
@@ -21,6 +38,8 @@ defineSlots<{
   infoRail?: (props: { collapsible: boolean }) => unknown
 }>()
 
+const slots = useSlots()
+
 const { data: userData } = useGetCurrentUser()
 const user = computed<GetCurrentUser200 | undefined>(() =>
   userData.value?.status === 200 ? userData.value.data : undefined,
@@ -29,7 +48,13 @@ const user = computed<GetCurrentUser200 | undefined>(() =>
 // Collapsing both rails plus the composer is the reading mode; there is no separate mode.
 const leftOpen = ref<boolean>(true)
 const rightOpen = ref<boolean>(true)
-const hasRail = computed<boolean>(() => props.activeGroupId !== undefined)
+/**
+ * A rail exists because there is rail content, not because there is a group.
+ *
+ * It used to be `activeGroupId !== undefined`, which was the same thing while only a group had
+ * one. `activeGroupId` controlled nothing else, so this is the fact it was standing in for.
+ */
+const hasRail = computed<boolean>(() => slots.rail !== undefined || slots.infoRail !== undefined)
 
 /**
  * Matches the `lg` breakpoint the rail is shown at. A media query rather than CSS, because the
@@ -39,7 +64,6 @@ const hasRail = computed<boolean>(() => props.activeGroupId !== undefined)
 const railFits = useMediaQuery('(min-width: 1024px)')
 const sheetOpen = ref<boolean>(false)
 
-const slots = useSlots()
 const leftRailFits = computed<boolean>(
   () => hasRail.value && slots.infoRail !== undefined && railFits.value,
 )
@@ -98,7 +122,7 @@ const railSlack = computed<Record<string, string>>(() => ({
           @click="sheetOpen = true"
         >
           <PanelRight :size="14" :stroke-width="1.5" />
-          Gruppen-Kontext
+          {{ railLabel }}
         </button>
 
         <slot />
@@ -106,15 +130,16 @@ const railSlack = computed<Record<string, string>>(() => ({
 
       <template v-if="hasRail && $slots.rail">
         <aside
-          v-if="railFits && rightOpen"
+          v-if="railFits && (rightOpen || railAlwaysOpen)"
           class="w-rail-right flex-none flex-col gap-5 overflow-y-auto border-l border-line-3 bg-paper-2 px-3.5 py-4 lg:flex"
         >
           <div class="flex items-center">
-            <RailLabel>Gruppen-Kontext</RailLabel>
+            <RailLabel>{{ railLabel }}</RailLabel>
             <button
+              v-if="!railAlwaysOpen"
               type="button"
               class="ml-auto rounded-md border border-line-4 px-1.5 text-[13px] leading-[1.1] text-ink-label"
-              aria-label="Gruppen-Kontext einklappen"
+              :aria-label="`${railLabel} einklappen`"
               @click="rightOpen = false"
             >
               <ChevronRight :size="14" :stroke-width="1.5" />
@@ -125,7 +150,7 @@ const railSlack = computed<Record<string, string>>(() => ({
         <RailToggle
           v-else-if="railFits"
           side="right"
-          label="Gruppen-Kontext"
+          :label="railLabel"
           @click="rightOpen = true"
         />
 

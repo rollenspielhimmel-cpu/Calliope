@@ -28,6 +28,7 @@ const TARGET_COLUMN = {
   chat_group: "reportedChatGroupId",
   chat_message: "reportedChatMessageId",
   user: "reportedUserId",
+  forum_post: "reportedForumPostId",
 } as const satisfies Record<ReportTargetType, string>;
 
 export type ReportRefusal = "not_found" | "own_account" | "own_content";
@@ -94,6 +95,7 @@ async function insertReport(
           "reportedChatGroupId",
           "reportedChatMessageId",
           "reportedUserId",
+          "reportedForumPostId",
         ])
         .where("closedAt", "is", null)
         .where("reporterId", "is not", null)
@@ -107,6 +109,7 @@ async function insertReport(
               "reportedChatGroupId",
               "reportedChatMessageId",
               "reportedUserId",
+              "reportedForumPostId",
             ]),
             "=",
             1,

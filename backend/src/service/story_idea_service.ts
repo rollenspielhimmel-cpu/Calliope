@@ -57,7 +57,7 @@ export type StoryIdea =
 export type StatusFilter = StoryIdeaStatus | "any";
 
 /** `unread` is the absence of a row, which is why it is not a value of the enum itself. */
-/** `marked` was a third value here until favouriting became its own thing across five kinds. */
+/** `marked` was a third value here until favouriting became its own thing across several kinds. */
 export type ReaderStateFilter = "read" | "unread" | "any";
 
 const SELECTED_COLUMNS = [

@@ -22,6 +22,9 @@ const CURRENT_USER_RESPONSE = USER_SCHEMA
     // Null for almost everybody. Here so the interface can decide whether to offer the
     // operator surfaces at all, rather than discovering the answer from a 403.
     platformRole: true,
+    // The level above the roles, so the interface knows whether to offer granting the
+    // administrator role at all rather than discovering the answer from a 403.
+    isPrimordialAdmin: true,
   })
   .extend({
     // The top bar shows the member their own picture, and this is the only thing it asks for.
@@ -67,6 +70,7 @@ export default new OpenAPIHono().openapi(
       emailAddress: user.emailAddress,
       emailAddressVerifiedAt: user.emailAddressVerifiedAt,
       platformRole: user.platformRole,
+      isPrimordialAdmin: user.isPrimordialAdmin,
       avatarUrl: avatar === undefined ? null : avatarUrl(avatar.fileId),
       unreadNotifications,
     }, STATUS_CODE.OK);

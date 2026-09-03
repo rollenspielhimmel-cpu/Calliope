@@ -28,6 +28,7 @@ import ReportDialog from '@/components/report/ReportDialog.vue'
 import FavouriteToggle from '@/components/favourite/FavouriteToggle.vue'
 import GroupDialog from '@/components/group/GroupDialog.vue'
 import GroupHeader from '@/components/group/GroupHeader.vue'
+import BlindDateRevealPanel from '@/components/blind-date/BlindDateRevealPanel.vue'
 import GroupMembers from '@/components/group/GroupMembers.vue'
 import ThreadTabs from '@/components/thread/ThreadTabs.vue'
 import StepList from '@/components/context/StepList.vue'
@@ -153,6 +154,14 @@ async function askIntoGroup() {
 
       <div class="flex-1 overflow-auto px-gutter pt-7 pb-8 md:px-10">
         <div class="reading-column">
+          <!-- Only on a Blind-Date, and only for the two in it: the panel asks the API for the
+               reader's own Blind-Date and draws nothing unless it is this group. The flag on the
+               group is what says one is running at all. -->
+          <BlindDateRevealPanel
+            v-if="group.authorsArePseudonymous"
+            :group-id="groupId"
+            class="mb-6"
+          />
           <!-- Above the group's own text: what to do about the invitation comes before
                reading further into a group you have not joined. -->
           <GroupInvitation

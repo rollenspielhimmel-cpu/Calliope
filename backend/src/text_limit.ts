@@ -50,6 +50,42 @@ export const TEXT_LIMIT = {
   postText: 100_000,
   /** An operator's note about why an account was banned. Same room as a report's reason. */
   banReason: 2_000,
+  /**
+   * One word the community does not print. Long enough for a compound, short enough that nobody
+   * pastes a sentence in: the list matches substrings, and a sentence would match nothing.
+   */
+  blockedWord: 60,
+  /** Why a word is on the list, for the entries where „it is a slur" is not the whole story. */
+  blockedWordNote: 300,
+  /** A Blind-Date plot: the name of an official RSH story, not a description of one. */
+  blindDatePlotTitle: 120,
+  /** The plot the team offers, and the paragraph under it that says what it is about. */
+  blindDateOfferTitle: 120,
+  blindDateOfferDescription: 2_000,
+  /**
+   * One role in an offered plot, as it appears in the applicant's list of choices. A name and at
+   * most a few words after it — „Die Wirtin", „Der Fremde (Ende offen)" — not a character sheet.
+   */
+  blindDateOfferRole: 80,
+  /**
+   * How many roles one offer may name. High enough that no realistic plot hits it, low enough that
+   * the list stays a list somebody can read through before choosing.
+   */
+  blindDateOfferRoles: 20,
+  /**
+   * The two preferences that are prose rather than a choice — which gender the role is, and what
+   * pairing somebody is after. Room for a sentence, because real answers are one.
+   */
+  blindDatePreference: 300,
+  /** Anything else the applicant wants the team to know before it matches them. */
+  blindDateApplicationNote: 1_000,
+  /**
+   * The free half of the Blind-Date feedback form. Room for a paragraph rather than an essay: the
+   * two questions above it are the ones that can be counted, and this is the one that takes effort.
+   */
+  blindDateFeedbackNote: 2_000,
+  /** Why somebody is excluded from Blind-Date. Required, unlike a watchlist note. */
+  blindDateExclusionReason: 1_000,
   /** Why a member is reporting something. Room to explain, not to write an essay. */
   reportReason: 2_000,
   /** What an operator decided about a report, beside the outcome. Same room as the reason it answers. */
@@ -64,6 +100,30 @@ export const TEXT_LIMIT = {
    * one thing this field must not do.
    */
   avatarCredit: 4_000,
+  /** A status update is a remark, not a chapter — same room as a chat message. */
+  statusUpdateBody: 4_000,
+  /** A reply to a status update. Short by design; it's a comment, not a second status. */
+  statusUpdateCommentBody: 1_000,
+  /** A mail subject line, which clients truncate long before this. */
+  broadcastSubject: 200,
+  /** One message to everybody. Room for an announcement, far short of a newsletter. */
+  broadcastBody: 10_000,
+  /** A page's address, which is also its identity. */
+  pageSlug: 80,
+  pageTitle: 120,
+  /** The rules or an FAQ written out. Generous: these are the longest prose here after a post. */
+  pageBody: 50_000,
+  /** What a profile question asks. One line, the way the fixed fields ask theirs. */
+  profileQuestionPrompt: 200,
+  /** One answer somebody may pick. A label, not a sentence. */
+  profileQuestionOption: 120,
+  /** Which part of the profile a question belongs under. */
+  profileQuestionSection: 80,
+  /** A forum category is a heading over a handful of sub-forums. */
+  forumCategoryTitle: 80,
+  subForumTitle: 80,
+  /** The line or two under a sub-forum's title saying what belongs in it. */
+  subForumDescription: 300,
 } as const;
 
 /**
@@ -95,6 +155,8 @@ export const LIST_LIMIT = {
    * subgenres): asking for more of a list than it holds is meaningless rather than harmful.
    */
   storyVocabularyFilter: 100,
+  /** How many answers one profile question may offer. A list longer than this is a text field. */
+  profileQuestionOptions: 30,
 } as const;
 
 /**

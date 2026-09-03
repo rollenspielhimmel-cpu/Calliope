@@ -21,11 +21,35 @@ export type AvatarOrigin =
   | "permission"
   | "public_domain";
 
+export type BlindDateAgain = "maybe" | "no" | "yes";
+
+export type BlindDateApplicationStatus =
+  | "declined"
+  | "expired"
+  | "matched"
+  | "pending"
+  | "withdrawn";
+
+export type BlindDatePostLength = "long" | "medium" | "short";
+
+export type BlindDateVerdict = "no" | "partly" | "yes";
+
+export type BlindDateWritingStyle = "asterisk" | "prose";
+
+export type ForumVisibility =
+  | "administration"
+  | "everyone"
+  | "members"
+  | "moderation";
+
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
 export type NotificationType =
+  | "blind_date_ended"
+  | "blind_date_matched"
+  | "blind_date_reveal_requested"
   | "invitation_accepted"
   | "invited_to_chat_group"
   | "invited_to_writing_group"
@@ -35,6 +59,8 @@ export type NotificationType =
   | "visibility_changed_in_writing_group";
 
 export type PlatformRole = "administrator" | "moderator";
+
+export type ProfileQuestionKind = "choice" | "text";
 
 export type ReportCategory =
   | "harassment"
@@ -65,6 +91,7 @@ export type ReportStatus = "closed" | "in_progress" | "open";
 export type ReportTargetType =
   | "chat_group"
   | "chat_message"
+  | "forum_post"
   | "story_idea"
   | "user"
   | "writing_group"
@@ -233,6 +260,10 @@ export type StoryTrope =
   | "unreliable_narrator"
   | "villain_to_hero";
 
+export type StrikeAction = "deletion" | "suspension" | "warning";
+
+export type StrikeSeverity = "acceptable" | "borderline" | "severe";
+
 export type UserInChatGroupStatus = "invited" | "joined";
 
 export type UserInWritingGroupRole = "administrator" | "reader" | "writer";
@@ -248,6 +279,110 @@ export type UserTokenPurpose =
 export type WritingGroupStoryStatus = "finished" | "planning" | "writing";
 
 export type WritingGroupVisibility = "private" | "public";
+
+export interface ActivityWindow {
+  userId: string;
+  windowStart: string;
+}
+
+export interface BannedIp {
+  bannedAt: Generated<string>;
+  bannedBy: string | null;
+  ipAddress: string;
+  reason: string;
+}
+
+export interface BlindDateApplication {
+  createdAt: Generated<string>;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+  id: Generated<string>;
+  note: string | null;
+  offerId: string | null;
+  pairing: string;
+  plotTitle: string;
+  postLength: BlindDatePostLength;
+  roleGender: string;
+  status: Generated<BlindDateApplicationStatus>;
+  userId: string;
+  writingStyle: BlindDateWritingStyle;
+}
+
+export interface BlindDateExclusion {
+  addedAt: Generated<string>;
+  addedBy: string | null;
+  reason: string;
+  userId: string;
+}
+
+export interface BlindDateFeedback {
+  again: BlindDateAgain | null;
+  createdAt: Generated<string>;
+  id: Generated<string>;
+  note: string | null;
+  pairId: string;
+  userId: string;
+  worked: BlindDateVerdict | null;
+}
+
+export interface BlindDateNameSuspicion {
+  confirmed: boolean | null;
+  createdAt: Generated<string>;
+  id: Generated<string>;
+  pairId: string;
+  reportId: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  suspectedId: string;
+  writingPostId: string | null;
+}
+
+export interface BlindDateOffer {
+  closedAt: string | null;
+  closesAt: string | null;
+  createdAt: Generated<string>;
+  createdBy: string | null;
+  description: string;
+  id: Generated<string>;
+  roles: Generated<string[]>;
+  title: string;
+}
+
+export interface BlindDatePair {
+  endedAt: string | null;
+  endedBy: string | null;
+  endedReason: string | null;
+  exchangeThreadId: string | null;
+  id: Generated<string>;
+  matchedAt: Generated<string>;
+  matchedBy: string | null;
+  revealedAt: string | null;
+  rpgThreadId: string | null;
+  writingGroupId: string;
+}
+
+export interface BlindDatePartner {
+  applicationId: string | null;
+  isActive: Generated<boolean>;
+  pairId: string;
+  userId: string;
+  wantsRevealAt: string | null;
+}
+
+export interface BlockedEmailDomain {
+  addedAt: Generated<string>;
+  addedBy: string | null;
+  domain: string;
+  note: string | null;
+}
+
+export interface BlockedWord {
+  addedAt: Generated<string>;
+  addedBy: string | null;
+  note: string | null;
+  word: string;
+}
 
 export interface ChatGroup {
   createdAt: Generated<string>;
@@ -265,15 +400,54 @@ export interface ChatMessage {
   text: string;
 }
 
+export interface CustomPage {
+  body: string;
+  createdAt: Generated<string>;
+  isPublic: Generated<boolean>;
+  lastEditedBy: string | null;
+  slug: string;
+  title: string;
+  updatedAt: Generated<string>;
+}
+
 export interface Favourite {
   chatGroupId: string | null;
   createdAt: Generated<string>;
+  forumPostId: string | null;
   id: Generated<string>;
   storyIdeaId: string | null;
   userId: string;
   writingGroupId: string | null;
   writingPostId: string | null;
   writingThreadId: string | null;
+}
+
+export interface ForumCategory {
+  createdAt: Generated<string>;
+  id: Generated<string>;
+  position: Generated<number>;
+  title: string;
+}
+
+export interface ForumPost {
+  createdAt: Generated<string>;
+  createdBy: string | null;
+  document: unknown;
+  editedAt: string | null;
+  editedBy: string | null;
+  forumThreadId: string;
+  id: Generated<string>;
+  text: string;
+}
+
+export interface ForumThread {
+  createdAt: Generated<string>;
+  createdBy: string | null;
+  id: Generated<string>;
+  lastActivityAt: Generated<string>;
+  subForumId: string;
+  title: string;
+  visibility: ForumVisibility | null;
 }
 
 export interface Notification {
@@ -290,6 +464,28 @@ export interface Notification {
   writingThreadId: string | null;
 }
 
+export interface ProfileAnswer {
+  answerText: string | null;
+  optionId: string | null;
+  questionId: string;
+  userId: string;
+}
+
+export interface ProfileQuestion {
+  id: Generated<string>;
+  kind: ProfileQuestionKind;
+  position: Generated<number>;
+  prompt: string;
+  section: string;
+}
+
+export interface ProfileQuestionOption {
+  id: Generated<string>;
+  label: string;
+  position: Generated<number>;
+  questionId: string;
+}
+
 export interface Report {
   category: ReportCategory;
   closedAt: string | null;
@@ -303,6 +499,7 @@ export interface Report {
   reportedAuthorId: string | null;
   reportedChatGroupId: string | null;
   reportedChatMessageId: string | null;
+  reportedForumPostId: string | null;
   reportedStoryIdeaId: string | null;
   reportedUserId: string | null;
   reportedWritingGroupId: string | null;
@@ -312,6 +509,21 @@ export interface Report {
   status: Generated<ReportStatus>;
   targetExcerpt: string;
   targetType: ReportTargetType;
+}
+
+export interface StatusUpdate {
+  body: string;
+  createdAt: Generated<string>;
+  createdBy: string;
+  id: Generated<string>;
+}
+
+export interface StatusUpdateComment {
+  body: string;
+  createdAt: Generated<string>;
+  createdBy: string;
+  id: Generated<string>;
+  statusUpdateId: string;
 }
 
 export interface StoryIdea {
@@ -342,6 +554,27 @@ export interface StoryIdeaReader {
   userId: string;
 }
 
+export interface Strike {
+  action: StrikeAction;
+  id: Generated<string>;
+  issuedAt: Generated<string>;
+  issuedBy: string | null;
+  reason: string;
+  severity: StrikeSeverity;
+  suspendedUntil: string | null;
+  userId: string;
+}
+
+export interface SubForum {
+  categoryId: string;
+  createdAt: Generated<string>;
+  description: string;
+  id: Generated<string>;
+  position: Generated<number>;
+  title: string;
+  visibility: Generated<ForumVisibility>;
+}
+
 export interface User {
   aboutMe: string | null;
   bannedAt: string | null;
@@ -354,8 +587,12 @@ export interface User {
   genres: string | null;
   hashedPassword: string;
   id: Generated<string>;
+  invitedBy: string | null;
+  isPrimordialAdmin: Generated<boolean>;
   platformRole: PlatformRole | null;
   postLength: string | null;
+  suspendedUntil: string | null;
+  suspensionReason: string | null;
   updatedAt: Generated<string>;
   username: string;
   writingBoundaries: string | null;
@@ -420,7 +657,15 @@ export interface UserToken {
   userId: string;
 }
 
+export interface WatchlistEntry {
+  addedAt: Generated<string>;
+  addedBy: string | null;
+  note: string;
+  userId: string;
+}
+
 export interface WritingGroup {
+  authorsArePseudonymous: Generated<boolean>;
   contentWarnings: Generated<ArrayType<StoryContentWarning>>;
   createdAt: Generated<string>;
   createdBy: string | null;
@@ -473,13 +718,35 @@ export interface WritingThread {
 }
 
 export interface DB {
+  activityWindow: ActivityWindow;
+  bannedIp: BannedIp;
+  blindDateApplication: BlindDateApplication;
+  blindDateExclusion: BlindDateExclusion;
+  blindDateFeedback: BlindDateFeedback;
+  blindDateNameSuspicion: BlindDateNameSuspicion;
+  blindDateOffer: BlindDateOffer;
+  blindDatePair: BlindDatePair;
+  blindDatePartner: BlindDatePartner;
+  blockedEmailDomain: BlockedEmailDomain;
+  blockedWord: BlockedWord;
   chatGroup: ChatGroup;
   chatMessage: ChatMessage;
+  customPage: CustomPage;
   favourite: Favourite;
+  forumCategory: ForumCategory;
+  forumPost: ForumPost;
+  forumThread: ForumThread;
   notification: Notification;
+  profileAnswer: ProfileAnswer;
+  profileQuestion: ProfileQuestion;
+  profileQuestionOption: ProfileQuestionOption;
   report: Report;
+  statusUpdate: StatusUpdate;
+  statusUpdateComment: StatusUpdateComment;
   storyIdea: StoryIdea;
   storyIdeaReader: StoryIdeaReader;
+  strike: Strike;
+  subForum: SubForum;
   user: User;
   userAvatar: UserAvatar;
   userBlock: UserBlock;
@@ -487,12 +754,15 @@ export interface DB {
   userInWritingGroup: UserInWritingGroup;
   userSession: UserSession;
   userToken: UserToken;
+  watchlistEntry: WatchlistEntry;
   writingGroup: WritingGroup;
   writingGroupNextStep: WritingGroupNextStep;
   writingPost: WritingPost;
   writingThread: WritingThread;
 }
 import * as z from "zod";
+
+const int32 = z.int().min(-2147483648).max(2147483647);
 
 export const WRITING_GROUP_VISIBILITIES = ["private", "public"] as const;
 export const WRITING_GROUP_VISIBILITY_SCHEMA = z.enum(
@@ -698,6 +968,9 @@ export const USER_IN_CHAT_GROUP_STATUS_SCHEMA = z.enum(
 );
 
 export const NOTIFICATION_TYPES = [
+  "blind_date_ended",
+  "blind_date_matched",
+  "blind_date_reveal_requested",
   "invitation_accepted",
   "invited_to_chat_group",
   "invited_to_writing_group",
@@ -728,6 +1001,7 @@ export const PLATFORM_ROLE_SCHEMA = z.enum(PLATFORM_ROLES);
 export const REPORT_TARGET_TYPES = [
   "chat_group",
   "chat_message",
+  "forum_post",
   "story_idea",
   "user",
   "writing_group",
@@ -776,6 +1050,156 @@ export const AVATAR_ORIGINS = [
 ] as const;
 export const AVATAR_ORIGIN_SCHEMA = z.enum(AVATAR_ORIGINS);
 
+export const STRIKE_SEVERITIES = [
+  "acceptable",
+  "borderline",
+  "severe",
+] as const;
+export const STRIKE_SEVERITY_SCHEMA = z.enum(STRIKE_SEVERITIES);
+
+export const STRIKE_ACTIONS = ["deletion", "suspension", "warning"] as const;
+export const STRIKE_ACTION_SCHEMA = z.enum(STRIKE_ACTIONS);
+
+export const PROFILE_QUESTION_KINDS = ["choice", "text"] as const;
+export const PROFILE_QUESTION_KIND_SCHEMA = z.enum(PROFILE_QUESTION_KINDS);
+
+export const FORUM_VISIBILITIES = [
+  "administration",
+  "everyone",
+  "members",
+  "moderation",
+] as const;
+export const FORUM_VISIBILITY_SCHEMA = z.enum(FORUM_VISIBILITIES);
+
+export const BLIND_DATE_WRITING_STYLES = ["asterisk", "prose"] as const;
+export const BLIND_DATE_WRITING_STYLE_SCHEMA = z.enum(
+  BLIND_DATE_WRITING_STYLES,
+);
+
+export const BLIND_DATE_POST_LENGTHS = ["long", "medium", "short"] as const;
+export const BLIND_DATE_POST_LENGTH_SCHEMA = z.enum(BLIND_DATE_POST_LENGTHS);
+
+export const BLIND_DATE_APPLICATION_STATUSES = [
+  "declined",
+  "expired",
+  "matched",
+  "pending",
+  "withdrawn",
+] as const;
+export const BLIND_DATE_APPLICATION_STATUS_SCHEMA = z.enum(
+  BLIND_DATE_APPLICATION_STATUSES,
+);
+
+export const BLIND_DATE_VERDICTS = ["no", "partly", "yes"] as const;
+export const BLIND_DATE_VERDICT_SCHEMA = z.enum(BLIND_DATE_VERDICTS);
+
+export const BLIND_DATE_AGAINS = ["maybe", "no", "yes"] as const;
+export const BLIND_DATE_AGAIN_SCHEMA = z.enum(BLIND_DATE_AGAINS);
+
+export const ACTIVITY_WINDOW_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  windowStart: z.iso.datetime({ offset: true }),
+});
+
+export const BANNED_IP_SCHEMA = z.object({
+  ipAddress: z.string(),
+  bannedAt: z.iso.datetime({ offset: true }),
+  bannedBy: z.uuidv7().nullable(),
+  reason: z.string(),
+});
+
+export const BLIND_DATE_APPLICATION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  userId: z.uuidv7(),
+  status: BLIND_DATE_APPLICATION_STATUS_SCHEMA,
+  offerId: z.uuidv7().nullable(),
+  plotTitle: z.string(),
+  writingStyle: BLIND_DATE_WRITING_STYLE_SCHEMA,
+  postLength: BLIND_DATE_POST_LENGTH_SCHEMA,
+  roleGender: z.string(),
+  pairing: z.string(),
+  note: z.string().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  decidedAt: z.iso.datetime({ offset: true }).nullable(),
+  decidedBy: z.uuidv7().nullable(),
+  decisionNote: z.string().nullable(),
+});
+
+export const BLIND_DATE_EXCLUSION_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  reason: z.string(),
+  addedBy: z.uuidv7().nullable(),
+  addedAt: z.iso.datetime({ offset: true }),
+});
+
+export const BLIND_DATE_FEEDBACK_SCHEMA = z.object({
+  id: z.uuidv7(),
+  pairId: z.uuidv7(),
+  userId: z.uuidv7(),
+  worked: BLIND_DATE_VERDICT_SCHEMA.nullable(),
+  again: BLIND_DATE_AGAIN_SCHEMA.nullable(),
+  note: z.string().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+
+export const BLIND_DATE_NAME_SUSPICION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  reportId: z.uuidv7(),
+  pairId: z.uuidv7(),
+  writingPostId: z.uuidv7().nullable(),
+  suspectedId: z.uuidv7(),
+  createdAt: z.iso.datetime({ offset: true }),
+  resolvedAt: z.iso.datetime({ offset: true }).nullable(),
+  resolvedBy: z.uuidv7().nullable(),
+  confirmed: z.boolean().nullable(),
+});
+
+export const BLIND_DATE_OFFER_SCHEMA = z.object({
+  id: z.uuidv7(),
+  title: z.string(),
+  description: z.string(),
+  closedAt: z.iso.datetime({ offset: true }).nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  createdBy: z.uuidv7().nullable(),
+  roles: z.array(z.string()),
+  closesAt: z.iso.datetime({ offset: true }).nullable(),
+});
+
+export const BLIND_DATE_PAIR_SCHEMA = z.object({
+  id: z.uuidv7(),
+  writingGroupId: z.uuidv7(),
+  matchedAt: z.iso.datetime({ offset: true }),
+  matchedBy: z.uuidv7().nullable(),
+  revealedAt: z.iso.datetime({ offset: true }).nullable(),
+  rpgThreadId: z.uuidv7().nullable(),
+  exchangeThreadId: z.uuidv7().nullable(),
+  endedAt: z.iso.datetime({ offset: true }).nullable(),
+  endedReason: z.string().nullable(),
+  endedBy: z.uuidv7().nullable(),
+});
+
+export const BLIND_DATE_PARTNER_SCHEMA = z.object({
+  pairId: z.uuidv7(),
+  userId: z.uuidv7(),
+  applicationId: z.uuidv7().nullable(),
+  isActive: z.boolean(),
+  wantsRevealAt: z.iso.datetime({ offset: true }).nullable(),
+});
+
+export const BLOCKED_EMAIL_DOMAIN_SCHEMA = z.object({
+  domain: z.string(),
+  addedBy: z.uuidv7().nullable(),
+  addedAt: z.iso.datetime({ offset: true }),
+  note: z.string().nullable(),
+});
+
+export const BLOCKED_WORD_SCHEMA = z.object({
+  word: z.string(),
+  addedBy: z.uuidv7().nullable(),
+  addedAt: z.iso.datetime({ offset: true }),
+  note: z.string().nullable(),
+});
+
 export const CHAT_GROUP_SCHEMA = z.object({
   id: z.uuidv7(),
   title: z.string(),
@@ -792,6 +1216,16 @@ export const CHAT_MESSAGE_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
 });
 
+export const CUSTOM_PAGE_SCHEMA = z.object({
+  slug: z.string(),
+  title: z.string(),
+  body: z.string(),
+  isPublic: z.boolean(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+  lastEditedBy: z.uuidv7().nullable(),
+});
+
 export const FAVOURITE_SCHEMA = z.object({
   id: z.uuidv7(),
   userId: z.uuidv7(),
@@ -801,6 +1235,35 @@ export const FAVOURITE_SCHEMA = z.object({
   storyIdeaId: z.uuidv7().nullable(),
   chatGroupId: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
+  forumPostId: z.uuidv7().nullable(),
+});
+
+export const FORUM_CATEGORY_SCHEMA = z.object({
+  id: z.uuidv7(),
+  title: z.string(),
+  position: int32,
+  createdAt: z.iso.datetime({ offset: true }),
+});
+
+export const FORUM_POST_SCHEMA = z.object({
+  id: z.uuidv7(),
+  forumThreadId: z.uuidv7(),
+  document: z.unknown(),
+  text: z.string(),
+  createdBy: z.uuidv7().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  editedAt: z.iso.datetime({ offset: true }).nullable(),
+  editedBy: z.uuidv7().nullable(),
+});
+
+export const FORUM_THREAD_SCHEMA = z.object({
+  id: z.uuidv7(),
+  subForumId: z.uuidv7(),
+  title: z.string(),
+  visibility: FORUM_VISIBILITY_SCHEMA.nullable(),
+  createdBy: z.uuidv7().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  lastActivityAt: z.iso.datetime({ offset: true }),
 });
 
 export const NOTIFICATION_SCHEMA = z.object({
@@ -815,6 +1278,28 @@ export const NOTIFICATION_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   occurredAt: z.iso.datetime({ offset: true }),
   readAt: z.iso.datetime({ offset: true }).nullable(),
+});
+
+export const PROFILE_ANSWER_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  questionId: z.uuidv7(),
+  answerText: z.string().nullable(),
+  optionId: z.uuidv7().nullable(),
+});
+
+export const PROFILE_QUESTION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  section: z.string(),
+  prompt: z.string(),
+  kind: PROFILE_QUESTION_KIND_SCHEMA,
+  position: int32,
+});
+
+export const PROFILE_QUESTION_OPTION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  questionId: z.uuidv7(),
+  label: z.string(),
+  position: int32,
 });
 
 export const REPORT_SCHEMA = z.object({
@@ -839,6 +1324,22 @@ export const REPORT_SCHEMA = z.object({
   closingOutcome: REPORT_OUTCOME_SCHEMA.nullable(),
   closingNote: z.string().nullable(),
   status: REPORT_STATUS_SCHEMA,
+  reportedForumPostId: z.uuidv7().nullable(),
+});
+
+export const STATUS_UPDATE_SCHEMA = z.object({
+  id: z.uuidv7(),
+  createdBy: z.uuidv7(),
+  body: z.string(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+
+export const STATUS_UPDATE_COMMENT_SCHEMA = z.object({
+  id: z.uuidv7(),
+  statusUpdateId: z.uuidv7(),
+  createdBy: z.uuidv7(),
+  body: z.string(),
+  createdAt: z.iso.datetime({ offset: true }),
 });
 
 export const STORY_IDEA_SCHEMA = z.object({
@@ -869,6 +1370,27 @@ export const STORY_IDEA_READER_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
 });
 
+export const STRIKE_SCHEMA = z.object({
+  id: z.uuidv7(),
+  userId: z.uuidv7(),
+  severity: STRIKE_SEVERITY_SCHEMA,
+  action: STRIKE_ACTION_SCHEMA,
+  reason: z.string(),
+  suspendedUntil: z.iso.datetime({ offset: true }).nullable(),
+  issuedBy: z.uuidv7().nullable(),
+  issuedAt: z.iso.datetime({ offset: true }),
+});
+
+export const SUB_FORUM_SCHEMA = z.object({
+  id: z.uuidv7(),
+  categoryId: z.uuidv7(),
+  title: z.string(),
+  description: z.string(),
+  visibility: FORUM_VISIBILITY_SCHEMA,
+  position: int32,
+  createdAt: z.iso.datetime({ offset: true }),
+});
+
 export const USER_SCHEMA = z.object({
   id: z.uuidv7(),
   username: z.string(),
@@ -888,6 +1410,10 @@ export const USER_SCHEMA = z.object({
   coWriterExpectations: z.string().nullable(),
   writingBoundaries: z.string().nullable(),
   genres: z.string().nullable(),
+  suspendedUntil: z.iso.datetime({ offset: true }).nullable(),
+  suspensionReason: z.string().nullable(),
+  invitedBy: z.uuidv7().nullable(),
+  isPrimordialAdmin: z.boolean(),
 });
 
 export const USER_AVATAR_SCHEMA = z.object({
@@ -947,6 +1473,13 @@ export const USER_TOKEN_SCHEMA = z.object({
   newEmailAddress: z.string().nullable(),
 });
 
+export const WATCHLIST_ENTRY_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  note: z.string(),
+  addedBy: z.uuidv7().nullable(),
+  addedAt: z.iso.datetime({ offset: true }),
+});
+
 export const WRITING_GROUP_SCHEMA = z.object({
   id: z.uuidv7(),
   title: z.string(),
@@ -966,6 +1499,7 @@ export const WRITING_GROUP_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
+  authorsArePseudonymous: z.boolean(),
 });
 
 export const WRITING_GROUP_NEXT_STEP_SCHEMA = z.object({

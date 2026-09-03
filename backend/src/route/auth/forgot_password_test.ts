@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { getRequiredEnvVariable } from "@/src/util/env.ts";
+import { APP_NAME } from "@/src/branding.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { clearRateLimits, deleteUsers } from "@/src/test/support.ts";
 import { flushBackgroundWork } from "@/src/util/background.ts";
@@ -34,7 +35,7 @@ Deno.test("POST /api/auth/forgot-password mails a link to a registered address",
   await flushBackgroundWork();
   const mail = await waitForMail(emailAddress);
 
-  assertStringIncludes(mail.subject, "Calliope");
+  assertStringIncludes(mail.subject, APP_NAME);
   assertStringIncludes(mail.text, username);
   // The link has to point at the frontend route that spends the token, not at the API.
   assertStringIncludes(

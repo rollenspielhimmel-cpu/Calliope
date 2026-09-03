@@ -14,8 +14,10 @@ defineSlots<{ actions?: () => unknown; meta?: () => unknown }>()
 </script>
 
 <template>
-  <!-- Hairline rows, no cards: nothing in the reading surface is boxed or rounded. -->
-  <div class="py-[26px]">
+  <!-- A card rather than the hairline row this used to be, so where one group ends and the next
+       begins is visible without reading. The elevation is the shared token; the list spaces the
+       cards apart instead of drawing a rule between them. -->
+  <div class="rounded-lg border border-line-3 bg-paper-0 px-5 py-5 shadow-card">
     <div class="text-h2">
       <RouterLink
         :to="{ name: 'group', params: { groupId: group.id } }"

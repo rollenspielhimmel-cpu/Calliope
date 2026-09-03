@@ -1,3 +1,4 @@
+import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import type { Selectable } from "kysely";
 import { db } from "@/src/database/client.ts";
 import type { ChatMessage as DatabaseChatMessage } from "@/src/database/schema.ts";
@@ -51,7 +52,13 @@ async function listMessages(
   const results = rows.slice(0, limit);
 
   return {
-    results,
+    // Masked at the read, like every other prose surface — see `word_filter_service.ts`.
+    results: await Promise.all(
+      results.map(async (message) => ({
+        ...message,
+        text: await WordFilterService.maskText(message.text),
+      })),
+    ),
     nextCursor: rows.length > limit ? results.at(-1)?.id ?? null : null,
   };
 }

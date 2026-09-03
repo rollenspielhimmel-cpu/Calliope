@@ -21,7 +21,7 @@ export default new OpenAPIHono().openapi(
     tags: [STORY_IDEAS_TAG],
     summary: "Mark an idea as read",
     description:
-      "The member's own record of having read somebody else's idea, and nothing more: keeping one to come back to is a favourite, which covers all five kinds. Idempotent, and it takes no body — read is the presence of the record, so unread is a DELETE.",
+      "The member's own record of having read somebody else's idea, and nothing more: keeping one to come back to is a favourite, which covers all six kinds. Idempotent, and it takes no body — read is the presence of the record, so unread is a DELETE.",
     operationId: "markStoryIdeaRead",
     middleware: authenticated,
     request: { params: IDEA_PARAMS },

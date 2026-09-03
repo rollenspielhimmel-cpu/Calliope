@@ -5,6 +5,7 @@ import { UserService } from "@/src/service/user_service.ts";
 import { WritingGroupService } from "@/src/service/writing_group_service.ts";
 import { ChatGroupService } from "@/src/service/chat_group_service.ts";
 import { StoryIdeaService } from "@/src/service/story_idea_service.ts";
+import { ForumThreadService } from "@/src/service/forum_thread_service.ts";
 import { assertUnreachable } from "@/src/util/assert_unreachable.ts";
 
 /**
@@ -12,7 +13,7 @@ import { assertUnreachable } from "@/src/util/assert_unreachable.ts";
  * Reporting and favouriting both ask, because either answering differently for a thing that exists
  * and a thing the member cannot see would turn it into a way of discovering private writing.
  *
- * Typed over `ReportTargetType`, the wider set, so a favourite's five values are assignable.
+ * Typed over `ReportTargetType`, the wider set, so a favourite's six values are assignable.
  * Threads, posts and messages are reached through whatever governs them, so the group's visibility
  * rule and the chat's membership rule each stay in one place.
  */
@@ -168,6 +169,34 @@ export async function resolveVisibleTarget(
       return chat === undefined
         ? undefined
         : seen(message.createdBy, () => message.text);
+    }
+
+    case "forum_post": {
+      const post = await db
+        .selectFrom("forumPost")
+        .select(["forumPost.createdBy", "forumPost.forumThreadId"])
+        // Only when somebody asked, as above: the body is TOASTed.
+        .$if(
+          withExcerpt,
+          (queryBuilder) => queryBuilder.select("forumPost.text"),
+        )
+        .where("forumPost.id", "=", targetId)
+        .executeTakeFirst();
+
+      if (post === undefined) {
+        return undefined;
+      }
+
+      // Reached through the thread, so the forum's own rule — the stricter of the thread's
+      // visibility and its sub-forum's — stays in one place rather than being restated here.
+      const thread = await ForumThreadService.selectThread(
+        post.forumThreadId,
+        user,
+      );
+
+      return thread === undefined
+        ? undefined
+        : seen(post.createdBy, () => post.text ?? "");
     }
 
     case "user": {

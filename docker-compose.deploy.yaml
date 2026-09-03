@@ -23,6 +23,20 @@ services:
     environment:
       HOST_URL: ${HOST_URL:?set HOST_URL in .env}
 
+      # The gate in front of the whole site, and the team's own password for the mailbox. Caddy
+      # reads them out of its environment through the `{$VAR}` placeholders in the Caddyfile, so
+      # they have to be handed to *this* container — the backend's copy is no use here.
+      #
+      # **The hashes contain `$`**, which compose reads as the start of a variable. They are written
+      # `$$` in .env for that reason; compose turns each pair back into one. A hash that lost its
+      # dollars still looks like a hash and simply never matches, which is a bad way to spend an
+      # evening.
+      GATE_USERNAME: ${GATE_USERNAME:?set GATE_USERNAME in .env}
+      GATE_PASSWORD_HASH: ${GATE_PASSWORD_HASH:?set GATE_PASSWORD_HASH in .env}
+      MAILPIT_WEBROOT: ${MAILPIT_WEBROOT:-postfach}
+      MAILBOX_USERNAME: ${MAILBOX_USERNAME:?set MAILBOX_USERNAME in .env}
+      MAILBOX_PASSWORD_HASH: ${MAILBOX_PASSWORD_HASH:?set MAILBOX_PASSWORD_HASH in .env}
+
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./frontend/dist:/srv:ro
@@ -35,6 +49,10 @@ services:
         condition: service_healthy
       frontend-build:
         condition: service_completed_successfully
+      # Caddy proxies the mailbox, so starting before it is ready serves a 502 to the one page
+      # somebody opens precisely because something is not arriving.
+      mailpit:
+        condition: service_healthy
 
   # Built on the server, because the output is not committed. Runs to completion and exits.
   frontend-build:
@@ -84,6 +102,14 @@ services:
       APP_DESCRIPTION: ${APP_DESCRIPTION:-}
       APP_CONTACT_NAME: ${APP_CONTACT_NAME:-}
       APP_CONTACT_EMAIL: ${APP_CONTACT_EMAIL:-}
+      # The one account that exists before anybody registers. Without it a fresh deployment
+      # comes up with no administrator at all and no way in but editing rows by hand — which is
+      # exactly what this deployment would have done.
+      #
+      # Read once, at the first start that finds no administrator: it never resets the password of
+      # an account that already exists, so editing this later changes nothing. Optional, because
+      # the OpenAPI generation runs with nothing but .example.env set.
+      ROOT_ADMIN_PASSWORD: ${ROOT_ADMIN_PASSWORD:-}
       DATABASE_URL: postgres://calliope:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/calliope?sslmode=disable
       REDIS_URL: redis://redis:6379
 
@@ -94,8 +120,11 @@ services:
       SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
       SMTP_PORT: ${SMTP_PORT:?set SMTP_PORT in .env}
       SMTP_SECURE: ${SMTP_SECURE:?set SMTP_SECURE in .env}
-      SMTP_USERNAME: ${SMTP_USERNAME:?set SMTP_USERNAME in .env}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:?set SMTP_PASSWORD in .env}
+      # `?` rather than `:?`: the variable must be declared, but empty is a real answer — the
+      # mailer reads an empty username as "no credentials", which is what an SMTP server that
+      # wants none expects. A relay that wants them still fails loudly at the first send.
+      SMTP_USERNAME: ${SMTP_USERNAME?set SMTP_USERNAME in .env}
+      SMTP_PASSWORD: ${SMTP_PASSWORD?set SMTP_PASSWORD in .env}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:?set MAIL_FROM_ADDRESS in .env}
       FILE_STORAGE_PATH: ${FILE_STORAGE_PATH:?set FILE_STORAGE_PATH in .env}
 
@@ -121,6 +150,39 @@ services:
       retries: 5
       start_period: 15s
 
+  # ── The interim mailbox ─────────────────────────────────────────────────────────────────
+  #
+  # **Nothing here reaches a real inbox.** Until an SMTP account exists, the backend sends into
+  # Mailpit and the mail stops there, where the team reads it and passes on what a tester needs —
+  # a confirmation link, a password reset.
+  #
+  # It is a stopgap and not one to launch on: a member who mistypes their address, or who asks
+  # for a reset at midnight, waits for a person. See "Outgoing mail" in deployment/README.md for
+  # what replaces it.
+  #
+  # No published ports. SMTP is reachable only inside this network, and the web side only through
+  # Caddy behind the team's own password — deliberately *not* the site password: this mailbox
+  # holds password-reset links for every account, so whoever reads it can take any of them over.
+  mailpit:
+    image: axllent/mailpit:v1.31.0
+    restart: unless-stopped
+    logging: *logging
+
+    environment:
+      # Served under a prefix: the domain has one name and the site is already on it.
+      MP_WEBROOT: ${MAILPIT_WEBROOT:-postfach}
+      # Kept on disk, so a restart does not throw away a link somebody is waiting for.
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 5000
+
+    volumes:
+      - mailpit-data:/data
+
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   migrate:
     image: amacneil/dbmate:2.35.0
     command: migrate
@@ -181,6 +243,7 @@ services:
 volumes:
   db-data:
   file-data:
+  mailpit-data:
   redis-data:
   caddy-data:
   caddy-config:

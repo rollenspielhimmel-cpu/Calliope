@@ -25,6 +25,7 @@ Deno.test("GET /api/auth/me reports the signed-in user", async () => {
     "emailAddress",
     "emailAddressVerifiedAt",
     "id",
+    "isPrimordialAdmin",
     "platformRole",
     "unreadNotifications",
     "username",

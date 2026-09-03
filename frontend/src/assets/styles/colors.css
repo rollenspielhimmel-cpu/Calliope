@@ -33,6 +33,18 @@
   --oak-deep: #4f4132; /* solid actions */
   --oak-deeper: #3f3427; /* solid hover */
 
+  /* A content card lifted off the canvas: two soft layers, warm rather than neutral, in the same
+     brown the drag and sheet shadows use — a grey or black shadow on warm paper reads as dirt
+     rather than as depth. Here rather than in @theme for the same reason the ramps are: `.dark`
+     redefines it, and a literal there would be a fixed light value at every use site. */
+  --elevation-card: 0 1px 3px rgba(90, 70, 40, 0.08), 0 1px 2px rgba(90, 70, 40, 0.05);
+
+  /* The one alert surface, and it exists only behind the role gate — see Alert surface in the
+     design system's readme. `--destructive` is a fill for acts that destroy writing; this is a
+     tint of the same hue for a state that needs answering, and it is never shown to a member. */
+  --surface-alert: #fbf0ed;
+  --line-alert: #e0b6ad;
+
   --background: #f7f4ee; /* --paper-1, app canvas */
   --foreground: #302a23; /* --ink-2, prose */
   --card: #fffdf9; /* --paper-0, raised */
@@ -113,6 +125,15 @@
   --oak: #b0854a; /* the one accent */
   --oak-deep: #ddb97e; /* emphasis and hover */
   --oak-deeper: #ecd0a4;
+
+  /* Nearly black and stronger: the light theme's brown is invisible on a dark ground, and what
+     separates a card here is still mostly the raised paper under it. */
+  --elevation-card: 0 1px 3px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.24);
+
+  /* Authored rather than inverted, like the paper ramp above it: a lightened tint on a dark
+     ground reads as a smear, so the surface stays dark and the hue arrives in the hairline. */
+  --surface-alert: #33201d;
+  --line-alert: #7d443c;
 
   --chrome: #272119;
 

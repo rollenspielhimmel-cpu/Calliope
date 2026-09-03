@@ -12,7 +12,7 @@ declare module 'vue-router' {
      * nothing would catch. Omitting it means `member`, so forgetting to mark a route locks
      * it rather than exposing it.
      */
-    access?: 'member' | 'guest' | 'anyone' | 'operator'
+    access?: 'member' | 'guest' | 'anyone' | 'operator' | 'administrator'
   }
 }
 
@@ -47,7 +47,10 @@ router.beforeEach(async (to) => {
   // Verification is orthogonal to access: `access` asks whether there is a session, this asks
   // what state that session's account is in. An operator route needs it as much as a member
   // one — the API refuses an unverified session whatever role it holds.
-  if (user !== undefined && (access === 'member' || access === 'operator')) {
+  if (
+    user !== undefined &&
+    (access === 'member' || access === 'operator' || access === 'administrator')
+  ) {
     const addressIsUnconfirmed = user.emailAddressVerifiedAt === null
 
     if (addressIsUnconfirmed && to.name !== 'verifyEmailAddressRequired') {
@@ -68,6 +71,16 @@ router.beforeEach(async (to) => {
 
     case 'guest':
       return user === undefined ? true : { name: 'home' }
+
+    // The same shape as `operator` one level up: what changes the platform itself — who may
+    // register, what the profile asks, what the pages say — rather than what happens to one
+    // account. Mirrors `authorizedAsAdministrator` in the backend, which refuses independently.
+    case 'administrator': {
+      if (user === undefined) {
+        return { name: 'login', query: { redirect: to.fullPath } }
+      }
+      return user.platformRole === 'administrator' ? true : { name: 'home' }
+    }
 
     case 'operator': {
       // Signed out goes to the sign-in page like any member route; signed in without a role
