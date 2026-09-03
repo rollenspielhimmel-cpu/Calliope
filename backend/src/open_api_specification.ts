@@ -23,7 +23,8 @@ export const REPORTS_TAG = "reports";
 export const FAVOURITES_TAG = "favourites";
 export const STATUS_UPDATES_TAG = "status-updates";
 export const MODERATION_TAG = "moderation";
-export const PAGES_TAG = "pages";
+// The site's own fixed text pages, not a group's pages — those are `PAGES_TAG`.
+export const CUSTOM_PAGES_TAG = "custom-pages";
 export const FORUM_TAG = "forum";
 export const BLIND_DATE_TAG = "blind-date";
 
@@ -47,7 +48,7 @@ type Tag =
   | typeof SEARCH_TAG
   | typeof STATUS_UPDATES_TAG
   | typeof MODERATION_TAG
-  | typeof PAGES_TAG
+  | typeof CUSTOM_PAGES_TAG
   | typeof FORUM_TAG
   | typeof BLIND_DATE_TAG;
 
@@ -88,7 +89,7 @@ const TAGS_WITH_DESCRIPTIONS: Record<Tag, string> = {
     "Short remarks on the logged-in home page, the way Yooco's LiNet status worked, and their comments",
   [MODERATION_TAG]:
     "The operators' own tools: the addresses an account has connected from, address bans, warnings and suspensions, the watchlist, and which email domains may register",
-  [PAGES_TAG]:
+  [CUSTOM_PAGES_TAG]:
     "Fixed text pages the operators write themselves — the rules, an FAQ — and editing them",
   [FORUM_TAG]:
     "The public forum: its categories and sub-forums, what each reader may see of them, and the structure administration keeps",

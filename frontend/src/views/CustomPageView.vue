@@ -17,7 +17,7 @@
  */
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { useReadPage } from '@/api/pages/pages'
+import { useReadCustomPage } from '@/api/custom-pages/custom-pages'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { Spinner } from '@/components/ui/spinner'
@@ -25,7 +25,7 @@ import { Spinner } from '@/components/ui/spinner'
 const route = useRoute()
 const slug = computed<string>(() => String(route.params.slug))
 
-const { data, isPending } = useReadPage(slug)
+const { data, isPending } = useReadCustomPage(slug)
 
 const page = computed(() => (data.value?.status === 200 ? data.value.data : undefined))
 </script>

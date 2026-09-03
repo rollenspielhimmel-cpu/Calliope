@@ -18,6 +18,7 @@ const MODERATOR = { platformRole: "moderator" } as const;
 const ANY_QUERY = { limit: 20, offset: 0, sort: [] };
 
 const created: string[] = [];
+const authors: string[] = [];
 
 function documentSaying(text: string): PostDocument {
   return {
@@ -59,6 +60,23 @@ async function seed(
     .returning("id")
     .executeTakeFirstOrThrow();
 
+  // The file's own account, rather than whoever happens to be in the table. Taking the first
+  // row of `user` made these tests depend on some other file having run first — alone, or on
+  // a freshly built database, there was nobody there and the foreign key refused the post.
+  const author = await db
+    .insertInto("user")
+    .values({
+      username: `forum-test-${crypto.randomUUID().slice(0, 8)}`,
+      emailAddress: `forum-test-${
+        crypto.randomUUID().slice(0, 8)
+      }@example.test`,
+      hashedPassword: "nicht zum Anmelden gedacht",
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+
+  authors.push(author.id);
+
   const post = await db
     .insertInto("forumPost")
     .values({
@@ -69,7 +87,12 @@ async function seed(
     .returning("id")
     .executeTakeFirstOrThrow();
 
-  return { subForumId: subForum.id, threadId: thread.id, postId: post.id };
+  return {
+    subForumId: subForum.id,
+    threadId: thread.id,
+    postId: post.id,
+    authorId: author.id,
+  };
 }
 
 Deno.test.afterEach(async () => {
@@ -93,7 +116,11 @@ Deno.test.afterEach(async () => {
   await db.deleteFrom("subForum").where("categoryId", "in", created).execute();
   await db.deleteFrom("forumCategory").where("id", "in", created).execute();
 
+  // Last, because the posts above reference it.
+  await db.deleteFrom("user").where("id", "in", authors).execute();
+
   created.length = 0;
+  authors.length = 0;
 });
 
 Deno.test("a thread in a closed sub-forum is not there for a reader who may not see it", async () => {
@@ -167,12 +194,12 @@ Deno.test("a thread narrowed by hand disappears from its open sub-forum's list",
 });
 
 Deno.test("a thread carries how many posts it holds", async () => {
-  const { subForumId, threadId } = await seed("everyone");
+  const { subForumId, threadId, authorId } = await seed("everyone");
 
   await ForumThreadService.createPost(
     threadId,
     documentSaying("Noch einer"),
-    (await db.selectFrom("user").select("id").executeTakeFirstOrThrow()).id,
+    authorId,
   );
 
   const listed = (await ForumThreadService.listThreads(
@@ -190,9 +217,8 @@ Deno.test("a thread carries how many posts it holds", async () => {
 });
 
 Deno.test("the post text is written by the server, never taken from the client", async () => {
-  const { threadId } = await seed("everyone");
-  const author =
-    (await db.selectFrom("user").select("id").executeTakeFirstOrThrow()).id;
+  const { threadId, authorId } = await seed("everyone");
+  const author = authorId;
 
   const { postId } = await ForumThreadService.createPost(
     threadId,
@@ -212,9 +238,8 @@ Deno.test("the post text is written by the server, never taken from the client",
 });
 
 Deno.test("only the author may change a post, unless an operator does it", async () => {
-  const { threadId, postId } = await seed("everyone");
-  const somebodyElse =
-    (await db.selectFrom("user").select("id").executeTakeFirstOrThrow()).id;
+  const { threadId, postId, authorId } = await seed("everyone");
+  const somebodyElse = authorId;
 
   assertEquals(
     await ForumThreadService.updatePost(
@@ -240,9 +265,8 @@ Deno.test("only the author may change a post, unless an operator does it", async
 });
 
 Deno.test("removing the last post removes the thread with it", async () => {
-  const { threadId, postId } = await seed("everyone");
-  const operator =
-    (await db.selectFrom("user").select("id").executeTakeFirstOrThrow()).id;
+  const { threadId, postId, authorId } = await seed("everyone");
+  const operator = authorId;
 
   assertEquals(
     await ForumThreadService.deletePost(threadId, postId, operator, true),
@@ -258,9 +282,8 @@ Deno.test("removing the last post removes the thread with it", async () => {
 });
 
 Deno.test("removing one of several posts leaves the thread standing", async () => {
-  const { threadId, postId } = await seed("everyone");
-  const operator =
-    (await db.selectFrom("user").select("id").executeTakeFirstOrThrow()).id;
+  const { threadId, postId, authorId } = await seed("everyone");
+  const operator = authorId;
 
   await ForumThreadService.createPost(
     threadId,

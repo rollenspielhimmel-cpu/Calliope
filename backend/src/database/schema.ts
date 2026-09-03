@@ -667,13 +667,13 @@ export interface UserToken {
   userId: string;
 }
 
-<<<<<<< HEAD
 export interface WatchlistEntry {
   addedAt: Generated<string>;
   addedBy: string | null;
   note: string;
   userId: string;
-=======
+}
+
 export interface WritingFolder {
   createdAt: Generated<string>;
   createdBy: string | null;
@@ -683,7 +683,6 @@ export interface WritingFolder {
   parentFolderId: string | null;
   title: string;
   writingGroupId: string;
->>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
 }
 
 export interface WritingGroup {
@@ -790,11 +789,8 @@ export interface DB {
   userInWritingGroup: UserInWritingGroup;
   userSession: UserSession;
   userToken: UserToken;
-<<<<<<< HEAD
   watchlistEntry: WatchlistEntry;
-=======
   writingFolder: WritingFolder;
->>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
   writingGroup: WritingGroup;
   writingGroupNextStep: WritingGroupNextStep;
   writingPage: WritingPage;
@@ -803,11 +799,9 @@ export interface DB {
 }
 import * as z from "zod";
 
-<<<<<<< HEAD
-const int32 = z.int().min(-2147483648).max(2147483647);
-=======
 const int16 = z.int().min(-32768).max(32767);
->>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
+
+const int32 = z.int().min(-2147483648).max(2147483647);
 
 export const WRITING_GROUP_VISIBILITIES = ["private", "public"] as const;
 export const WRITING_GROUP_VISIBILITY_SCHEMA = z.enum(
@@ -1529,13 +1523,13 @@ export const USER_TOKEN_SCHEMA = z.object({
   newEmailAddress: z.string().nullable(),
 });
 
-<<<<<<< HEAD
 export const WATCHLIST_ENTRY_SCHEMA = z.object({
   userId: z.uuidv7(),
   note: z.string(),
   addedBy: z.uuidv7().nullable(),
   addedAt: z.iso.datetime({ offset: true }),
-=======
+});
+
 export const WRITING_FOLDER_SCHEMA = z.object({
   id: z.uuidv7(),
   writingGroupId: z.uuidv7(),
@@ -1545,7 +1539,6 @@ export const WRITING_FOLDER_SCHEMA = z.object({
   description: z.string().nullable(),
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
->>>>>>> fc83f9f (feat: Folders, so a group can structure its own material. Closes #110)
 });
 
 export const WRITING_GROUP_SCHEMA = z.object({

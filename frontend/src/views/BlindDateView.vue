@@ -28,7 +28,7 @@ import {
   useWithdrawBlindDateApplication,
 } from '@/api/blind-date/blind-date'
 import type { GetBlindDateEligibility200Reason, ListBlindDateOffers200Item } from '@/api/models'
-import { useReadPage } from '@/api/pages/pages'
+import { useReadCustomPage } from '@/api/custom-pages/custom-pages'
 import { queryClient } from '@/lib/api/queryClient'
 import { failureMessage } from '@/lib/format/failure'
 import { formatActivityTime } from '@/lib/format/formatTime'
@@ -45,7 +45,7 @@ const { data: eligibilityData, isPending: eligibilityPending } = useGetBlindDate
 const { data: offersData } = useListBlindDateOffers()
 const { data: activeData } = useListActiveBlindDates()
 const { data: ownData } = useGetOwnBlindDateApplication()
-const { data: introData } = useReadPage('blind-date')
+const { data: introData } = useReadCustomPage('blind-date')
 const { data: feedbackData } = useGetPendingBlindDateFeedback()
 
 /**

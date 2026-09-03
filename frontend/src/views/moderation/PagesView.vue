@@ -7,12 +7,12 @@
  */
 import { computed, ref } from 'vue'
 import {
-  getListPagesQueryKey,
-  readPage,
-  useDeletePage,
-  useListPages,
-  useWritePage,
-} from '@/api/pages/pages'
+  getListCustomPagesQueryKey,
+  readCustomPage,
+  useDeleteCustomPage,
+  useListCustomPages,
+  useWriteCustomPage,
+} from '@/api/custom-pages/custom-pages'
 import type { ListPages200Item } from '@/api/models'
 import { queryClient } from '@/lib/api/queryClient'
 import { formatActivityTime } from '@/lib/format/formatTime'
@@ -25,11 +25,11 @@ import { Spinner } from '@/components/ui/spinner'
 
 /**
  * `TEXT_LIMIT` is generated from the request *bodies*, and the slug is a path parameter, so it
- * is not there. Matches `TEXT_LIMIT.pageSlug` in the backend.
+ * is not there. Matches `TEXT_LIMIT.customPageSlug` in the backend.
  */
 const SLUG_MAX_LENGTH = 80
 
-const { data, isPending } = useListPages()
+const { data, isPending } = useListCustomPages()
 
 const pages = computed<ListPages200Item[]>(() =>
   data.value?.status === 200 ? data.value.data : [],
@@ -44,8 +44,8 @@ const body = ref<string>('')
 const isPublic = ref<boolean>(false)
 const error = ref<string | undefined>(undefined)
 
-const { mutateAsync: write, isPending: isSaving } = useWritePage()
-const { mutateAsync: remove, isPending: isDeleting } = useDeletePage()
+const { mutateAsync: write, isPending: isSaving } = useWriteCustomPage()
+const { mutateAsync: remove, isPending: isDeleting } = useDeleteCustomPage()
 
 function startNew() {
   editing.value = true
@@ -62,7 +62,7 @@ async function startEdit(page: ListPages200Item) {
 
   // The list carries no body — a list of pages is read to pick one from — so the page itself
   // is fetched before it can be edited.
-  const answer = await readPage(page.slug)
+  const answer = await readCustomPage(page.slug)
 
   if (answer.status !== 200) {
     error.value = 'Diese Seite konnte nicht geladen werden.'
@@ -92,20 +92,20 @@ async function save() {
   }
 
   editing.value = false
-  await queryClient.invalidateQueries({ queryKey: getListPagesQueryKey() })
+  await queryClient.invalidateQueries({ queryKey: getListCustomPagesQueryKey() })
 }
 
-async function deleteOne(pageSlug: string) {
+async function deleteOne(customPageSlug: string) {
   error.value = undefined
 
   try {
-    await remove({ slug: pageSlug })
+    await remove({ slug: customPageSlug })
   } catch {
     error.value = 'Das ist gerade nicht möglich. Versuche es später noch einmal.'
     return
   }
 
-  await queryClient.invalidateQueries({ queryKey: getListPagesQueryKey() })
+  await queryClient.invalidateQueries({ queryKey: getListCustomPagesQueryKey() })
 }
 
 const isComplete = computed<boolean>(
@@ -191,7 +191,7 @@ const isComplete = computed<boolean>(
           <span class="text-[12.5px] text-ink-4">Titel</span>
           <Input
             v-model="title"
-            :maxlength="TEXT_LIMIT.writePage.title.maxLength"
+            :maxlength="TEXT_LIMIT.writeCustomPage.title.maxLength"
             aria-label="Titel"
           />
         </div>
@@ -200,7 +200,7 @@ const isComplete = computed<boolean>(
           <span class="text-[12.5px] text-ink-4">Inhalt</span>
           <Textarea
             v-model="body"
-            :maxlength="TEXT_LIMIT.writePage.body.maxLength"
+            :maxlength="TEXT_LIMIT.writeCustomPage.body.maxLength"
             aria-label="Inhalt"
             rows="16"
           />

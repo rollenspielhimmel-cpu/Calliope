@@ -88,10 +88,16 @@ CREATE TRIGGER set_last_activity_at
     FOR EACH ROW
 EXECUTE FUNCTION public.set_last_activity_at();
 
--- `UPDATE OF title` for the same reason as the thread's own trigger below: moving a thread
+-- Scoped for the same reason as the thread's own trigger below: moving a thread
 -- into a folder is not activity in its group.
+--
+-- `last_activity_at` belongs in the list alongside `title`, because that is the column the post
+-- trigger writes. A new post moves its thread, and the thread moving is what has to move the
+-- group — with `title` alone the chain stops at the thread, and a group with fresh writing in it
+-- would sink down the list as if nothing had happened. A folder move touches neither column, so
+-- it still counts for nothing.
 CREATE TRIGGER set_last_activity_at_for_writing_group
-    AFTER INSERT OR UPDATE OF title OR DELETE
+    AFTER INSERT OR UPDATE OF title, last_activity_at OR DELETE
     ON public.writing_thread
     FOR EACH ROW
 EXECUTE FUNCTION public.set_last_activity_at_for_writing_group();

@@ -126,9 +126,9 @@ export const TEXT_LIMIT = {
   broadcastSubject: 200,
   /** One message to everybody. Room for an announcement, far short of a newsletter. */
   broadcastBody: 10_000,
-  /** A page's address, which is also its identity. */
-  pageSlug: 80,
-  pageTitle: 120,
+  /** A fixed text page of the site's own — its address is also its identity. */
+  customPageSlug: 80,
+  customPageTitle: 120,
   /** The rules or an FAQ written out. Generous: these are the longest prose here after a post. */
   pageBody: 50_000,
   /** What a profile question asks. One line, the way the fixed fields ask theirs. */

@@ -62,7 +62,7 @@ Deno.test("DELETE /api/groups/{groupId}/memberships/{userId} refuses a non-admin
 });
 
 // The four below were `DELETE …/memberships/me/leave` until the two endpoints became one:
-// "an administrator, or whoever it belongs to" is the rule `mayModify` already gives content.
+// "an administrator, or whoever it belongs to" is the rule `mayAct` already gives content.
 
 Deno.test("DELETE /api/groups/{groupId}/memberships/{userId} lets a member leave", async () => {
   const adminCookie = await registerUser(administrator);

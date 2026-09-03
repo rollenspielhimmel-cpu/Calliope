@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
-import { PAGES_TAG } from "@/src/open_api_specification.ts";
+import { CUSTOM_PAGES_TAG } from "@/src/open_api_specification.ts";
 import { USER_SCHEMA } from "@/src/database/schema.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
@@ -32,7 +32,7 @@ const PAGE_SUMMARY_RESPONSE = z.object({
 });
 
 const WRITE_PAGE_BODY = z.object({
-  title: notBlank(z.string().min(1).max(TEXT_LIMIT.pageTitle)),
+  title: notBlank(z.string().min(1).max(TEXT_LIMIT.customPageTitle)),
   // Markdown. Nothing in this product takes rich text, and a stored document tree would tie
   // the page to whichever editor produced it.
   body: notBlank(z.string().min(1).max(TEXT_LIMIT.pageBody)),
@@ -54,11 +54,11 @@ export default new OpenAPIHono()
     createRoute({
       method: "get",
       path: "/",
-      tags: [PAGES_TAG],
+      tags: [CUSTOM_PAGES_TAG],
       summary: "List every page, public or not",
       description:
         "Administrator only, unlike reading one: this is the list of what exists, including the pages that are not public.",
-      operationId: "listPages",
+      operationId: "listCustomPages",
       middleware: [authenticated, authorizedAsAdministrator] as const,
       responses: {
         [STATUS_CODE.OK]: {
@@ -78,11 +78,11 @@ export default new OpenAPIHono()
     createRoute({
       method: "put",
       path: "/{slug}",
-      tags: [PAGES_TAG],
+      tags: [CUSTOM_PAGES_TAG],
       summary: "Create or rewrite a page",
       description:
         "One route for both, because the slug is the identity: writing to one that does not exist yet is how a page is made. Changing a page's address is therefore making a different page, which is deliberate — the link somebody bookmarked should keep meaning what it meant.",
-      operationId: "writePage",
+      operationId: "writeCustomPage",
       middleware: [authenticated, authorizedAsAdministrator] as const,
       request: {
         params: z.object({ slug: PAGE_SLUG }),
@@ -111,9 +111,9 @@ export default new OpenAPIHono()
     createRoute({
       method: "delete",
       path: "/{slug}",
-      tags: [PAGES_TAG],
+      tags: [CUSTOM_PAGES_TAG],
       summary: "Delete a page",
-      operationId: "deletePage",
+      operationId: "deleteCustomPage",
       middleware: [authenticated, authorizedAsAdministrator] as const,
       request: { params: z.object({ slug: PAGE_SLUG }) },
       responses: {

@@ -316,7 +316,7 @@ async function updatePost(
         ...(isPublishing
           ? { createdAt: Temporal.Now.instant().toString() }
           : {}),
-        // Who, not only when: `mayModify` lets somebody administering the group edit another
+        // Who, not only when: `mayAct` lets somebody administering the group edit another
         // member's post, and the reader is told which of the two happened.
         ...(isEditingPublished
           ? {

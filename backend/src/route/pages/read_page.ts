@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
-import { PAGES_TAG } from "@/src/open_api_specification.ts";
+import { CUSTOM_PAGES_TAG } from "@/src/open_api_specification.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { resolveSessionUser } from "@/src/middleware/session_user.ts";
 import { CustomPageService } from "@/src/service/custom_page_service.ts";
@@ -20,7 +20,7 @@ import {
 export const PAGE_SLUG = z
   .string()
   .min(1)
-  .max(TEXT_LIMIT.pageSlug)
+  .max(TEXT_LIMIT.customPageSlug)
   .regex(
     /^[a-z0-9]+(-[a-z0-9]+)*$/,
     "Nur Kleinbuchstaben, Ziffern und Bindestriche",
@@ -42,11 +42,11 @@ export default new OpenAPIHono().openapi(
   createRoute({
     method: "get",
     path: "/{slug}",
-    tags: [PAGES_TAG],
+    tags: [CUSTOM_PAGES_TAG],
     summary: "Read one page",
     description:
       "A public page is readable by anybody, including somebody with no account. A page that is not public answers 404 rather than 403 to a reader without a session, so its existence stays hidden — the same rule the rest of the API follows.",
-    operationId: "readPage",
+    operationId: "readCustomPage",
     request: { params: z.object({ slug: PAGE_SLUG }) },
     responses: {
       [STATUS_CODE.OK]: {

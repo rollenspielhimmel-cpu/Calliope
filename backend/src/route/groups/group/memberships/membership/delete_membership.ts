@@ -66,7 +66,7 @@ export default new OpenAPIHono().openapi(
       return c.json({ error: "Group not found" }, STATUS_CODE.NotFound);
     }
 
-    // The shape `mayModify` gives posts, threads and steps: an administrator of the group, or
+    // The shape `mayAct` gives posts, threads and steps: an administrator of the group, or
     // whoever the thing belongs to. Here that is the member whose own membership it is, which
     // is how leaving and declining an invitation are reached.
     const isOwnMembership = userId === user.id;

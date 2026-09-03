@@ -271,7 +271,7 @@ watch(pageId, () => {
               v-if="editing"
               v-model="draftTitle"
               class="mb-[5px]"
-              name="pageTitle"
+              name="customPageTitle"
               :maxlength="LIMIT.title.maxLength"
               aria-label="Titel der Seite"
             />

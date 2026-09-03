@@ -96,9 +96,6 @@ export function notificationAction(
           },
         },
       }
-    case 'blind_date_matched':
-    case 'blind_date_reveal_requested':
-    case 'blind_date_ended':
     case 'new_writing_page':
       return {
         kind: 'route',
@@ -110,6 +107,9 @@ export function notificationAction(
           },
         },
       }
+    case 'blind_date_matched':
+    case 'blind_date_reveal_requested':
+    case 'blind_date_ended':
     case 'invited_to_writing_group':
     case 'invitation_accepted':
     case 'visibility_changed_in_writing_group':

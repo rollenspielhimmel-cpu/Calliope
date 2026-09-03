@@ -78,7 +78,7 @@ export const POST_RESPONSE = WRITING_POST_SCHEMA.extend(CREATED_BY_USERNAME)
      */
     isUnderReview: z.boolean(),
     /**
-     * Who changed it, which is not implied by the row: `mayModify` lets the author or somebody
+     * Who changed it, which is not implied by the row: `mayAct` lets the author or somebody
      * administering the group edit. Null when nothing has been edited, and null once that
      * account is gone, exactly like the author's name above.
      */
@@ -397,6 +397,8 @@ export const STATUS_UPDATE_COMMENT_RESPONSE = STATUS_UPDATE_COMMENT_SCHEMA
   .extend({
     createdByUsername: z.string(),
   });
+
+/**
  * A page as search returns it: the summary, without its prose. The body is what the term may
  * have matched, but the row shows a title like every other kind's.
  */
