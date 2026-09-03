@@ -20,3 +20,6 @@ node_modules/
 .file-storage/
 
 .DS_Store
+
+# Diese Freigabe gilt nur für diesen Rechner und nennt die Adresse des Servers.
+.claude/settings.local.json

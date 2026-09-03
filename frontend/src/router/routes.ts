@@ -41,6 +41,15 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'page',
     component: () => import('../views/PageView.vue'),
   },
+  // Readable signed out: a legal notice has to be reachable from the sign-in page too. English
+  // path like every other route, even though the page is titled „Impressum" — the rule holds and
+  // nothing legal turns on the URL.
+  {
+    path: '/imprint',
+    name: 'imprint',
+    component: () => import('../views/ImprintView.vue'),
+    meta: { access: 'anyone' },
+  },
   // As above: the bare path follows the bar, which for ideas is the carousel rather than a list.
   { path: '/story-ideas', redirect: { name: 'storyIdeasCarousel' } },
   {
