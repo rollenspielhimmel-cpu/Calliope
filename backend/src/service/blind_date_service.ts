@@ -72,6 +72,18 @@ export function onlineTimeIsEnforced(now: Date = new Date()): boolean {
  * time on top would invite them to fix the wrong thing.
  */
 export type Ineligibility =
+  /**
+   * The root administrator, who runs the desk and does not take part from that account.
+   *
+   * First in the order, because it is the only one that will never change: the others describe a
+   * moment, this one describes what the account is for. Somebody who administers the platform
+   * takes part from their own account, like everybody else.
+   *
+   * It also closes the last way anybody could have paired themselves. That was previously a
+   * separate refusal in the matching, which is now gone: a manager with an open application cannot
+   * see the queue, and the one account that could was the root administrator.
+   */
+  | "administration_account"
   | "excluded"
   | "already_applied"
   | "already_matched"
@@ -93,30 +105,38 @@ async function eligibilityFor(
 ): Promise<Eligibility> {
   const enforced = onlineTimeIsEnforced(now);
 
-  const [excluded, pending, matched, onlineMinutes] = await Promise.all([
-    db
-      .selectFrom("blindDateExclusion")
-      .select("userId")
-      .where("userId", "=", userId)
-      .executeTakeFirst(),
-    db
-      .selectFrom("blindDateApplication")
-      .select("id")
-      .where("userId", "=", userId)
-      .where("status", "=", "pending")
-      .executeTakeFirst(),
-    db
-      .selectFrom("blindDatePartner")
-      .select("userId")
-      .where("userId", "=", userId)
-      .where("isActive", "=", true)
-      .executeTakeFirst(),
-    // Read even while the grace period runs, because the form shows it either way — somebody
-    // should be able to see where they stand before the rule starts applying to them.
-    ActivityService.onlineMinutesInLast30Days(userId, now),
-  ]);
+  const [account, excluded, pending, matched, onlineMinutes] = await Promise
+    .all([
+      db
+        .selectFrom("user")
+        .select("isPrimordialAdmin")
+        .where("id", "=", userId)
+        .executeTakeFirst(),
+      db
+        .selectFrom("blindDateExclusion")
+        .select("userId")
+        .where("userId", "=", userId)
+        .executeTakeFirst(),
+      db
+        .selectFrom("blindDateApplication")
+        .select("id")
+        .where("userId", "=", userId)
+        .where("status", "=", "pending")
+        .executeTakeFirst(),
+      db
+        .selectFrom("blindDatePartner")
+        .select("userId")
+        .where("userId", "=", userId)
+        .where("isActive", "=", true)
+        .executeTakeFirst(),
+      // Read even while the grace period runs, because the form shows it either way — somebody
+      // should be able to see where they stand before the rule starts applying to them.
+      ActivityService.onlineMinutesInLast30Days(userId, now),
+    ]);
 
-  const reason: Ineligibility | undefined = excluded !== undefined
+  const reason: Ineligibility | undefined = account?.isPrimordialAdmin === true
+    ? "administration_account"
+    : excluded !== undefined
     ? "excluded"
     : matched !== undefined
     ? "already_matched"

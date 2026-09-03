@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
-import { BlindDateMatchingService } from "@/src/service/blind_date_matching_service.ts";
+import { BlindDateService } from "@/src/service/blind_date_service.ts";
 import { BlindDateAccessService } from "@/src/service/blind_date_access_service.ts";
 import {
   clearRateLimits,
@@ -308,67 +308,70 @@ Deno.test("withdrawing gives the desk back too", async () => {
   );
 });
 
-Deno.test("nobody pairs themselves, and that has no exemption", async () => {
-  const managerCookie = await asOperator(manager, true);
-  await asOperator(plainOperator);
-  const otherCookie = await registerUser(other);
+/**
+ * Whoever holds the primordial seat right now, waiting briefly if nobody does.
+ *
+ * There is exactly one such account, and `operators_test.ts` borrows the seat for the length of its
+ * fixture — releasing it, registering users, then taking it. So „the account called Admin" is not a
+ * stable thing to point at while the suite runs in parallel, and neither is „somebody holds it".
+ *
+ * Read rather than written, deliberately: taking the seat here would make the *other* file fail
+ * instead, and trading one flake for another is not a fix. Waiting costs a few milliseconds and
+ * disturbs nobody.
+ */
+async function whoeverIsPrimordial(): Promise<string> {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const holder = await db
+      .selectFrom("user")
+      .select("id")
+      .where("isPrimordialAdmin", "=", true)
+      .executeTakeFirst();
 
-  await request(
-    "POST",
-    "/api/blind-date/applications",
-    managerCookie,
-    APPLICATION,
-  );
-  await request(
-    "POST",
-    "/api/blind-date/applications",
-    otherCookie,
-    APPLICATION,
-  );
+    if (holder !== undefined) {
+      return holder.id;
+    }
 
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error("no account held the primordial seat for two seconds");
+}
+
+Deno.test("whoever holds the administration account cannot apply", async () => {
+  const primordial = await whoeverIsPrimordial();
+
+  const eligibility = await BlindDateService.eligibilityFor(primordial);
+  assertEquals(eligibility.reason, "administration_account");
+
+  // Said before every other reason, so the answer does not change with the day: the others
+  // describe a moment, this one describes what the account is for.
+  const refused = await BlindDateService.apply(primordial, {
+    offerId: null,
+    plotTitle: "Probe",
+    writingStyle: "prose",
+    postLength: "medium",
+    roleGender: "weiblich",
+    pairing: "offen",
+    note: null,
+  });
+  assertEquals(refused, "administration_account");
+
+  // And nothing was written.
   const applications = await db
     .selectFrom("blindDateApplication")
-    .innerJoin("user", "user.id", "blindDateApplication.userId")
-    .select(["blindDateApplication.id", "blindDateApplication.userId"])
-    .where("user.username", "in", [manager, other])
-    .where("blindDateApplication.status", "=", "pending")
+    .select("id")
+    .where("userId", "=", primordial)
     .execute();
+  assertEquals(applications.length, 0);
+});
 
-  assertEquals(applications.length, 2);
-  const [first, second] = applications;
-  assert(first !== undefined && second !== undefined);
+Deno.test("an ordinary member is not caught by that", async () => {
+  const cookie = await registerUser(member);
 
-  // Checked on the service rather than through the route, because no session can reach this state
-  // through it: a manager with an open application cannot see the desk at all, and the root
-  // administrator is the only account that could — which makes this the guard that has to hold on
-  // its own, without a route in front of it doing the work.
-  const refused = await BlindDateMatchingService.matchApplications(
-    first.id,
-    second.id,
-    "Probe",
-    "x",
-    first.userId,
-  );
-  assertEquals(refused, "matching_oneself");
-
-  // And nothing was made: a half-refused match would be worse than none.
-  const partners = await db
-    .selectFrom("blindDatePartner")
-    .select("userId")
-    .where("userId", "in", [first.userId, second.userId])
-    .execute();
-  assertEquals(partners.length, 0);
-
-  // Somebody who is in neither application may pair them.
   assertEquals(
-    await BlindDateMatchingService.matchApplications(
-      first.id,
-      second.id,
-      "Probe",
-      "x",
-      await getUserId(plainOperator),
-    ),
-    undefined,
+    (await request("POST", "/api/blind-date/applications", cookie, APPLICATION))
+      .status,
+    STATUS_CODE.OK,
   );
 });
 

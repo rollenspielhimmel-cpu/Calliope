@@ -251,16 +251,6 @@ export default new OpenAPIHono()
           return c.json({ ok: true } as const, STATUS_CODE.OK);
         case "not_found":
           return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
-        // Said in words rather than as a token, because it is the one refusal here that is about
-        // the person reading it rather than about the two applications.
-        case "matching_oneself":
-          return c.json(
-            {
-              error:
-                "Du kannst dich nicht selbst zuordnen. Das übernimmt eine andere berechtigte Person oder der Ur-Admin.",
-            },
-            STATUS_CODE.Forbidden,
-          );
         case "same_member":
         case "already_matched":
         case "excluded":

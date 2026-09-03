@@ -56,6 +56,7 @@ const OFFER_RESPONSE = z.object({
  * only that — the reason the team wrote down is theirs, not something to read back to the member.
  */
 const INELIGIBILITY = z.enum([
+  "administration_account",
   "excluded",
   "already_applied",
   "already_matched",
@@ -513,6 +514,7 @@ export default new OpenAPIHono()
             },
             STATUS_CODE.Conflict,
           );
+        case "administration_account":
         case "excluded":
         case "already_applied":
         case "already_matched":

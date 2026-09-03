@@ -114,8 +114,6 @@ function rpgThreadTitle(plotTitle: string): string {
 }
 
 export type MatchRefusal =
-  /** The person doing the matching is one of the two being matched. */
-  | "matching_oneself"
   | "not_found"
   | "same_member"
   | "already_matched"
@@ -169,16 +167,9 @@ async function matchApplications(
       return "same_member";
     }
 
-    // **Nobody pairs themselves, ever.** Not the root administrator either, who is exempt from the
-    // suspension precisely so the desk keeps working while a manager waits — that exemption is
-    // about seeing the queue, and this is about deciding one's own place in it.
-    //
-    // A manager with an open application cannot reach this route at all, so in practice this is
-    // the second lock. It is here because it is the one that does not depend on the first: a route
-    // added later, a right widened, a suspension rule relaxed — all of those leave this standing.
-    if (first.userId === matchedBy || second.userId === matchedBy) {
-      return "matching_oneself";
-    }
+    // Nobody can be in this position any more, so nothing checks for it. A manager with an open
+    // application cannot see the queue, and the root administrator — the one account that could
+    // have — may not apply at all: see `administration_account` in `blind_date_service.ts`.
 
     const userIds = [first.userId, second.userId];
 

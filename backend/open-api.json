@@ -49516,6 +49516,7 @@
                     "reason": {
                       "type": ["string", "null"],
                       "enum": [
+                        "administration_account",
                         "excluded",
                         "already_applied",
                         "already_matched",
@@ -50271,6 +50272,7 @@
                     "reason": {
                       "type": "string",
                       "enum": [
+                        "administration_account",
                         "excluded",
                         "already_applied",
                         "already_matched",

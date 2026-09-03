@@ -30,9 +30,11 @@ import { mayModeratePlatform } from "@/src/service/platform_authorization.ts";
  * access one should not have. Nothing to forget here.
  *
  * **The root administrator is exempt from the third condition**, and from nothing else. Somebody
- * has to be able to work the desk while a manager waits, and that is the account named for it. If
- * the root administrator applies as well, they still see the queue — but `matchApplications` will
- * not let them pair themselves, and that refusal has no exceptions at all.
+ * has to be able to work the desk while a manager waits, and that is the account named for it.
+ *
+ * The exemption costs nothing, because that account cannot apply in the first place: see
+ * `administration_account` in `blind_date_service.ts`. Between the two, nobody who could pair
+ * themselves can reach the queue, which is why the matching no longer checks for it.
  */
 
 export type AccessRefusal =

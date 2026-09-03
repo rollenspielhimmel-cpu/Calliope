@@ -83,6 +83,8 @@ const mayApply = computed<boolean>(() => eligibility.value?.reason === null)
  * delivered by a machine.
  */
 const REFUSALS: Record<NonNullable<GetBlindDateEligibility200Reason>, string> = {
+  administration_account:
+    'Dieses Konto ist für die Verwaltung da, nicht zur Teilnahme. Für ein Blind-Date nimm dein eigenes Mitgliedskonto.',
   excluded: 'Du kannst dich zurzeit nicht für ein Blind-Date bewerben. Melde dich beim Team.',
   already_applied: 'Deine Bewerbung liegt dem Team vor.',
   already_matched: 'Du bist gerade in einem Blind-Date. Eines nach dem anderen.',
