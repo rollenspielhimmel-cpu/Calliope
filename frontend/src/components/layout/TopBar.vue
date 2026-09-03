@@ -195,7 +195,19 @@ async function signOut() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem as-child>
+              <!-- The two items that lead somewhere navigate from `select` rather than from the
+                   link inside them. A menu closes on the same pointer events the anchor needs, and
+                   the item is gone before the click lands on it — so the link rendered, looked
+                   right, and did nothing. `select` fires either way, from the pointer and from the
+                   keyboard.
+
+                   The anchor stays: it carries the address for a middle click, for "open in new
+                   tab", and for anything that reads links out. Pushing the same route twice is a
+                   no-op, so the two paths cannot fight. -->
+              <DropdownMenuItem
+                as-child
+                @select="router.push({ name: 'member', params: { userId: props.user.id } })"
+              >
                 <RouterLink :to="{ name: 'member', params: { userId: props.user.id } }">
                   Mein Profil
                 </RouterLink>
@@ -216,7 +228,7 @@ async function signOut() {
             <template v-if="isOperator">
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem as-child>
+                <DropdownMenuItem as-child @select="router.push({ name: 'moderation' })">
                   <RouterLink :to="{ name: 'moderation' }">Moderation</RouterLink>
                 </DropdownMenuItem>
                 <!-- A switch, so it says what it will do rather than what is true now. Named for
