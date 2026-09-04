@@ -96,6 +96,36 @@ function environment(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    /**
+     * No generated preload links, because they fetch without credentials.
+     *
+     * Vite writes `<link rel="modulepreload" crossorigin>` for a route's dependencies and hands
+     * them to its own helper, which decides:
+     *
+     *     credentials = crossOrigin === 'use-credentials' ? 'include'
+     *                 : crossOrigin === 'anonymous'       ? 'omit'
+     *                 :                                     'same-origin'
+     *
+     * Vite sets `anonymous`, so the helper picks `omit` — no password and **no cookie**. Behind
+     * this deployment's gate every lazily loaded chunk therefore came back 401, and a 401 on a
+     * subresource is another password prompt. Measured against a rebuilt copy of the gate: seven
+     * chunks arrived without credentials, and with this line exactly one request still does — the
+     * first document, which is the prompt there is supposed to be.
+     *
+     * The tags Vite writes into `index.html` are not affected: the browser parses those itself and
+     * sends credentials for a same-origin request. Only the runtime helper omits them.
+     *
+     * **What it costs.** A route's dependencies are discovered when its import runs rather than
+     * ahead of it, so a first visit to a page fetches in two steps instead of one. Small here —
+     * the chunks are small, the origin is the same, and the connection is HTTP/2. Worth it against
+     * the alternative, which was patching Vite's own helper from a build plugin and carrying that
+     * patch through every update.
+     *
+     * **This can go when the gate goes**, and then the preloading is worth having back.
+     */
+    modulePreload: false,
+  },
   plugins: [environment(), vue(), vueDevTools(), tailwindcss()],
   resolve: {
     alias: {
