@@ -76,6 +76,18 @@ services:
       # Stamped by deploy.sh so it can check that the bundle Caddy serves is the one it built.
       # Defaulted rather than required: a build by hand is not a deploy and has nothing to say.
       VITE_COMMIT: ${GIT_COMMIT:-unknown}
+      # Whether a gate stands in front of this deployment. Vite turns its generated preload links
+      # off behind one, because they fetch without credentials — see `frontend/vite.config.ts`.
+      #
+      # **Derived from the gate's own credential rather than from a switch of its own.** A second
+      # setting could disagree with the Caddyfile, and the way it would disagree is the quiet one:
+      # preloading back on while the gate still stands, and the second password prompt returns
+      # without anybody having touched it. `:+` yields the word only when GATE_PASSWORD_HASH is
+      # set and not empty, so deleting the gate brings preloading back by itself, on the same day,
+      # without anybody having to remember.
+      #
+      # Not VITE_-prefixed on purpose: this is for the build, not for the bundle.
+      GATE_IN_FRONT: ${GATE_PASSWORD_HASH:+ja}
       # No fallback on the first two: the build refuses rather than ship nobody's name.
       VITE_WEBSITE_OPERATOR_NAME: ${WEBSITE_OPERATOR_NAME:?WEBSITE_OPERATOR_NAME must be set}
       VITE_WEBSITE_OPERATOR_EMAIL_ADDRESS: ${WEBSITE_OPERATOR_EMAIL_ADDRESS:?WEBSITE_OPERATOR_EMAIL_ADDRESS must be set}

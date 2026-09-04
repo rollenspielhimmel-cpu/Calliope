@@ -49,6 +49,25 @@ process.env.VITE_SOURCE_URL ||=
   rootEnvironment.SOURCE_URL ?? 'https://github.com/rollenspielhimmel-cpu/calliope'
 
 /**
+ * Whether a shared password stands in front of this deployment. Read `build.modulePreload` for
+ * what it decides and why.
+ *
+ * **Taken from the gate's own credential**, not from a switch of its own: two settings can
+ * disagree, and the way they would is the quiet one — the gate still standing while the build
+ * behaves as though it were gone. `GATE_PASSWORD_HASH` is what somebody deletes to remove the
+ * gate, so it is what this asks about.
+ *
+ * Two sources because there are two ways to build. The deploy hands `GATE_IN_FRONT` to the build
+ * container, which never sees the repository's `.env`; a build in a checkout reads that file
+ * directly. Both answer the same question.
+ *
+ * The environment is deliberately not consulted: `testing` does not mean „gated", and on the day
+ * the beta opens it may briefly be `production` with the gate still up, or `staging` without it.
+ */
+const GATE_IN_FRONT =
+  (process.env.GATE_IN_FRONT ?? rootEnvironment.GATE_PASSWORD_HASH ?? '').trim() !== ''
+
+/**
  * No default on a *build*: an instance that cannot say what it is would claim to be production.
  * Serving defaults to development, so a checkout still runs with no setup.
  */
@@ -98,7 +117,8 @@ function environment(): Plugin {
 export default defineConfig({
   build: {
     /**
-     * No generated preload links, because they fetch without credentials.
+     * No generated preload links **while a gate stands in front of this deployment**, because
+     * they fetch without credentials.
      *
      * Vite writes `<link rel="modulepreload" crossorigin>` for a route's dependencies and hands
      * them to its own helper, which decides:
@@ -122,9 +142,11 @@ export default defineConfig({
      * the alternative, which was patching Vite's own helper from a build plugin and carrying that
      * patch through every update.
      *
-     * **This can go when the gate goes**, and then the preloading is worth having back.
+     * **It goes when the gate goes, by itself.** Tied to a setting rather than to a comment: a
+     * remark saying „remove this later" is read by nobody, and the cost lands on a few hundred
+     * people on mobile data rather than on one tester.
      */
-    modulePreload: false,
+    modulePreload: !GATE_IN_FRONT,
   },
   plugins: [environment(), vue(), vueDevTools(), tailwindcss()],
   resolve: {
