@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import type { User } from "@/src/service/user_service.ts";
 import { PseudonymService } from "@/src/service/pseudonym_service.ts";
+import { type Json, maskPersonFields } from "@/src/service/person_fields.ts";
 
 /**
  * Nobody in a Blind-Date group is named to the other, whatever the route below happens to return.
@@ -18,83 +19,14 @@ import { PseudonymService } from "@/src/service/pseudonym_service.ts";
  *
  * **What it cannot do**, said plainly so nobody trusts it further than it reaches: it sees the
  * subtree and nothing else. A route that serves group content from somewhere else — search does
- * exactly that — is invisible to it. That is what the OpenAPI-derived test is for; this handles the
- * common case so that thinking is only needed in the rare one.
+ * exactly that, and named a partner outright — is invisible to it. Search masks itself, with the
+ * same field list from `person_fields.ts`, and the test built from `open-api.json` is what notices
+ * the next place that needs to.
  *
  * Non-JSON never reaches here with anything to hide: all 145 responses in the subtree are
  * `c.json`, and the two byte-level responses in the whole backend (an avatar image, the chat
  * stream) live elsewhere and carry no name.
  */
-
-/**
- * The fields that name a person, and the field beside each that spells that person out.
- *
- * The convention this codebase already follows: an id `xBy` travels with an `xByUsername`. Listed
- * rather than derived, because a rule guessing from names would either miss a field or mask an
- * innocent one — and the test built from `open-api.json` is what notices a seventh.
- */
-const PERSON_FIELDS: ReadonlyArray<
-  { id: string; username: string; avatar?: string }
-> = [
-  { id: "createdBy", username: "createdByUsername" },
-  { id: "editedBy", username: "editedByUsername" },
-  { id: "updatedBy", username: "updatedByUsername" },
-  { id: "invitedBy", username: "invitedByUsername" },
-  { id: "actorId", username: "actorUsername" },
-  // A membership names its person in the bare fields, being a row *about* somebody.
-  { id: "userId", username: "username", avatar: "avatarUrl" },
-];
-
-type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
-
-/**
- * Rewrites in place on a freshly parsed body, which is nobody else's object.
- *
- * The reader's own id survives: every check the interface makes with it asks „is this mine", and
- * answering that about oneself reveals nothing. Everyone else's becomes null — the field is
- * already nullable everywhere it appears, so this is a value the client is built to handle rather
- * than a hole in the shape.
- */
-function maskValue(
-  value: Json,
-  readerId: string,
-  label: (userId: string | null) => { username: string; avatarUrl: null },
-): void {
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      maskValue(entry, readerId, label);
-    }
-    return;
-  }
-
-  if (value === null || typeof value !== "object") {
-    return;
-  }
-
-  for (const field of PERSON_FIELDS) {
-    const id = value[field.id];
-
-    if (typeof id !== "string" || id === readerId) {
-      continue;
-    }
-
-    // The name first: once the id is gone there is nothing left to look the label up by.
-    if (field.username in value) {
-      value[field.username] = label(id).username;
-    }
-
-    if (field.avatar !== undefined && field.avatar in value) {
-      value[field.avatar] = null;
-    }
-
-    value[field.id] = null;
-  }
-
-  for (const entry of Object.values(value)) {
-    maskValue(entry, readerId, label);
-  }
-}
-
 export default createMiddleware<{
   Variables: { user: User };
 }>(async (c, next) => {
@@ -127,7 +59,7 @@ export default createMiddleware<{
   }
 
   const body = await c.res.clone().json() as Json;
-  maskValue(body, user.id, mask);
+  maskPersonFields(body, user.id, mask);
 
   c.res = new Response(JSON.stringify(body), {
     status: c.res.status,

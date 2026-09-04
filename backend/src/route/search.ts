@@ -16,6 +16,8 @@ import { WritingPageService } from "@/src/service/writing_page_service.ts";
 import { StoryIdeaService } from "@/src/service/story_idea_service.ts";
 import { UserService } from "@/src/service/user_service.ts";
 import { BlockService } from "@/src/service/block_service.ts";
+import { PseudonymService } from "@/src/service/pseudonym_service.ts";
+import { type Json, maskPersonFields } from "@/src/service/person_fields.ts";
 import { listResponseSchema } from "@/src/list/list_endpoint.ts";
 import { TEXT_LIMIT, TEXT_MINIMUM } from "@/src/text_limit.ts";
 import {
@@ -133,6 +135,56 @@ export default new OpenAPIHono().openapi(
         hiddenUserIds: blockedIds,
       }),
     ]);
+
+    // ── Blind-Date groups, whose authors have no names here ────────────────────────────────
+    //
+    // **Search reaches into groups from outside**, which is why the middleware in front of
+    // `/groups/:groupId` cannot help it and why this was the one surface that printed a partner's
+    // real username rather than merely their id: a member searching a word from their partner's
+    // thread got the name back.
+    //
+    // Three of the five sections can hold group content. Groups already arrive masked from their
+    // own service; doing it again here is idempotent and cheaper than reasoning about which
+    // service remembered. Story ideas and members are not group content and are left alone.
+    //
+    // One query for all the groups involved, not one per row.
+    const groupIds = [
+      ...new Set([
+        ...groups.results.map((group) => group.id),
+        ...threads.results.map((thread) => thread.writingGroupId),
+        ...pages.results.map((page) => page.writingGroupId),
+      ]),
+    ];
+
+    const masks = await PseudonymService.masksForGroups(groupIds);
+
+    if (masks.size > 0) {
+      const hide = (rows: Json[], groupIdOf: (row: Json) => unknown) => {
+        for (const row of rows) {
+          const groupId = groupIdOf(row);
+          const mask = typeof groupId === "string"
+            ? masks.get(groupId)
+            : undefined;
+
+          if (mask !== undefined) {
+            maskPersonFields(row, user.id, mask);
+          }
+        }
+      };
+
+      hide(
+        groups.results as unknown as Json[],
+        (row) => (row as Record<string, unknown>).id,
+      );
+      hide(
+        threads.results as unknown as Json[],
+        (row) => (row as Record<string, unknown>).writingGroupId,
+      );
+      hide(
+        pages.results as unknown as Json[],
+        (row) => (row as Record<string, unknown>).writingGroupId,
+      );
+    }
 
     return c.json(
       { groups, threads, pages, storyIdeas, users },

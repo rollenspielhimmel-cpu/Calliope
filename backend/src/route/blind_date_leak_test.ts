@@ -66,6 +66,16 @@ Deno.test.afterEach(async () => {
 const BLIND_DATE_TITLE = "Blind-Date Leck-Test";
 
 /**
+ * The word every piece of this fixture carries, so one search returns all of them.
+ *
+ * This test searched for „Blind-Date Leck" while the thread was called „Erster Thread". The group
+ * matched and its author was masked; the thread never matched, and *its* author was not masked at
+ * all. The endpoint was covered and the leaking row was not — which is how a real username stayed
+ * reachable through the search box while this file passed.
+ */
+const SEARCHABLE = "zzzsuchwort";
+
+/**
  * A Blind-Date as the matching tool will make one: a private group, both members joined with
  * their real accounts, a thread, a post from each, and the group marked pseudonymous.
  */
@@ -119,7 +129,7 @@ async function aBlindDate() {
     "POST",
     `/api/groups/${group.id}/threads`,
     firstCookie,
-    { title: "Erster Thread" },
+    { title: `Erster Thread ${SEARCHABLE}` },
   )).json();
 
   for (const cookie of [firstCookie, secondCookie]) {
@@ -140,7 +150,10 @@ async function aBlindDate() {
     "POST",
     `/api/groups/${group.id}/pages`,
     secondCookie,
-    { title: "Ein Personenblatt", document: postBody("Notizen.").document },
+    {
+      title: `Ein Personenblatt ${SEARCHABLE}`,
+      document: postBody("Notizen.").document,
+    },
   );
 
   return { groupId: group.id, threadId: thread.id, firstCookie, secondCookie };
@@ -183,7 +196,7 @@ function everyRead(groupId: string, threadId: string) {
       limit: 50,
       offset: 0,
     }],
-    ["the search", "QUERY", "/api/search", { search: "Blind-Date Leck" }],
+    ["the search", "QUERY", "/api/search", { search: SEARCHABLE }],
   ] as const;
 }
 
