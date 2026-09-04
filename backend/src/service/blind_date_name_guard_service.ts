@@ -49,7 +49,7 @@ export const AUTOMATIC_EXCLUSION_REASON =
   "Automatisch erkannt und von der Moderation bestätigt: eigener Benutzername im Thread „Gemeinsamer Austausch“ genannt";
 
 /** The reason on the report, which is what the queue shows. */
-export const SUSPICION_REPORT_REASON =
+const SUSPICION_REPORT_REASON =
   "Automatisch erkannt: In „Gemeinsamer Austausch“ steht der Benutzername einer der beiden am Blind-Date beteiligten Personen. Bitte prüfen, ob sich jemand tatsächlich zu erkennen gegeben hat — ein Benutzername kann auch ein gewöhnliches Wort sein.";
 
 /**

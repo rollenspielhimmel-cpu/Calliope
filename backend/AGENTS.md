@@ -600,7 +600,7 @@ administrators can still act on it. Pinned twice — over the helper in
 `writing_group_authorization_test.ts`, and through the routes in
 `route/groups/group/demotion_freezes_writing_test.ts`, because a route that forgot the helper
 would pass the first and fail the second. The frontend mirrors it: `PostItem`, `StepList` and
-`ThreadView` all ask `mayWrite` before offering to change anything.
+`ThreadView` all ask `mayAct` before offering to change anything.
 
 ## After changing a route
 

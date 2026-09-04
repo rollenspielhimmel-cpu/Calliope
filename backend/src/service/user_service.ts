@@ -47,7 +47,7 @@ export type PublicUser =
   & { avatarUrl: string | null };
 
 /** One list, so the select, the update and the response cannot drift apart. */
-export const PROFILE_COLUMNS = [
+const PROFILE_COLUMNS = [
   "aboutMe",
   "writingStyle",
   "postLength",

@@ -5,7 +5,7 @@ import { deadline } from "@std/async/deadline";
 // https://github.com/healthjson/schema
 // https://raw.githubusercontent.com/health-json/schema/master/schema.json
 
-export const APPLICATION_HEALTH_STATUS = z
+const APPLICATION_HEALTH_STATUS = z
   .object({
     name: z
       .string()
@@ -41,7 +41,7 @@ export const APPLICATION_HEALTH_STATUS = z
   })
   .describe("General information about application and current version");
 
-export const DATABASE_HEALTH_STATUS = z
+const DATABASE_HEALTH_STATUS = z
   .object({
     name: z
       .string()

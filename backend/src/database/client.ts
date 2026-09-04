@@ -32,7 +32,7 @@ const driver = postgres(getRequiredEnvVariable("DATABASE_URL"), {
   types: postgresTypes,
 });
 
-export async function closeDatabaseConnections(): Promise<void> {
+async function closeDatabaseConnections(): Promise<void> {
   console.log("Closing database connection before shutdown");
   // 5 seconds is the recommended value by the library
   await driver.end({ timeout: 5 });

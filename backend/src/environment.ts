@@ -8,7 +8,7 @@ export const ENVIRONMENTS = [
   "production",
 ] as const;
 
-export const ENVIRONMENT_SCHEMA = z.enum(ENVIRONMENTS);
+const ENVIRONMENT_SCHEMA = z.enum(ENVIRONMENTS);
 
 export type Environment = z.infer<typeof ENVIRONMENT_SCHEMA>;
 

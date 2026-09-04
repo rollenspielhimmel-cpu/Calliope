@@ -44,7 +44,7 @@ const GRACE_MONTHS = 3;
 export const REQUIRED_ONLINE_MINUTES = 1_000;
 
 /** When the 1000-minute rule starts being applied, or `undefined` while no launch date is set. */
-export function onlineTimeEnforcedFrom(): Date | undefined {
+function onlineTimeEnforcedFrom(): Date | undefined {
   if (LAUNCHED_ON === undefined) {
     return undefined;
   }

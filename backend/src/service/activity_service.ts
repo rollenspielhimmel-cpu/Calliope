@@ -22,7 +22,7 @@ import { db } from "@/src/database/client.ts";
 const WINDOW_MINUTES = 15;
 
 /** What the rule asks about. Anything older can go: no question here reaches past it. */
-export const ACTIVITY_LOOKBACK_DAYS = 30;
+const ACTIVITY_LOOKBACK_DAYS = 30;
 
 /**
  * A few days more than the metric needs, so a clock skew or a late sweep cannot eat a window the
