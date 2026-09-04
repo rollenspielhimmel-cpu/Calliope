@@ -117,8 +117,11 @@ Migrations run automatically as part of `up`.
 
 ### After a migration was edited rather than added
 
-`deploy.sh` detects this and, on `testing`, does it. On `staging` and `production` it refuses
-and points here, because only `testing` is reset when a migration calls for it. It compares the
+`deploy.sh` detects this and **refuses, on every environment**, pointing here. It used to do it
+by itself on `testing`, which was right while nobody but the team wrote there — but the beta is
+`testing`, and the day somebody invites three people to try it is not a day anybody plans. From
+that moment an automatic rebuild deletes what they wrote, as designed, with one line in the log.
+The refusal comes before anything is pulled, so the checkout is left as it was. It compares the
 migrations touched between the deployed commit and the new one against the versions recorded in
 `migration.schema_migration`: only an *already applied* version that changed forces a rebuild, so
 a migration added and then edited between two deploys is an ordinary deploy. Renames count —

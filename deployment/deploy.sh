@@ -17,11 +17,25 @@ set -euo pipefail
 	COMPOSE_FILE="$REPOSITORY/docker-compose.deploy.yaml"
 	ENV_FILE="$REPOSITORY/.env"
 
-	# Only `testing` is reset when a migration calls for it, and only `testing` gets seed
-	# accounts — see the ENVIRONMENT comment in .example.deploy.env. `development` is not a
-	# deploy target.
+	# `development` is not a deploy target; only `testing` gets seed accounts — see the
+	# ENVIRONMENT comment in .example.deploy.env.
 	DEPLOYABLE=(testing staging production)
-	RESETTABLE=testing
+
+	# **Empty on purpose: no environment is rebuilt without being asked.**
+	#
+	# This held `testing`, and while nobody but the team wrote there, that was right — an edited
+	# migration meant a rebuild, and the rebuild happened. The beta is `testing`, though, and the
+	# day three people are invited to try it is not a day anybody plans in advance. From that
+	# moment the automatic rebuild deletes what they wrote, as designed, with one line in the log.
+	#
+	# So the environment stays `testing` — it *is* a test environment, and it should keep getting
+	# seed accounts — and only the deleting stops being automatic. A deploy that would need a
+	# rebuild now refuses and says so, before pulling anything.
+	#
+	# A deliberate rebuild is the block under "After a migration was edited rather than added" in
+	# README.md: six commands, two of them not obvious, both explained there. That it takes
+	# deliberate typing is the point.
+	RESETTABLE=
 
 	environment=""
 	dry_run=false
@@ -220,10 +234,12 @@ that is needed."
 	echo
 
 	if [ "$rebuild" = true ] && [ "$environment" != "$RESETTABLE" ]; then
-		fail "Refusing to rebuild the database on $environment: only $RESETTABLE is reset when a
-migration calls for it. Either add a migration instead of editing or removing an applied one,
-or follow \"After a migration was edited rather than added\" in README.md by hand, knowing what
-it costs."
+		fail "Refusing to rebuild the database on $environment: this deploy would delete every
+row, and no environment is rebuilt without being asked. Either add a migration instead of
+editing or removing an applied one, or follow \"After a migration was edited rather than added\"
+in README.md by hand, knowing what it costs.
+
+Nothing was pulled; the checkout is untouched."
 	fi
 
 	if [ "$dry_run" = true ]; then
