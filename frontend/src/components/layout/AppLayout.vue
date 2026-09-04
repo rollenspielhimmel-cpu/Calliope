@@ -155,7 +155,7 @@ const railSlack = computed<Record<string, string>>(() => ({
           @click="rightOpen = true"
         />
 
-        <ContextSheet v-else v-model:open="sheetOpen">
+        <ContextSheet v-else v-model:open="sheetOpen" :label="railLabel">
           <slot name="rail" :collapsible="false" />
           <slot name="infoRail" :collapsible="false" />
         </ContextSheet>
