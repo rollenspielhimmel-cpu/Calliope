@@ -137,6 +137,13 @@ services:
       # an account that already exists, so editing this later changes nothing. Optional, because
       # the OpenAPI generation runs with nothing but .example.env set.
       ROOT_ADMIN_PASSWORD: ${ROOT_ADMIN_PASSWORD:-}
+      # The password the seeded accounts share, on the one environment that is ever seeded.
+      #
+      # Passed without a fallback but not demanded here: `deploy.sh` seeds by running this same
+      # service, so the variable has to reach it — but a deployment that never seeds has no use
+      # for one, and requiring it would fail a production deploy over something it does not do.
+      # `backend/seed.ts` insists at the moment it actually matters.
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
       DATABASE_URL: postgres://calliope:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/calliope?sslmode=disable
       REDIS_URL: redis://redis:6379
 

@@ -7,15 +7,15 @@
  */
 import { db } from "@/src/database/client.ts";
 import { ENVIRONMENT, type Environment } from "@/src/environment.ts";
-import { getRequiredEnvVariable } from "@/src/util/env.ts";
+import {
+  getOptionalEnvVariable,
+  getRequiredEnvVariable,
+} from "@/src/util/env.ts";
 import { USER } from "@/seed/accounts.ts";
 import { GROUPS } from "@/seed/writing_groups.ts";
 import { CHATS } from "@/seed/chats.ts";
 import { REPORTS } from "@/seed/reports.ts";
 import { writeFixtures } from "@/seed/write.ts";
-
-/** The one password every seeded account shares. Local only — see the guard below. */
-const PASSWORD = "calliope";
 
 const SEEDABLE: ReadonlyArray<Environment> = [
   "development",
@@ -30,6 +30,17 @@ function assertSeedable(): void {
       `Refusing to seed: ENVIRONMENT is "${ENVIRONMENT}". Seed data is only for ${
         SEEDABLE.join(" and ")
       }.`,
+    );
+    Deno.exit(1);
+  }
+
+  // Asked for here rather than where the accounts are written, which is the difference between
+  // refusing and refusing *after* clearing the tables: the seed empties what it is about to
+  // rewrite, so a variable checked late leaves an empty database behind and a confusing message.
+  if (getOptionalEnvVariable("SEED_PASSWORD") === undefined) {
+    console.error(
+      "Refusing to seed: SEED_PASSWORD is not set. It is the one password every seeded " +
+        "account shares — see .example.env.",
     );
     Deno.exit(1);
   }
@@ -117,7 +128,7 @@ function summary(): string {
     .map((group) => `  /groups/${group.id}   ${group.title}`)
     .join("\n");
 
-  return `Seeded. Every account's password is "${PASSWORD}".
+  return `Seeded. Every account shares the password from SEED_PASSWORD.
 
 ${accounts}
   unverified     address not confirmed, so only the verification wall is reachable

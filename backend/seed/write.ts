@@ -6,6 +6,7 @@ import type {
 } from "@/src/database/schema.ts";
 import { omitFromObject } from "@/src/util/object.ts";
 import { hashPassword } from "@/src/util/password.ts";
+import { getRequiredEnvVariable } from "@/src/util/env.ts";
 import {
   PLATFORM_ROLES,
   PROFILES,
@@ -194,8 +195,15 @@ function newestPostOfThread(index: number, total: number): number {
 }
 
 async function writeAccounts(): Promise<void> {
-  // Hashed once and shared: scrypt is deliberately slow, and these are local accounts.
-  const hashedPassword = await hashPassword("calliope");
+  // Hashed once and shared: scrypt is deliberately slow, and these are fixtures.
+  //
+  // **From the environment.** It used to stand here as a literal, in a public repository, on nine
+  // accounts that are real enough to sign in with — and `testing` is a real site with a real
+  // address. `.example.env` carries one for a checkout, whose database nobody else can reach;
+  // a deployment sets its own.
+  const hashedPassword = await hashPassword(
+    getRequiredEnvVariable("SEED_PASSWORD"),
+  );
 
   await db.insertInto("user").values(
     VERIFIED_USERNAMES.map((name) => ({
