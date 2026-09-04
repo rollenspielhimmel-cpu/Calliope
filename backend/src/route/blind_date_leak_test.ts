@@ -132,6 +132,17 @@ async function aBlindDate() {
     );
   }
 
+  // A page, written by the *second* partner. Its service contains no masking at all: it came
+  // from upstream, where there are no Blind-Dates, and it printed both real names until the
+  // middleware in front of the subtree started masking it. It is here because a feature that
+  // never heard of pseudonymity is the case worth testing.
+  await request(
+    "POST",
+    `/api/groups/${group.id}/pages`,
+    secondCookie,
+    { title: "Ein Personenblatt", document: postBody("Notizen.").document },
+  );
+
   return { groupId: group.id, threadId: thread.id, firstCookie, secondCookie };
 }
 
@@ -142,6 +153,7 @@ async function aBlindDate() {
 function everyRead(groupId: string, threadId: string) {
   return [
     ["the group itself", "GET", `/api/groups/${groupId}`, undefined],
+    ["its pages", "GET", `/api/groups/${groupId}/pages`, undefined],
     ["its members", "GET", `/api/groups/${groupId}/memberships`, undefined],
     ["its threads", "GET", `/api/groups/${groupId}/threads`, undefined],
     [
