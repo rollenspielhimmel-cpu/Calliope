@@ -65,6 +65,15 @@ export type PlatformRole = "administrator" | "moderator";
 
 export type ProfileQuestionKind = "choice" | "text";
 
+export type PublicationKind = "broadcast" | "forum_thread";
+
+export type PublicationStatus =
+  | "approved"
+  | "awaiting_approval"
+  | "discarded"
+  | "draft"
+  | "released";
+
 export type ReportCategory =
   | "harassment"
   | "hate"
@@ -390,6 +399,37 @@ export interface BlockedWord {
   word: string;
 }
 
+export interface Broadcast {
+  archivePostId: string | null;
+  audienceGroups: string[];
+  body: string;
+  createdAt: Generated<string>;
+  id: Generated<string>;
+  includeUnverified: Generated<boolean>;
+  publicationId: string;
+  publishInArchive: Generated<boolean>;
+  recipientCount: number | null;
+  subject: string;
+  updatedAt: Generated<string>;
+}
+
+export interface BroadcastSender {
+  enabledAt: Generated<string>;
+  enabledBy: string | null;
+  sortOrder: Generated<number>;
+  userId: string;
+}
+
+export interface BroadcastTemplate {
+  body: string;
+  createdAt: Generated<string>;
+  createdBy: string | null;
+  id: Generated<string>;
+  name: string;
+  subject: string;
+  updatedAt: Generated<string>;
+}
+
 export interface ChatGroup {
   createdAt: Generated<string>;
   createdBy: string | null;
@@ -452,6 +492,7 @@ export interface ForumThread {
   createdBy: string | null;
   id: Generated<string>;
   lastActivityAt: Generated<string>;
+  publicationId: string | null;
   subForumId: string;
   title: string;
   visibility: ForumVisibility | null;
@@ -492,6 +533,19 @@ export interface ProfileQuestionOption {
   label: string;
   position: Generated<number>;
   questionId: string;
+}
+
+export interface Publication {
+  approvedAt: string | null;
+  approvedBy: string | null;
+  id: Generated<string>;
+  kind: PublicationKind;
+  releasedAt: string | null;
+  scheduledFor: string | null;
+  sendAsUserId: string | null;
+  status: Generated<PublicationStatus>;
+  writtenAt: Generated<string>;
+  writtenBy: string | null;
 }
 
 export interface Report {
@@ -764,6 +818,9 @@ export interface DB {
   blindDatePartner: BlindDatePartner;
   blockedEmailDomain: BlockedEmailDomain;
   blockedWord: BlockedWord;
+  broadcast: Broadcast;
+  broadcastSender: BroadcastSender;
+  broadcastTemplate: BroadcastTemplate;
   chatGroup: ChatGroup;
   chatMessage: ChatMessage;
   customPage: CustomPage;
@@ -775,6 +832,7 @@ export interface DB {
   profileAnswer: ProfileAnswer;
   profileQuestion: ProfileQuestion;
   profileQuestionOption: ProfileQuestionOption;
+  publication: Publication;
   report: Report;
   statusUpdate: StatusUpdate;
   statusUpdateComment: StatusUpdateComment;
@@ -1140,6 +1198,18 @@ export const WRITING_GROUP_VISIBILITY_SCHEMA = z.enum(
   WRITING_GROUP_VISIBILITIES,
 );
 
+export const PUBLICATION_STATUSES = [
+  "approved",
+  "awaiting_approval",
+  "discarded",
+  "draft",
+  "released",
+] as const;
+export const PUBLICATION_STATUS_SCHEMA = z.enum(PUBLICATION_STATUSES);
+
+export const PUBLICATION_KINDS = ["broadcast", "forum_thread"] as const;
+export const PUBLICATION_KIND_SCHEMA = z.enum(PUBLICATION_KINDS);
+
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
   windowStart: z.iso.datetime({ offset: true }),
@@ -1246,6 +1316,37 @@ export const BLOCKED_WORD_SCHEMA = z.object({
   note: z.string().nullable(),
 });
 
+export const BROADCAST_SCHEMA = z.object({
+  id: z.uuidv7(),
+  publicationId: z.uuidv7(),
+  subject: z.string(),
+  body: z.string(),
+  audienceGroups: z.array(z.string()),
+  includeUnverified: z.boolean(),
+  publishInArchive: z.boolean(),
+  archivePostId: z.uuidv7().nullable(),
+  recipientCount: int32.nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+
+export const BROADCAST_SENDER_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  sortOrder: int32,
+  enabledBy: z.uuidv7().nullable(),
+  enabledAt: z.iso.datetime({ offset: true }),
+});
+
+export const BROADCAST_TEMPLATE_SCHEMA = z.object({
+  id: z.uuidv7(),
+  name: z.string(),
+  subject: z.string(),
+  body: z.string(),
+  createdBy: z.uuidv7().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+
 export const CHAT_GROUP_SCHEMA = z.object({
   id: z.uuidv7(),
   title: z.string(),
@@ -1311,6 +1412,7 @@ export const FORUM_THREAD_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
+  publicationId: z.uuidv7().nullable(),
 });
 
 export const NOTIFICATION_SCHEMA = z.object({
@@ -1348,6 +1450,19 @@ export const PROFILE_QUESTION_OPTION_SCHEMA = z.object({
   questionId: z.uuidv7(),
   label: z.string(),
   position: int32,
+});
+
+export const PUBLICATION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  kind: PUBLICATION_KIND_SCHEMA,
+  status: PUBLICATION_STATUS_SCHEMA,
+  sendAsUserId: z.uuidv7().nullable(),
+  scheduledFor: z.iso.datetime({ offset: true }).nullable(),
+  writtenBy: z.uuidv7().nullable(),
+  writtenAt: z.iso.datetime({ offset: true }),
+  approvedBy: z.uuidv7().nullable(),
+  approvedAt: z.iso.datetime({ offset: true }).nullable(),
+  releasedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export const REPORT_SCHEMA = z.object({
