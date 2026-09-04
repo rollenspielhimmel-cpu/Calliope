@@ -1,11 +1,28 @@
-# Migrations are checked out with Unix line endings on every platform.
+# Unix line endings everywhere, in the working copy as well as in the repository.
 #
-# Not a matter of taste: five of them insert text — the Blind-Date rules among it — and a
-# migration file checked out with CRLF seeds that text *with* carriage returns. The same
-# migration therefore produced different rows on a Windows checkout than on the Linux server,
-# and the difference is invisible: same wording, same line count, four bytes longer, and a
-# different checksum. It cost an hour to establish that nobody had edited anything.
+# **Not a matter of taste.** Line endings leak out of files and into things that are compared:
 #
-# The rule is narrow on purpose. Everything else keeps Git's usual behaviour, so this does not
-# quietly reformat the rest of the repository.
+#   - Five migrations insert text — the Blind-Date rules among it. Checked out with CRLF, the same
+#     migration seeded that text *with* carriage returns, so a Windows checkout produced different
+#     rows than the Linux server. Invisible from outside: same wording, same line count, four bytes
+#     longer, a different checksum. It cost an hour to establish that nobody had edited anything.
+#   - `deno fmt --check` refuses a CRLF file with „Text differed by line endings", so
+#     `validate:check` failed locally while passing in CI. A check that is red for a reason nobody
+#     acts on is a check that stops being read.
+#   - Seeds, fixtures and documents have the same property the moment their content reaches a
+#     database, a snapshot or an assertion.
+#
+# The repository itself does not change: every tracked file is already stored with LF — measured,
+# not assumed. What changes is what lands in the working copy on the next checkout, on every
+# platform.
+* text=auto eol=lf
+
+# Batch files are the exception, and the only one: the Windows command interpreter reads them
+# line by line as it executes, and a `goto` in a file with Unix endings can land in the wrong
+# place. These two start the development servers.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Spelled out although the rule above already covers it, because this is the one where getting it
+# wrong writes wrong data rather than producing an awkward diff.
 database/migrations/*.sql text eol=lf
