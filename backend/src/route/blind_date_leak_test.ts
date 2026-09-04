@@ -156,7 +156,13 @@ async function aBlindDate() {
     },
   );
 
-  return { groupId: group.id, threadId: thread.id, firstCookie, secondCookie };
+  return {
+    groupId: group.id,
+    threadId: thread.id,
+    firstCookie,
+    secondCookie,
+    secondId,
+  };
 }
 
 /**
@@ -215,6 +221,33 @@ Deno.test("no read of a Blind-Date names either partner", async () => {
         `${what} (${method} ${path}) named "${name}" in its response`,
       );
     }
+  }
+});
+
+/**
+ * **The name was never the only way to the name.**
+ *
+ * This file asserted on usernames alone for as long as it existed, and passed the whole time while
+ * six responses carried the partner's raw account id beside their pseudonym — the member list, the
+ * posts, the threads, the group, its pages, the notifications. One request to `/api/users/<id>`
+ * turns any of them into the username this file was so carefully checking for.
+ *
+ * The reader's own id is deliberately not checked: the interface needs it to know which posts are
+ * theirs, and learning one's own id discloses nothing.
+ */
+Deno.test("no read of a Blind-Date carries the other partner's account id", async () => {
+  const { groupId, threadId, firstCookie, secondId } = await aBlindDate();
+
+  for (const [what, method, path, body] of everyRead(groupId, threadId)) {
+    // deno-lint-ignore no-await-in-loop -- one request per surface, and the failure names which
+    const response = await request(method, path, firstCookie, body);
+    // deno-lint-ignore no-await-in-loop -- the body is what is under test
+    const text = await response.text();
+
+    assert(
+      !text.includes(secondId),
+      `${what} (${method} ${path}) carried the other partner's id`,
+    );
   }
 });
 
