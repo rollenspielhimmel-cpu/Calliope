@@ -10,14 +10,16 @@
  * The applying lives here rather than beside each plot, so there is one way in rather than one per
  * offer plus a proactive one somewhere else.
  *
- * Offers whose deadline has passed keep their place in the numbering and lose their button. The
- * page and this rail are given the same list, so „Handlung 2" means the same plot in both — which
- * it would not if only one of them dropped the expired ones and renumbered the rest.
+ * **Every offer is named by its title, here and everywhere else.** There was a „Handlung 1" once,
+ * matched to a numbered card on the page. A number taken from a position in a list is not a name:
+ * it moves when an offer expires and again when one is added, so „Handlung 2" meant a different
+ * plot from one week to the next — and it made the page depend on the rail agreeing with it about
+ * an order neither of them owned. The plots have titles; those are what people say out loud.
  *
- * Since the server stopped listing expired offers to anybody who did not apply to one, the only
- * member who still sees a numbered row without a button is the applicant waiting on it. The branch
- * stays anyway: it is what makes „no button after the deadline" true here rather than true only
- * because the list happens to be filtered somewhere else.
+ * An offer past its deadline keeps its row and loses its button. Since the server stopped listing
+ * expired offers to anybody who did not apply to one, the only member who still sees such a row is
+ * the applicant waiting on it — the branch stays anyway, so that „no button after the deadline" is
+ * true here rather than true only because the list happens to be filtered elsewhere.
  */
 import type { ListBlindDateOffers200Item } from '@/api/models'
 import { applicationsHaveClosed } from '@/lib/blindDate/offerDeadline'
@@ -52,24 +54,25 @@ const emit = defineEmits<{ apply: [offer: ListBlindDateOffers200Item]; applyFree
     </div>
 
     <template v-else>
-      <!-- One button per offer, numbered the way the page numbers them, so „Handlung 1" on the
-           page and „Bewerbung auf Handlung 1" here are plainly the same thing. -->
+      <!-- One button per offer, each carrying the plot's own title, so the card on the page and the
+           button here name the same thing without either having to count. The button wraps rather
+           than truncating: a title cut off mid-word is not a name somebody can act on. -->
       <div v-if="offers.length > 0" class="flex flex-col gap-2">
-        <template v-for="(offer, index) in offers" :key="offer.id">
+        <template v-for="offer in offers" :key="offer.id">
           <p
             v-if="applicationsHaveClosed(offer.closesAt)"
             class="text-[12px] leading-[1.45] text-ink-6"
           >
-            Handlung {{ index + 1 }}: Bewerbungsfrist abgelaufen
+            „{{ offer.title }}“: Bewerbungsfrist abgelaufen
           </p>
           <Button
             v-else
             variant="outline"
             size="sm"
-            class="justify-start text-left"
+            class="h-auto justify-start py-1.5 text-left leading-[1.35] whitespace-normal"
             @click="emit('apply', offer)"
           >
-            Bewerbung auf Handlung {{ index + 1 }}
+            Bewerbung auf „{{ offer.title }}“
           </Button>
         </template>
       </div>

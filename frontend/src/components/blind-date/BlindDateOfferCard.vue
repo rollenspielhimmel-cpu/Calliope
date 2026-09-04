@@ -22,8 +22,6 @@ import { formatDeadline } from '@/lib/format/formatTime'
 
 const props = defineProps<{
   offer: ListBlindDateOffers200Item
-  /** „Handlung 1“, „Handlung 2“ — the same numbering the rail uses. Omitted where there is none. */
-  label?: string
 }>()
 
 const shortened = computed(() => shortenForCard(props.offer.description))
@@ -61,11 +59,13 @@ const expired = computed<boolean>(() => applicationsHaveClosed(props.offer.close
       expired ? 'border border-line-2 bg-paper-2' : 'border border-line-3 bg-paper-0 shadow-card'
     "
   >
-    <p v-if="label" class="font-mono text-[11px] tracking-wide text-ink-label uppercase">
-      {{ label }}
-    </p>
-
-    <p class="mt-1.5 text-h2" :class="expired ? 'text-ink-3' : 'text-ink-1'">
+    <!--
+      The title is the name. There used to be a „Handlung 1“ above it, and a number that comes from
+      a position in a list moves whenever the list does — one expires, one is added, and „Handlung 2“
+      means a different plot than it did yesterday. It was a second name for something that already
+      had one.
+    -->
+    <p class="text-h2" :class="expired ? 'text-ink-3' : 'text-ink-1'">
       {{ offer.title }}
     </p>
 

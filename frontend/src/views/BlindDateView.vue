@@ -259,12 +259,7 @@ async function withdrawApplication() {
                  and two of them would drift. The deadline stays after it passes — the team closes
                  an offer, not the clock. -->
             <div class="mt-3 grid gap-3.5 sm:grid-cols-2">
-              <BlindDateOfferCard
-                v-for="(offer, index) in offers"
-                :key="offer.id"
-                :offer="offer"
-                :label="`Handlung ${index + 1}`"
-              />
+              <BlindDateOfferCard v-for="offer in offers" :key="offer.id" :offer="offer" />
             </div>
 
             <p v-if="mayApply" class="mt-3 max-w-[65ch] text-note text-ink-5">
@@ -295,14 +290,19 @@ async function withdrawApplication() {
               Wer mit wem schreibt, steht hier nicht — das ist der Sinn der Sache.
             </p>
 
+            <!--
+              Keyed by position because there is nothing else: these rows carry no id on purpose,
+              and the list is replaced whole on every load. „Blind-Date-Paar #1“ used to stand where
+              the title stands now — a number from that same position, which moved whenever an older
+              pair ended, beside a title that was already doing the naming.
+            -->
             <ul class="mt-3 flex flex-col">
               <li
-                v-for="pair in active"
-                :key="pair.number"
+                v-for="(pair, index) in active"
+                :key="index"
                 class="flex flex-wrap items-baseline gap-x-3 border-t border-line-2 py-2.5 first:border-t-0 first:pt-0"
               >
-                <span class="text-row text-ink-2">Blind-Date-Paar #{{ pair.number }}</span>
-                <span class="text-[12.5px] text-ink-4">{{ pair.plotTitle }}</span>
+                <span class="text-row text-ink-2">{{ pair.plotTitle }}</span>
                 <span class="text-[12px] text-ink-6">
                   {{ formatCount(pair.posts) }}
                   {{ pair.posts === 1 ? 'Beitrag' : 'Beiträge' }} · zuletzt aktiv

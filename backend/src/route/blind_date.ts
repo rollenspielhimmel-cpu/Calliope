@@ -140,12 +140,11 @@ const OWN_APPLICATION_RESPONSE = APPLICATION_BODY.extend({
 });
 
 /**
- * What everybody may see of a running Blind-Date. Deliberately four fields: a plot, a count, a
- * date and an ordinal for reading. No names, no ids — that is the whole point of the ritual, and
+ * What everybody may see of a running Blind-Date. Deliberately three fields: a plot, a count
+ * and a date. No names, no ids — that is the whole point of the ritual, and
  * this list is the place it would be easiest to give away by accident.
  */
 const ACTIVE_BLIND_DATE_RESPONSE = z.object({
-  number: z.number().int(),
   plotTitle: z.string(),
   posts: z.number().int(),
   lastActivityAt: z.iso.datetime({ offset: true }),

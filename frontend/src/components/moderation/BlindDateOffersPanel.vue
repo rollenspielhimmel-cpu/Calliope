@@ -67,6 +67,30 @@ const role = ref<string>('')
 const genres = ref<string[]>([])
 const genre = ref<string>('')
 const pairing = ref<string>('')
+/**
+ * Whether a plot with this title is already being offered.
+ *
+ * A quiet note, never a refusal. Two offers may share a title — each has its own id and nothing
+ * anywhere looks one up by name — so this is not a rule, it is the answer to „habe ich das schon
+ * angelegt?". The only real cost of a duplicate is human: two cards with the same heading under
+ * each other, and a member who cannot tell which one they are applying to.
+ *
+ * Open offers only. A plot the team ran last spring and closed is not something anybody is about to
+ * confuse it with, and warning about those would make the note fire so often it stopped being read.
+ *
+ * The offer being edited does not count as its own duplicate.
+ */
+const duplicateTitle = computed<boolean>(() => {
+  const typed = title.value.trim().toLocaleLowerCase('de')
+
+  return (
+    typed !== '' &&
+    open.value.some(
+      (offer) => offer.id !== editing.value && offer.title.trim().toLocaleLowerCase('de') === typed,
+    )
+  )
+})
+
 /** A date, as `<input type="date">` gives it: `2026-09-30`, or empty for no deadline. */
 const closesOn = ref<string>('')
 const error = ref<string | undefined>(undefined)
@@ -238,6 +262,12 @@ async function closeOne(offerId: string) {
         :maxlength="TEXT_LIMIT.createBlindDateOffer.title.maxLength"
         class="max-w-[420px]"
       />
+
+      <!-- Said, not enforced: the form saves either way. -->
+      <p v-if="duplicateTitle" class="max-w-[70ch] text-[12px] text-ink-6">
+        Eine laufende Handlung heißt schon so. Das geht, aber auf der Blind-Date-Seite stehen dann
+        zwei Karten mit derselben Überschrift nebeneinander.
+      </p>
       <Textarea
         v-model="description"
         aria-label="Beschreibung"

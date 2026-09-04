@@ -262,11 +262,13 @@ async function selectOpenOffer(offerId: string): Promise<Offer | undefined> {
  * when it last was. Its whole purpose is to show that Blind-Date is alive, which is what makes
  * people apply.
  *
- * The number is an ordinal for reading, not an identity: it comes from the order the pairs were
- * matched in, so it shifts if an older one is deleted. Nothing refers to it.
+ * There was a „Blind-Date-Paar #1" here, and this comment used to admit what was wrong with it: an
+ * ordinal from the order they were matched in, shifting whenever an older pair was deleted, that
+ * nothing referred to. The plot's title was already sitting beside it doing the naming. A number
+ * next to a name also reads as a ranking whatever the label says, which is the one thing this
+ * platform does not do.
  */
 export type ActiveBlindDate = {
-  number: number;
   plotTitle: string;
   posts: number;
   lastActivityAt: string;
@@ -301,8 +303,7 @@ async function listActiveBlindDates(): Promise<ActiveBlindDate[]> {
     .orderBy("blindDatePair.matchedAt", "asc")
     .execute();
 
-  return rows.map((row, index) => ({
-    number: index + 1,
+  return rows.map((row) => ({
     plotTitle: row.plotTitle,
     posts: Number(row.posts ?? 0),
     lastActivityAt: row.lastActivityAt,

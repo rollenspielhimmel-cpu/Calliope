@@ -57656,7 +57656,6 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "number": { "type": "integer" },
                       "plotTitle": { "type": "string" },
                       "posts": { "type": "integer" },
                       "lastActivityAt": {
@@ -57664,12 +57663,7 @@
                         "format": "date-time"
                       }
                     },
-                    "required": [
-                      "number",
-                      "plotTitle",
-                      "posts",
-                      "lastActivityAt"
-                    ]
+                    "required": ["plotTitle", "posts", "lastActivityAt"]
                   }
                 }
               }
