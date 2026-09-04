@@ -19,6 +19,8 @@
     //   deno task grant-role nachtschreiber administrator
     "grant-role": "deno run --permission-set=calliope --env-file=../.env main.ts --grant-role",
     "revoke-role": "deno run --permission-set=calliope --env-file=../.env main.ts --revoke-role",
+    // Prints person_field_inventory.ts's entries as they stand, for when its test fails.
+    "person-fields:inventory": "deno run --allow-read print_person_field_inventory.ts",
     "open-api:generate": "deno run --permission-set=calliope --allow-write --env-file=../.env generate_open_api_spec.ts && deno fmt open-api.json",
     "open-api:check": "deno task open-api:generate && test -z \"$(git status --porcelain open-api.json)\" && echo 'OpenAPI spec is up-to-date' || (echo 'OpenAPI spec is out-of-date, run: deno task open-api:generate' && exit 1)",
     "open-api:lint": "deno x --yes --unstable-detect-cjs npm:@stoplight/spectral-cli lint open-api.json --ruleset .spectral.yaml --fail-severity warn"
@@ -80,6 +82,10 @@
         // Upload directories
         "./.file-storage",
         "/data/files",
+        // The generated interface document, which `person_field_inventory_test.ts` reads to find
+        // every response that can name somebody. A test rather than the server — but both share
+        // this set, and refusing it here would only mean the test never runs where it matters.
+        "./open-api.json",
         // Files sharp reads at import: `detect-libc` tells glibc from musl by reading the
         // interpreter and then `ldd`.
         "/proc/self/exe",

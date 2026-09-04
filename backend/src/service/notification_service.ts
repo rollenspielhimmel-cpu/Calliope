@@ -1,5 +1,4 @@
 import { PseudonymService } from "@/src/service/pseudonym_service.ts";
-import { type Json, maskPersonFields } from "@/src/service/person_fields.ts";
 import { z } from "@hono/zod-openapi";
 import type {
   NotificationType,
@@ -262,16 +261,14 @@ async function listNotifications(
     // `actorId` null means there was no actor — a Blind-Date is arranged by the team, not by a
     // person the recipient should be told about. Masking that would print „Blind-Date-Partner ?"
     // where the sentence needs no name at all.
-    if (mask === undefined || row.actorId === null) {
-      return row;
-    }
-
-    // Through the shared field masking rather than by setting the name here: this used to replace
-    // `actorUsername` and leave `actorId` beside it, and an id is one request away from the name
-    // it was standing in for. The same list, the same rule, as the group subtree and the search.
-    const copy = { ...row } as unknown as Json;
-    maskPersonFields(copy, recipientId, mask);
-    return copy as unknown as typeof row;
+    //
+    // Only the name, and that is enough here: `toNotification` below builds its result from named
+    // fields rather than spreading the row, so `actorId` never reaches the client. Checked in
+    // `open-api.json`, where the field does not appear in this response at all — the shared field
+    // masking would have had nothing to do.
+    return mask === undefined || row.actorId === null
+      ? row
+      : { ...row, actorUsername: mask(row.actorId).username };
   });
 
   // The query returns one flat shape; the union is narrowed here, once.
