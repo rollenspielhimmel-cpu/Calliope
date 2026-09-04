@@ -3,6 +3,7 @@
  * Lays out what `lib/imprint.ts` was configured with. German whatever the interface becomes: the
  * language of a legal notice is itself legally meaningful.
  */
+import { APP_NAME } from '@/lib/branding'
 import { WEBSITE_OPERATOR, WEBSITE_OPERATOR_ADDRESS } from '@/lib/websiteOperator'
 </script>
 
@@ -43,6 +44,37 @@ import { WEBSITE_OPERATOR, WEBSITE_OPERATOR_ADDRESS } from '@/lib/websiteOperato
           </dd>
         </div>
       </dl>
+      <p v-if="WEBSITE_OPERATOR.telephoneNumber" class="text-note text-ink-5">
+        Support läuft über die E-Mail-Adresse; die Telefonnummer steht hier, weil das Gesetz einen
+        zweiten Weg verlangt.
+      </p>
+
+      <!-- Not upstream's, and not decoration: § 5 DDG asks more of a commercial provider than of a
+           private one, and saying which this is answers that outright rather than leaving a reader
+           to infer it from the absence of a company. -->
+      <h2>Hinweis zur Betriebsform</h2>
+      <p>
+        {{ APP_NAME }} ist ein privates, nicht gewerbliches Angebot. Es werden keine Entgelte
+        erhoben und es wird keine Werbung geschaltet.
+      </p>
+
+      <!-- § 36 VSBG asks for this either way: being unwilling is an answer, and silence is not. -->
+      <h2>Verbraucherstreitbeilegung</h2>
+      <p>
+        Wir sind zur Teilnahme an einem Streitbeilegungsverfahren vor einer
+        Verbraucherschlichtungsstelle weder verpflichtet noch bereit.
+      </p>
+
+      <!-- The one section a writing platform cannot do without, since almost everything on it was
+           written by somebody else. It names the report function before the address: a notice that
+           gives only an address sends people to e-mail for something the site already handles. -->
+      <h2>Haftung für Inhalte von Mitgliedern</h2>
+      <p>
+        Die Beiträge in Gruppen, im Forum und in Profilen stammen von den Mitgliedern selbst. Wir
+        machen sie uns nicht zu eigen. Wenn dir ein Inhalt auffällt, der gegen Rechte oder Regeln
+        verstößt, melde ihn über die Meldefunktion oder schreib an die oben genannte Adresse — wir
+        sehen uns das an.
+      </p>
     </div>
   </div>
 </template>

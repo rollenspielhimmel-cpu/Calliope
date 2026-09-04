@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button'
 import FormTextField from '@/components/common/FormTextField.vue'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import LegalFooter from '@/components/layout/LegalFooter.vue'
+import SiteFooter from '@/components/layout/SiteFooter.vue'
 
 const router = useRouter()
 
@@ -215,6 +215,6 @@ const form = useForm({
       </div>
     </main>
 
-    <LegalFooter />
+    <SiteFooter />
   </div>
 </template>
