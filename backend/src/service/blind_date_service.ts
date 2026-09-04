@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { db } from "@/src/database/client.ts";
 import type {
   BlindDatePairing,
@@ -173,14 +174,23 @@ export type Offer = {
 };
 
 /**
- * What the team is offering right now. Closed offers are history and stay out.
+ * What the team is offering right now, as this member should see it. Closed offers are history and
+ * stay out.
  *
- * An offer whose deadline has passed is **not** filtered out here. Nothing closes an offer
- * automatically — that is the team's decision — so it stays on the page with its date showing and
- * `apply` refuses it. Dropping it silently would be closing it automatically while pretending not
- * to, and somebody who applied yesterday would find the plot gone.
+ * **An offer past its deadline is dropped — except for the people who applied to it.** For everybody
+ * else it is a plot they can no longer have, taking up half the page and saying so; for an applicant
+ * it is the thing they are waiting on, and removing it would answer „was ist aus meiner Bewerbung
+ * geworden" with silence. That is why the reader is a parameter: the same question has two right
+ * answers depending on who asks.
+ *
+ * Still nothing closes an offer automatically. `closedAt` is the team's decision and stays theirs —
+ * this hides an expired offer from a list, which is not the same as ending it, and the single
+ * offer's page keeps showing it to anybody with the link.
+ *
+ * A withdrawn application stops counting, so the plot leaves the list on the next load. That is the
+ * honest ending: there is nothing left there to wait for.
  */
-async function listOpenOffers(): Promise<Offer[]> {
+async function listOpenOffers(userId: string): Promise<Offer[]> {
   return await db
     .selectFrom("blindDateOffer")
     .select([
@@ -194,6 +204,24 @@ async function listOpenOffers(): Promise<Offer[]> {
       "createdAt",
     ])
     .where("closedAt", "is", null)
+    .where((eb) =>
+      eb.or([
+        // „Bis wir genug haben" never expires.
+        eb("closesAt", "is", null),
+        // By the database's clock rather than this process's, so two servers cannot disagree about
+        // which offers exist. The bound matches `applicationsHaveClosed` in the interface: the
+        // moment named is the first at which it is over.
+        eb("closesAt", ">", sql<string>`now()`),
+        eb.exists(
+          eb
+            .selectFrom("blindDateApplication as own")
+            .select("own.id")
+            .whereRef("own.offerId", "=", "blindDateOffer.id")
+            .where("own.userId", "=", userId)
+            .where("own.status", "=", "pending"),
+        ),
+      ])
+    )
     .orderBy("createdAt", "desc")
     .execute();
 }

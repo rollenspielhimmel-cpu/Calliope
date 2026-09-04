@@ -45,6 +45,16 @@ const PAIRINGS: Record<string, string> = {
 const pairingLabel = computed<string | undefined>(() =>
   offer.value?.pairing ? PAIRINGS[offer.value.pairing] : undefined,
 )
+
+/**
+ * The page stays reachable after the deadline — a link somebody sent last week should still lead
+ * somewhere — but it stops looking live. The overview no longer lists this plot to anybody who did
+ * not apply to it, so most people arriving here now come from an old link and deserve to be told
+ * before they read eight thousand characters, not after.
+ */
+const expired = computed<boolean>(
+  () => offer.value !== undefined && applicationsHaveClosed(offer.value.closesAt),
+)
 </script>
 
 <template>
@@ -84,7 +94,21 @@ const pairingLabel = computed<string | undefined>(() =>
           </span>
         </div>
 
-        <div class="mt-5 max-w-[70ch] text-body leading-[1.7] whitespace-pre-line text-ink-3">
+        <!-- Before the plot, not after it: this is the thing that changes whether reading on is
+             worth anything. The live case keeps its note at the bottom, where „so bewirbst du dich"
+             belongs — after somebody has decided they want to. -->
+        <p
+          v-if="expired"
+          class="mt-5 max-w-[70ch] rounded-lg border border-line-2 bg-paper-2 p-3.5 text-note text-ink-4"
+        >
+          Die Bewerbungsfrist für diese Handlung ist abgelaufen. Hast du dich beworben, liegt sie
+          weiterhin beim Team — zurückziehen kannst du sie auf der Blind-Date-Seite.
+        </p>
+
+        <div
+          class="mt-5 max-w-[70ch] text-body leading-[1.7] whitespace-pre-line"
+          :class="expired ? 'text-ink-4' : 'text-ink-3'"
+        >
           {{ offer.description }}
         </div>
 
@@ -101,14 +125,9 @@ const pairingLabel = computed<string | undefined>(() =>
           </ul>
         </section>
 
-        <p v-if="offer.closesAt" class="mt-6 text-note text-ink-5">
-          <template v-if="applicationsHaveClosed(offer.closesAt)">
-            Die Bewerbungsfrist für diese Handlung ist abgelaufen.
-          </template>
-          <template v-else>
-            Bewerbung möglich bis {{ formatDeadline(offer.closesAt) }}. Bewerben kannst du dich auf
-            der Blind-Date-Seite.
-          </template>
+        <p v-if="offer.closesAt && !expired" class="mt-6 text-note text-ink-5">
+          Bewerbung möglich bis {{ formatDeadline(offer.closesAt) }}. Bewerben kannst du dich auf
+          der Blind-Date-Seite.
         </p>
       </template>
 

@@ -48,14 +48,26 @@ const expired = computed<boolean>(() => applicationsHaveClosed(props.offer.close
 </script>
 
 <template>
+  <!--
+    An expired card is recessed rather than faded: it sinks into the paper and loses its shadow, but
+    every word stays as readable as before. The only people who still see one on the overview are
+    those waiting on an application to it, and dimming the text of the plot they are waiting for
+    would be punishing them for the deadline. On the team's list it reads the same way — no longer
+    live, still theirs to read.
+  -->
   <article
-    class="flex h-[300px] flex-col rounded-lg border border-line-3 bg-paper-0 p-4 shadow-card"
+    class="flex h-[300px] flex-col rounded-lg p-4"
+    :class="
+      expired ? 'border border-line-2 bg-paper-2' : 'border border-line-3 bg-paper-0 shadow-card'
+    "
   >
     <p v-if="label" class="font-mono text-[11px] tracking-wide text-ink-label uppercase">
       {{ label }}
     </p>
 
-    <p class="mt-1.5 text-h2 text-ink-1">{{ offer.title }}</p>
+    <p class="mt-1.5 text-h2" :class="expired ? 'text-ink-3' : 'text-ink-1'">
+      {{ offer.title }}
+    </p>
 
     <!-- Takes the room that is left, so everything under it keeps its place whatever the length. -->
     <p class="mt-1.5 flex-1 overflow-hidden text-note leading-[1.45] text-ink-3">

@@ -212,8 +212,13 @@ async function withdrawApplication() {
           {{ withdrawalFailed }}
         </p>
 
+        <!--
+          Not `already_applied`: the box above already says so, with the plot's name, the day, and
+          the way out — everything this line would repeat flatter. The box claims to say it once,
+          and until now the page said it twice.
+        -->
         <p
-          v-else-if="eligibility && eligibility.reason"
+          v-else-if="eligibility?.reason && eligibility.reason !== 'already_applied'"
           class="mt-5 max-w-[65ch] text-note text-ink-5"
         >
           {{ REFUSALS[eligibility.reason] }}
@@ -223,8 +228,15 @@ async function withdrawApplication() {
           </template>
         </p>
 
-        <!-- Said only while it is true, and it will not be true for long. -->
-        <p v-else-if="eligibility?.inGracePeriod" class="mt-5 max-w-[65ch] text-note text-ink-5">
+        <!--
+          Said only while it is true, and it will not be true for long. Not to somebody who has
+          already applied: „bewerben kann sich zurzeit jede und jeder" is an invitation, and
+          extending it to the person whose application is sitting right above is noise.
+        -->
+        <p
+          v-else-if="!ownApplication && eligibility?.inGracePeriod"
+          class="mt-5 max-w-[65ch] text-note text-ink-5"
+        >
           In der Anfangszeit gilt die Bedingung von 1000 Online-Minuten noch nicht — bewerben kann
           sich zurzeit jede und jeder.
         </p>

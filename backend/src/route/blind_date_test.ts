@@ -258,49 +258,148 @@ Deno.test("where an offer names its roles, only one of them may be applied for",
   );
 });
 
-Deno.test("an offer past its deadline stays on the page and takes no more applications", async () => {
-  const cookie = await registerUser(member);
+const DAY = 24 * 60 * 60 * 1000;
 
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
+async function offerClosingAt(closesAt: string | null): Promise<string> {
   const offer = await db
     .insertInto("blindDateOffer")
     .values({
       title: OFFER_TITLE,
       description: "Ein Plot zum Testen.",
-      closesAt: yesterday,
+      closesAt,
     })
     .returning("id")
     .executeTakeFirstOrThrow();
 
-  // Still listed: the clock does not close an offer, the team does. Dropping it here would be
-  // closing it automatically while the moderation list still called it open.
+  return offer.id;
+}
+
+async function listedOfferIds(cookie: string): Promise<string[]> {
   const offers = await (await request(
     "GET",
     "/api/blind-date/offers",
     cookie,
-  )).json();
-  assertEquals(
-    offers.some((one: { id: string }) => one.id === offer.id),
-    true,
+  )).json() as { id: string }[];
+
+  return offers.map((offer) => offer.id);
+}
+
+Deno.test("an offer past its deadline takes no more applications", async () => {
+  const cookie = await registerUser(member);
+  const offerId = await offerClosingAt(
+    new Date(Date.now() - DAY).toISOString(),
   );
 
   assertEquals(
-    (await apply(cookie, { offerId: offer.id })).status,
+    (await apply(cookie, { offerId })).status,
     STATUS_CODE.Conflict,
   );
 
   // And a deadline still ahead changes nothing.
   await db
     .updateTable("blindDateOffer")
-    .set({ closesAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
-    .where("id", "=", offer.id)
+    .set({ closesAt: new Date(Date.now() + DAY).toISOString() })
+    .where("id", "=", offerId)
+    .execute();
+
+  assertEquals((await apply(cookie, { offerId })).status, STATUS_CODE.OK);
+});
+
+/**
+ * **The same question with two right answers.** An expired offer is a plot nobody else can have, so
+ * it goes; for the person waiting on their application it is the whole reason they are on the page.
+ *
+ * The clock still does not close an offer — `closedAt` is the team's and stays theirs. This only
+ * decides who is shown a plot that can no longer be applied for.
+ */
+Deno.test("an expired offer leaves the list for everybody who did not apply to it", async () => {
+  const cookie = await registerUser(member);
+  const offerId = await offerClosingAt(
+    new Date(Date.now() - DAY).toISOString(),
+  );
+
+  assertEquals(
+    (await listedOfferIds(cookie)).includes(offerId),
+    false,
+    "a plot they cannot have is not offered to them",
+  );
+});
+
+Deno.test("an expired offer stays listed for the member waiting on it", async () => {
+  const cookie = await registerUser(member);
+
+  // Applied for while it was still open, which is the only way to become an applicant.
+  const offerId = await offerClosingAt(
+    new Date(Date.now() + DAY).toISOString(),
+  );
+  assertEquals((await apply(cookie, { offerId })).status, STATUS_CODE.OK);
+
+  await db
+    .updateTable("blindDateOffer")
+    .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
+    .where("id", "=", offerId)
     .execute();
 
   assertEquals(
-    (await apply(cookie, { offerId: offer.id })).status,
-    STATUS_CODE.OK,
+    (await listedOfferIds(cookie)).includes(offerId),
+    true,
+    "the plot they are waiting on does not vanish under them",
   );
+});
+
+Deno.test("withdrawing lets the expired offer go", async () => {
+  const cookie = await registerUser(member);
+
+  const offerId = await offerClosingAt(
+    new Date(Date.now() + DAY).toISOString(),
+  );
+  await apply(cookie, { offerId });
+
+  await db
+    .updateTable("blindDateOffer")
+    .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
+    .where("id", "=", offerId)
+    .execute();
+
+  await withdraw(cookie);
+
+  assertEquals(
+    (await listedOfferIds(cookie)).includes(offerId),
+    false,
+    "nothing is being waited on any more",
+  );
+});
+
+/**
+ * One member's application does not put another member's page back together. The guard that would
+ * be lost is scoping the lookup to the reader — without it, one open application anywhere would
+ * show every expired offer to everybody.
+ */
+Deno.test("one member's application does not keep the offer on another's page", async () => {
+  const applicant = await registerUser(member);
+  const bystander = await registerUser(other);
+
+  const offerId = await offerClosingAt(
+    new Date(Date.now() + DAY).toISOString(),
+  );
+  await apply(applicant, { offerId });
+
+  await db
+    .updateTable("blindDateOffer")
+    .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
+    .where("id", "=", offerId)
+    .execute();
+
+  assertEquals((await listedOfferIds(applicant)).includes(offerId), true);
+  assertEquals((await listedOfferIds(bystander)).includes(offerId), false);
+});
+
+/** „Bis wir genug haben" has no deadline to pass, so it is on the page for everybody, always. */
+Deno.test("an offer without a deadline is listed for everybody", async () => {
+  const cookie = await registerUser(member);
+  const offerId = await offerClosingAt(null);
+
+  assertEquals((await listedOfferIds(cookie)).includes(offerId), true);
 });
 
 Deno.test("a member reads back their own application, and withdrawing keeps the row", async () => {

@@ -37,8 +37,9 @@ const OFFER_RESPONSE = z.object({
   /** The roles to choose between. Empty where the team named none, and then the field is prose. */
   roles: z.array(z.string()),
   /**
-   * When applying stops, or null for „until we have enough“. An offer past its date stays in this
-   * list on purpose — see `listOpenOffers` — and the page says so rather than losing the plot.
+   * When applying stops, or null for „until we have enough“. An offer past its date is in this list
+   * only for the members who applied to it — see `listOpenOffers` — and the page then shows it
+   * greyed rather than losing the plot they are waiting on.
    */
   closesAt: z.iso.datetime({ offset: true }).nullable(),
   /**
@@ -197,7 +198,7 @@ export default new OpenAPIHono()
       tags: [BLIND_DATE_TAG],
       summary: "The plots the team is offering right now",
       description:
-        "Typically two at a time. A closed offer is history and stays out; applying to one is not the only way in, because a member may name any official RSH plot themselves.",
+        "Typically two at a time. A closed offer is history and stays out, and one past its deadline stays out too — except for the members who applied to it, who are still waiting on an answer. Applying to an offer is not the only way in, because a member may name any official RSH plot themselves.",
       operationId: "listBlindDateOffers",
       middleware: authenticated,
       responses: {
@@ -210,7 +211,10 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      return c.json(await BlindDateService.listOpenOffers(), STATUS_CODE.OK);
+      return c.json(
+        await BlindDateService.listOpenOffers(c.get("user").id),
+        STATUS_CODE.OK,
+      );
     },
   )
   .openapi(

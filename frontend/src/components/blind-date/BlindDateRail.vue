@@ -10,9 +10,14 @@
  * The applying lives here rather than beside each plot, so there is one way in rather than one per
  * offer plus a proactive one somewhere else.
  *
- * Offers whose deadline has passed keep their place in the numbering and lose their button. They
- * are still on the page, so „Handlung 2" has to mean the same plot here as it does there — which
- * it would not if the closed ones were filtered out and the rest renumbered.
+ * Offers whose deadline has passed keep their place in the numbering and lose their button. The
+ * page and this rail are given the same list, so „Handlung 2" means the same plot in both — which
+ * it would not if only one of them dropped the expired ones and renumbered the rest.
+ *
+ * Since the server stopped listing expired offers to anybody who did not apply to one, the only
+ * member who still sees a numbered row without a button is the applicant waiting on it. The branch
+ * stays anyway: it is what makes „no button after the deadline" true here rather than true only
+ * because the list happens to be filtered somewhere else.
  */
 import type { ListBlindDateOffers200Item } from '@/api/models'
 import { applicationsHaveClosed } from '@/lib/blindDate/offerDeadline'

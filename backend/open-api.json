@@ -57140,7 +57140,7 @@
       "get": {
         "tags": ["blind-date"],
         "summary": "The plots the team is offering right now",
-        "description": "Typically two at a time. A closed offer is history and stays out; applying to one is not the only way in, because a member may name any official RSH plot themselves.",
+        "description": "Typically two at a time. A closed offer is history and stays out, and one past its deadline stays out too — except for the members who applied to it, who are still waiting on an answer. Applying to an offer is not the only way in, because a member may name any official RSH plot themselves.",
         "operationId": "listBlindDateOffers",
         "responses": {
           "200": {
