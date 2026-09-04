@@ -1,0 +1,11 @@
+# Migrations are checked out with Unix line endings on every platform.
+#
+# Not a matter of taste: five of them insert text — the Blind-Date rules among it — and a
+# migration file checked out with CRLF seeds that text *with* carriage returns. The same
+# migration therefore produced different rows on a Windows checkout than on the Linux server,
+# and the difference is invisible: same wording, same line count, four bytes longer, and a
+# different checksum. It cost an hour to establish that nobody had edited anything.
+#
+# The rule is narrow on purpose. Everything else keeps Git's usual behaviour, so this does not
+# quietly reformat the rest of the repository.
+database/migrations/*.sql text eol=lf

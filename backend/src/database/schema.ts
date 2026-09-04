@@ -803,22 +803,135 @@ const int16 = z.int().min(-32768).max(32767);
 
 const int32 = z.int().min(-2147483648).max(2147483647);
 
-export const WRITING_GROUP_VISIBILITIES = ["private", "public"] as const;
-export const WRITING_GROUP_VISIBILITY_SCHEMA = z.enum(
-  WRITING_GROUP_VISIBILITIES,
-);
-
-export const STORY_LANGUAGES = ["english", "german"] as const;
-export const STORY_LANGUAGE_SCHEMA = z.enum(STORY_LANGUAGES);
-
-export const WRITING_GROUP_STORY_STATUSES = [
-  "finished",
-  "planning",
-  "writing",
+export const AVATAR_ORIGINS = [
+  "licence",
+  "other",
+  "own_work",
+  "permission",
+  "public_domain",
 ] as const;
-export const WRITING_GROUP_STORY_STATUS_SCHEMA = z.enum(
-  WRITING_GROUP_STORY_STATUSES,
+export const AVATAR_ORIGIN_SCHEMA = z.enum(AVATAR_ORIGINS);
+
+export const BLIND_DATE_AGAINS = ["maybe", "no", "yes"] as const;
+export const BLIND_DATE_AGAIN_SCHEMA = z.enum(BLIND_DATE_AGAINS);
+
+export const BLIND_DATE_APPLICATION_STATUSES = [
+  "declined",
+  "expired",
+  "matched",
+  "pending",
+  "withdrawn",
+] as const;
+export const BLIND_DATE_APPLICATION_STATUS_SCHEMA = z.enum(
+  BLIND_DATE_APPLICATION_STATUSES,
 );
+
+export const BLIND_DATE_PAIRINGS = ["any", "dd", "ff", "fm", "mm"] as const;
+export const BLIND_DATE_PAIRING_SCHEMA = z.enum(BLIND_DATE_PAIRINGS);
+
+export const BLIND_DATE_POST_LENGTHS = ["long", "medium", "short"] as const;
+export const BLIND_DATE_POST_LENGTH_SCHEMA = z.enum(BLIND_DATE_POST_LENGTHS);
+
+export const BLIND_DATE_VERDICTS = ["no", "partly", "yes"] as const;
+export const BLIND_DATE_VERDICT_SCHEMA = z.enum(BLIND_DATE_VERDICTS);
+
+export const BLIND_DATE_WRITING_STYLES = ["asterisk", "prose"] as const;
+export const BLIND_DATE_WRITING_STYLE_SCHEMA = z.enum(
+  BLIND_DATE_WRITING_STYLES,
+);
+
+export const FORUM_VISIBILITIES = [
+  "administration",
+  "everyone",
+  "members",
+  "moderation",
+] as const;
+export const FORUM_VISIBILITY_SCHEMA = z.enum(FORUM_VISIBILITIES);
+
+export const NOTIFICATION_TYPES = [
+  "blind_date_ended",
+  "blind_date_matched",
+  "blind_date_reveal_requested",
+  "invitation_accepted",
+  "invited_to_chat_group",
+  "invited_to_writing_group",
+  "new_writing_page",
+  "new_writing_post",
+  "new_writing_thread",
+  "role_changed_in_writing_group",
+  "visibility_changed_in_writing_group",
+] as const;
+export const NOTIFICATION_TYPE_SCHEMA = z.enum(NOTIFICATION_TYPES);
+
+export const PLATFORM_ROLES = ["administrator", "moderator"] as const;
+export const PLATFORM_ROLE_SCHEMA = z.enum(PLATFORM_ROLES);
+
+export const PROFILE_QUESTION_KINDS = ["choice", "text"] as const;
+export const PROFILE_QUESTION_KIND_SCHEMA = z.enum(PROFILE_QUESTION_KINDS);
+
+export const REPORT_CATEGORIES = [
+  "harassment",
+  "hate",
+  "illegal_content",
+  "legal_issue",
+  "missing_content_warning",
+  "other",
+  "plagiarism",
+  "self_harm",
+  "sexual_content",
+  "spam",
+  "violence",
+] as const;
+export const REPORT_CATEGORY_SCHEMA = z.enum(REPORT_CATEGORIES);
+
+export const REPORT_OUTCOMES = [
+  "account_banned",
+  "content_removed",
+  "content_warning_added",
+  "duplicate",
+  "insufficient_information",
+  "no_violation",
+  "other",
+  "target_gone",
+  "warning_given",
+] as const;
+export const REPORT_OUTCOME_SCHEMA = z.enum(REPORT_OUTCOMES);
+
+export const REPORT_STATUSES = ["closed", "in_progress", "open"] as const;
+export const REPORT_STATUS_SCHEMA = z.enum(REPORT_STATUSES);
+
+export const REPORT_TARGET_TYPES = [
+  "chat_group",
+  "chat_message",
+  "forum_post",
+  "story_idea",
+  "user",
+  "writing_group",
+  "writing_page",
+  "writing_post",
+  "writing_thread",
+] as const;
+export const REPORT_TARGET_TYPE_SCHEMA = z.enum(REPORT_TARGET_TYPES);
+
+export const STORY_CONTENT_WARNINGS = [
+  "abuse",
+  "animal_cruelty",
+  "death",
+  "discrimination",
+  "eating_disorder",
+  "gore",
+  "grief",
+  "mental_illness",
+  "pregnancy_loss",
+  "self_harm",
+  "sexual_content",
+  "sexual_violence",
+  "substance_abuse",
+  "suicide",
+  "violence",
+  "war",
+] as const;
+export const STORY_CONTENT_WARNING_SCHEMA = z.enum(STORY_CONTENT_WARNINGS);
 
 export const STORY_GENRES = [
   "action",
@@ -839,6 +952,24 @@ export const STORY_GENRES = [
   "western",
 ] as const;
 export const STORY_GENRE_SCHEMA = z.enum(STORY_GENRES);
+
+export const STORY_IDEA_PARTY_SIZES = ["group", "one_on_one"] as const;
+export const STORY_IDEA_PARTY_SIZE_SCHEMA = z.enum(STORY_IDEA_PARTY_SIZES);
+
+export const STORY_IDEA_STATUSES = ["closed", "open"] as const;
+export const STORY_IDEA_STATUS_SCHEMA = z.enum(STORY_IDEA_STATUSES);
+
+export const STORY_LANGUAGES = ["english", "german"] as const;
+export const STORY_LANGUAGE_SCHEMA = z.enum(STORY_LANGUAGES);
+
+export const STORY_PERSPECTIVES = [
+  "first_person",
+  "mixed",
+  "second_person",
+  "third_person_limited",
+  "third_person_omniscient",
+] as const;
+export const STORY_PERSPECTIVE_SCHEMA = z.enum(STORY_PERSPECTIVES);
 
 export const STORY_SUBGENRES = [
   "ancient_world",
@@ -920,6 +1051,9 @@ export const STORY_SUBGENRES = [
 ] as const;
 export const STORY_SUBGENRE_SCHEMA = z.enum(STORY_SUBGENRES);
 
+export const STORY_TENSES = ["mixed", "past", "present"] as const;
+export const STORY_TENSE_SCHEMA = z.enum(STORY_TENSES);
+
 export const STORY_TROPES = [
   "amnesia",
   "chosen_one",
@@ -955,37 +1089,20 @@ export const STORY_TROPES = [
 ] as const;
 export const STORY_TROPE_SCHEMA = z.enum(STORY_TROPES);
 
-export const STORY_TENSES = ["mixed", "past", "present"] as const;
-export const STORY_TENSE_SCHEMA = z.enum(STORY_TENSES);
+export const STRIKE_ACTIONS = ["deletion", "suspension", "warning"] as const;
+export const STRIKE_ACTION_SCHEMA = z.enum(STRIKE_ACTIONS);
 
-export const STORY_PERSPECTIVES = [
-  "first_person",
-  "mixed",
-  "second_person",
-  "third_person_limited",
-  "third_person_omniscient",
+export const STRIKE_SEVERITIES = [
+  "acceptable",
+  "borderline",
+  "severe",
 ] as const;
-export const STORY_PERSPECTIVE_SCHEMA = z.enum(STORY_PERSPECTIVES);
+export const STRIKE_SEVERITY_SCHEMA = z.enum(STRIKE_SEVERITIES);
 
-export const STORY_CONTENT_WARNINGS = [
-  "abuse",
-  "animal_cruelty",
-  "death",
-  "discrimination",
-  "eating_disorder",
-  "gore",
-  "grief",
-  "mental_illness",
-  "pregnancy_loss",
-  "self_harm",
-  "sexual_content",
-  "sexual_violence",
-  "substance_abuse",
-  "suicide",
-  "violence",
-  "war",
-] as const;
-export const STORY_CONTENT_WARNING_SCHEMA = z.enum(STORY_CONTENT_WARNINGS);
+export const USER_IN_CHAT_GROUP_STATUSES = ["invited", "joined"] as const;
+export const USER_IN_CHAT_GROUP_STATUS_SCHEMA = z.enum(
+  USER_IN_CHAT_GROUP_STATUSES,
+);
 
 export const USER_IN_WRITING_GROUP_ROLES = [
   "administrator",
@@ -1001,26 +1118,6 @@ export const USER_IN_WRITING_GROUP_STATUS_SCHEMA = z.enum(
   USER_IN_WRITING_GROUP_STATUSES,
 );
 
-export const USER_IN_CHAT_GROUP_STATUSES = ["invited", "joined"] as const;
-export const USER_IN_CHAT_GROUP_STATUS_SCHEMA = z.enum(
-  USER_IN_CHAT_GROUP_STATUSES,
-);
-
-export const NOTIFICATION_TYPES = [
-  "blind_date_ended",
-  "blind_date_matched",
-  "blind_date_reveal_requested",
-  "invitation_accepted",
-  "invited_to_chat_group",
-  "invited_to_writing_group",
-  "new_writing_page",
-  "new_writing_post",
-  "new_writing_thread",
-  "role_changed_in_writing_group",
-  "visibility_changed_in_writing_group",
-] as const;
-export const NOTIFICATION_TYPE_SCHEMA = z.enum(NOTIFICATION_TYPES);
-
 export const USER_TOKEN_PURPOSES = [
   "account_deletion",
   "email_address_change",
@@ -1029,116 +1126,19 @@ export const USER_TOKEN_PURPOSES = [
 ] as const;
 export const USER_TOKEN_PURPOSE_SCHEMA = z.enum(USER_TOKEN_PURPOSES);
 
-export const STORY_IDEA_STATUSES = ["closed", "open"] as const;
-export const STORY_IDEA_STATUS_SCHEMA = z.enum(STORY_IDEA_STATUSES);
-
-export const STORY_IDEA_PARTY_SIZES = ["group", "one_on_one"] as const;
-export const STORY_IDEA_PARTY_SIZE_SCHEMA = z.enum(STORY_IDEA_PARTY_SIZES);
-
-export const PLATFORM_ROLES = ["administrator", "moderator"] as const;
-export const PLATFORM_ROLE_SCHEMA = z.enum(PLATFORM_ROLES);
-
-export const REPORT_TARGET_TYPES = [
-  "chat_group",
-  "chat_message",
-  "forum_post",
-  "story_idea",
-  "user",
-  "writing_group",
-  "writing_page",
-  "writing_post",
-  "writing_thread",
+export const WRITING_GROUP_STORY_STATUSES = [
+  "finished",
+  "planning",
+  "writing",
 ] as const;
-export const REPORT_TARGET_TYPE_SCHEMA = z.enum(REPORT_TARGET_TYPES);
-
-export const REPORT_STATUSES = ["closed", "in_progress", "open"] as const;
-export const REPORT_STATUS_SCHEMA = z.enum(REPORT_STATUSES);
-
-export const REPORT_OUTCOMES = [
-  "account_banned",
-  "content_removed",
-  "content_warning_added",
-  "duplicate",
-  "insufficient_information",
-  "no_violation",
-  "other",
-  "target_gone",
-  "warning_given",
-] as const;
-export const REPORT_OUTCOME_SCHEMA = z.enum(REPORT_OUTCOMES);
-
-export const REPORT_CATEGORIES = [
-  "harassment",
-  "hate",
-  "illegal_content",
-  "legal_issue",
-  "missing_content_warning",
-  "other",
-  "plagiarism",
-  "self_harm",
-  "sexual_content",
-  "spam",
-  "violence",
-] as const;
-export const REPORT_CATEGORY_SCHEMA = z.enum(REPORT_CATEGORIES);
-
-export const AVATAR_ORIGINS = [
-  "licence",
-  "other",
-  "own_work",
-  "permission",
-  "public_domain",
-] as const;
-export const AVATAR_ORIGIN_SCHEMA = z.enum(AVATAR_ORIGINS);
-
-export const STRIKE_SEVERITIES = [
-  "acceptable",
-  "borderline",
-  "severe",
-] as const;
-export const STRIKE_SEVERITY_SCHEMA = z.enum(STRIKE_SEVERITIES);
-
-export const STRIKE_ACTIONS = ["deletion", "suspension", "warning"] as const;
-export const STRIKE_ACTION_SCHEMA = z.enum(STRIKE_ACTIONS);
-
-export const PROFILE_QUESTION_KINDS = ["choice", "text"] as const;
-export const PROFILE_QUESTION_KIND_SCHEMA = z.enum(PROFILE_QUESTION_KINDS);
-
-export const FORUM_VISIBILITIES = [
-  "administration",
-  "everyone",
-  "members",
-  "moderation",
-] as const;
-export const FORUM_VISIBILITY_SCHEMA = z.enum(FORUM_VISIBILITIES);
-
-export const BLIND_DATE_WRITING_STYLES = ["asterisk", "prose"] as const;
-export const BLIND_DATE_WRITING_STYLE_SCHEMA = z.enum(
-  BLIND_DATE_WRITING_STYLES,
+export const WRITING_GROUP_STORY_STATUS_SCHEMA = z.enum(
+  WRITING_GROUP_STORY_STATUSES,
 );
 
-export const BLIND_DATE_POST_LENGTHS = ["long", "medium", "short"] as const;
-export const BLIND_DATE_POST_LENGTH_SCHEMA = z.enum(BLIND_DATE_POST_LENGTHS);
-
-export const BLIND_DATE_APPLICATION_STATUSES = [
-  "declined",
-  "expired",
-  "matched",
-  "pending",
-  "withdrawn",
-] as const;
-export const BLIND_DATE_APPLICATION_STATUS_SCHEMA = z.enum(
-  BLIND_DATE_APPLICATION_STATUSES,
+export const WRITING_GROUP_VISIBILITIES = ["private", "public"] as const;
+export const WRITING_GROUP_VISIBILITY_SCHEMA = z.enum(
+  WRITING_GROUP_VISIBILITIES,
 );
-
-export const BLIND_DATE_VERDICTS = ["no", "partly", "yes"] as const;
-export const BLIND_DATE_VERDICT_SCHEMA = z.enum(BLIND_DATE_VERDICTS);
-
-export const BLIND_DATE_AGAINS = ["maybe", "no", "yes"] as const;
-export const BLIND_DATE_AGAIN_SCHEMA = z.enum(BLIND_DATE_AGAINS);
-
-export const BLIND_DATE_PAIRINGS = ["any", "dd", "ff", "fm", "mm"] as const;
-export const BLIND_DATE_PAIRING_SCHEMA = z.enum(BLIND_DATE_PAIRINGS);
 
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
