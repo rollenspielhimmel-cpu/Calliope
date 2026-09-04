@@ -16,9 +16,12 @@
  * the AGPL's network clause says whoever *uses* a modified instance over the network is owed the
  * source of the version they are using. A repository that exists somewhere satisfies nothing on
  * its own — the offer has to reach the page. Upstream has no need of it, being the original.
+ *
+ * It addresses the **commit this build was made from**, not the branch: what is owed is the source
+ * of the version somebody is using. See `RUNNING_SOURCE_URL`.
  */
 import { RouterLink } from 'vue-router'
-import { SOURCE_URL } from '@/lib/branding'
+import { RUNNING_SOURCE_URL } from '@/lib/branding'
 
 const LINKS = [
   { name: 'imprint', label: 'Impressum' },
@@ -44,7 +47,7 @@ const LINKS = [
              reading. `noopener`, because a link that opens a tab should not hand it a way back. -->
         <li>
           <a
-            :href="SOURCE_URL"
+            :href="RUNNING_SOURCE_URL"
             target="_blank"
             rel="noopener noreferrer"
             class="text-note text-ink-5 underline-offset-2 hover:text-oak-deep hover:underline"
