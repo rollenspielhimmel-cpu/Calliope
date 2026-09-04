@@ -5,7 +5,6 @@ import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { BanService } from "@/src/service/ban_service.ts";
 import { BlockService } from "@/src/service/block_service.ts";
-import { BlindDateRevealService } from "@/src/service/blind_date_reveal_service.ts";
 import { UserInChatGroupService } from "@/src/service/user_in_chat_group_service.ts";
 import { userExists } from "@/src/service/user_in_writing_group_service.ts";
 import { checkJoinedChatMember } from "@/src/route/chats/chat/chat_membership.ts";
@@ -79,13 +78,20 @@ export default new OpenAPIHono().openapi(
     // A ban refuses contact the same way, and answers the same neutral refusal: an inviter
     // must not learn that a moderation action was taken against somebody else.
     //
-    // A running Blind-Date joins them, and here the neutrality is not a courtesy but the point:
-    // "you cannot write to them because you are in a Blind-Date together" would name the partner
-    // outright, which is the one thing the whole feature exists to hold back.
+    // **A running Blind-Date used to refuse here too, and deliberately no longer does.** The
+    // pseudonymity is a property of the Blind-Date group: inside it the two write as
+    // „Blind-Date-Partner 1" and „2" and there is no private chat between those two labels.
+    // Outside it they are ordinary members who may write to each other like anybody else —
+    // asking somebody for a role-play by message is the platform working, and two accounts
+    // happening to share a Blind-Date is no reason to prevent it.
+    //
+    // The cost was weighed and accepted: a member who suspects who their partner is could write
+    // to that person and compare. Neither of them knows the other is the same person, so neither
+    // notices the comparison being made — and the guard against a real name reaching the group
+    // is the masking, not this refusal.
     if (
       await BlockService.isBlockedBetween(user.id, userId) ||
-      await BanService.isBanned(userId) ||
-      await BlindDateRevealService.areInActiveBlindDateTogether(user.id, userId)
+      await BanService.isBanned(userId)
     ) {
       return c.json(
         { error: "Contact is not possible" },

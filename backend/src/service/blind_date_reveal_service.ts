@@ -258,44 +258,7 @@ async function withdrawRevealConsent(
   return updated === undefined ? "not_found" : undefined;
 }
 
-/**
- * Whether these two are in a Blind-Date together that has not been revealed.
- *
- * The direct chat between them is closed while it is: the whole point is that they know each other
- * only through the group, and a private message carries a real name in its very first line.
- *
- * Symmetric on purpose — it asks about a pair, not about a direction — and it stops mattering the
- * moment they reveal, because from then on they are two people who know who the other is.
- */
-async function areInActiveBlindDateTogether(
-  first: string,
-  second: string,
-): Promise<boolean> {
-  if (first === second) {
-    return false;
-  }
-
-  const shared = await db
-    .selectFrom("blindDatePartner as mine")
-    .innerJoin(
-      "blindDatePartner as theirs",
-      "theirs.pairId",
-      "mine.pairId",
-    )
-    .select("mine.pairId")
-    .where("mine.userId", "=", first)
-    .where("theirs.userId", "=", second)
-    // Both seats still taken by this pair: revealing frees them, and a revealed Blind-Date is an
-    // ordinary group whose two members may write to each other like anybody else.
-    .where("mine.isActive", "=", true)
-    .where("theirs.isActive", "=", true)
-    .executeTakeFirst();
-
-  return shared !== undefined;
-}
-
 export const BlindDateRevealService = {
-  areInActiveBlindDateTogether,
   selectOwnBlindDate,
   agreeToReveal,
   withdrawRevealConsent,
