@@ -43,6 +43,47 @@
 			reverse_proxy mailpit:8025
 		}
 
+		# ── What the browser fetches of its own accord ──────────────────────────────────────
+		#
+		# Icons and the manifest, before the gate rather than behind it.
+		#
+		# **Because a browser fetches these without being asked, and without credentials.** A web
+		# app manifest is fetched with credentials omitted unless the tag says otherwise; an
+		# apple-touch-icon is fetched by iOS on its own terms entirely. Behind the gate each of
+		# them got a 401 — and a 401 on a subresource is a second password prompt. Measured on a
+		# laptop: the manifest first, and once that was fixed by an attribute, the icon took its
+		# place. Attribute by attribute is a losing game, because the next browser fetches the
+		# next thing its own way.
+		#
+		# **Nothing here is secret**, which is the whole reason this is allowed: five icons and a
+		# file naming the site and two colours. A visitor without the password learns that a site
+		# called Rollenspielhimmel exists — which the domain and the public certificate logs say
+		# already. The pages, the API and everything anybody wrote stay behind the gate.
+		#
+		# `apple-touch-icon-precomposed.png` and `robots.txt` do not exist. They are listed
+		# anyway: some iOS versions probe the first name unprompted, and a `robots.txt` has to be
+		# reachable to mean anything the day the gate comes down. Missing files answer 404 here
+		# rather than falling through to the application's entry point.
+		#
+		# Exact paths, never a prefix: a wildcard is how something that was meant to stay behind
+		# a gate ends up in front of one.
+		@unbewacht path /favicon.ico /favicon.svg /apple-touch-icon.png /apple-touch-icon-precomposed.png /icon-192.png /icon-512.png /site.webmanifest /robots.txt
+		handle @unbewacht {
+			root * /srv
+
+			header {
+				# The one header that matters for a file served without the block below: these
+				# are images and JSON, and none of them should ever be sniffed into a script.
+				X-Content-Type-Options nosniff
+
+				# A day. Unlike `/assets`, these names carry no content hash, so a changed icon
+				# has to be able to arrive without a new name.
+				Cache-Control "public, max-age=86400"
+			}
+
+			file_server
+		}
+
 		# Both interpolated from `.env`. An empty hash makes Caddy refuse to start, which fails
 		# the deploy rather than quietly serving the site to everybody — the same direction
 		# `ENVIRONMENT` fails in, and for the same reason.
