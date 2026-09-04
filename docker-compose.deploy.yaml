@@ -32,6 +32,9 @@ services:
       # dollars still looks like a hash and simply never matches.
       GATE_USERNAME: ${GATE_USERNAME:?set GATE_USERNAME in .env}
       GATE_PASSWORD_HASH: ${GATE_PASSWORD_HASH:?set GATE_PASSWORD_HASH in .env}
+      # Required, never defaulted: an empty value would make the Caddyfile's cookie check match
+      # `einlass=` and wave everybody through. Failing the deploy is the safe direction.
+      GATE_COOKIE_VALUE: ${GATE_COOKIE_VALUE:?set GATE_COOKIE_VALUE in .env}
       MAILPIT_WEBROOT: ${MAILPIT_WEBROOT:-postfach}
       MAILBOX_USERNAME: ${MAILBOX_USERNAME:?set MAILBOX_USERNAME in .env}
       MAILBOX_PASSWORD_HASH: ${MAILBOX_PASSWORD_HASH:?set MAILBOX_PASSWORD_HASH in .env}

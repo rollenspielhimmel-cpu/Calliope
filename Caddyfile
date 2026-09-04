@@ -84,12 +84,56 @@
 			file_server
 		}
 
+		# ── The pass ────────────────────────────────────────────────────────────────────────
+		#
+		# Whoever already carries the pass is not asked again.
+		#
+		# **Why this exists at all.** HTTP basic authentication has no cookie and no lifetime: a
+		# browser keeps the credentials in memory, per origin and realm, and drops them when the
+		# session ends. Safari on iOS does that eagerly — a new tab, the app backgrounded, the
+		# phone locked. „Ask once and then be quiet" is not something the mechanism can do, so
+		# this adds the piece it lacks.
+		#
+		# **What it costs, stated plainly rather than glossed over.** Before, somebody had to
+		# know the password. Now, access to a device that holds the pass is enough. That is a
+		# real reduction, and it was decided knowingly: this gate stands in front of a site that
+		# has a real sign-in behind it, and it exists to keep a half-finished beta out of
+		# strangers' hands, not to protect what is inside.
+		#
+		# **Revocable, which is the point of taking the value from `.env`.** Changing the
+		# password would not help — the pass goes around it. Changing `GATE_COOKIE_VALUE` and
+		# redeploying invalidates every pass at once, on every device, this one included. That is
+		# exactly what is wanted the day one has to be taken back.
+		#
+		# The value must be alphanumeric: it is interpolated into a regular expression, and a
+		# character with a meaning there would quietly change what matches. `.example.deploy.env`
+		# says so, and the compose file refuses to start without a value — an empty one would
+		# make this match a cookie of `einlass=` and let anybody in.
+		@ohne_einlass {
+			not header_regexp Cookie "(?:^|;\s*)einlass={$GATE_COOKIE_VALUE}(?:;|$)"
+		}
+
 		# Both interpolated from `.env`. An empty hash makes Caddy refuse to start, which fails
 		# the deploy rather than quietly serving the site to everybody — the same direction
 		# `ENVIRONMENT` fails in, and for the same reason.
-		basic_auth bcrypt "Rollenspielhimmel" {
+		basic_auth @ohne_einlass bcrypt "Rollenspielhimmel" {
 			{$GATE_USERNAME} {$GATE_PASSWORD_HASH}
 		}
+
+		# Handed out on the way back, so only a request that got past the line above can carry
+		# one away. A year, because the question this answers is „how often does a tester have to
+		# type this", and the answer should be „once".
+		#
+		# `HttpOnly` so no script can read it, `Secure` so it never leaves over plain HTTP, and
+		# `SameSite=Lax` so another site cannot make a browser spend it.
+		#
+		# Not on the API and not on the fingerprinted files: those are answered in their hundreds
+		# and would repeat the same header every time. The document is what a person arrives at,
+		# and it is enough.
+		@einlass_mitgeben {
+			not path /api/* /assets/*
+		}
+		header @einlass_mitgeben +Set-Cookie "einlass={$GATE_COOKIE_VALUE}; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax"
 
 		# Everything the backend serves lives under one prefix, so adding a resource needs no
 		# change here and no route can be forgotten.
