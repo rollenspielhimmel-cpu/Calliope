@@ -12,6 +12,7 @@ import strikes from "./moderation/strikes.ts";
 import listIpAddressesForMember from "./moderation/list_ip_addresses_for_member.ts";
 import listBlindDateParticipation from "./moderation/list_blind_date_participation.ts";
 import blindDateManagers from "./moderation/blind_date_managers.ts";
+import broadcastSenders from "./moderation/broadcast_senders.ts";
 
 /**
  * The operators' own tools. Guarded as moderator except for the blocked email domains, the
@@ -34,6 +35,7 @@ export default new OpenAPIHono()
   .route("/", blindDate)
   .route("/", listBlindDateParticipation)
   .route("/", operators)
+  .route("/", broadcastSenders)
   .route("/", broadcast)
   .route("/", invitations)
   .route("/", strikes)

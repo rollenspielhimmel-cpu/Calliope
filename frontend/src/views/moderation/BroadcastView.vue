@@ -14,11 +14,25 @@ import type { SendBroadcastBodyAudienceGroupsItem } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { pluralize } from '@/lib/format/formatText'
 import ModerationPage from '@/components/moderation/ModerationPage.vue'
+import ModerationTabs from '@/components/moderation/ModerationTabs.vue'
+import type { ModerationTab } from '@/components/moderation/ModerationTabs.vue'
+import BroadcastSendersPanel from '@/components/moderation/BroadcastSendersPanel.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+
+const tab = ref<string>('compose')
+
+/**
+ * No counts here. „Wie viele Absender es gibt" is not a number anybody acts on, and the design
+ * rules keep counts for things still waiting to be done.
+ */
+const TABS: ModerationTab[] = [
+  { value: 'compose', label: 'Verschicken' },
+  { value: 'senders', label: 'Absender' },
+]
 
 type Group = SendBroadcastBodyAudienceGroupsItem
 
@@ -89,103 +103,116 @@ async function send() {
     title="Rundmail"
     description="Eine Nachricht an das Team, an alle anderen, oder an alle zusammen. Reiner Text, wie jede andere Mail hier — gesperrte Konten bekommen sie nie."
   >
-    <form class="flex max-w-[684px] flex-col gap-5" @submit.prevent="confirming = true">
-      <FieldGroup>
-        <Field>
-          <FieldLabel>Empfänger</FieldLabel>
-          <div class="flex flex-col gap-1">
-            <label
-              v-for="group in GROUPS"
-              :key="group.value"
-              class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
-            >
-              <Checkbox
-                :model-value="chosen.includes(group.value)"
-                @update:model-value="(on) => toggleGroup(group.value, on === true)"
+    <ModerationTabs v-model="tab" :tabs="TABS" label="Ansichten" />
+
+    <div class="mt-5">
+      <template v-if="tab === 'compose'">
+        <form class="flex max-w-[684px] flex-col gap-5" @submit.prevent="confirming = true">
+          <FieldGroup>
+            <Field>
+              <FieldLabel>Empfänger</FieldLabel>
+              <div class="flex flex-col gap-1">
+                <label
+                  v-for="group in GROUPS"
+                  :key="group.value"
+                  class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
+                >
+                  <Checkbox
+                    :model-value="chosen.includes(group.value)"
+                    @update:model-value="(on) => toggleGroup(group.value, on === true)"
+                  />
+                  {{ group.label }}
+                </label>
+
+                <label
+                  class="mt-1 flex min-h-11 items-center gap-2.5 border-t border-line-3 pt-2 text-[12.5px] text-ink-4 md:min-h-0"
+                >
+                  <Checkbox
+                    :model-value="includeUnverified"
+                    @update:model-value="(on) => (includeUnverified = on === true)"
+                  />
+                  Auch an unbestätigte Adressen
+                </label>
+              </div>
+
+              <p class="text-control text-ink-5">
+                <template v-if="chosen.length === 0">Wähle mindestens eine Gruppe.</template>
+                <template v-else-if="recipients === undefined">Wird gezählt.</template>
+                <template v-else>
+                  Das sind zurzeit {{ pluralize(recipients, 'Person', 'Personen') }}.
+                </template>
+                An unbestätigte Adressen zu schreiben heißt, an Postfächer zu schreiben, die
+                niemandem nachweislich gehören.
+              </p>
+            </Field>
+
+            <Field>
+              <FieldLabel for="broadcastSubject">Betreff</FieldLabel>
+              <Input
+                id="broadcastSubject"
+                v-model="subject"
+                name="broadcastSubject"
+                :maxlength="TEXT_LIMIT.sendBroadcast.subject.maxLength"
+                autocomplete="off"
               />
-              {{ group.label }}
-            </label>
+            </Field>
 
-            <label
-              class="mt-1 flex min-h-11 items-center gap-2.5 border-t border-line-3 pt-2 text-[12.5px] text-ink-4 md:min-h-0"
-            >
-              <Checkbox
-                :model-value="includeUnverified"
-                @update:model-value="(on) => (includeUnverified = on === true)"
-              />
-              Auch an unbestätigte Adressen
-            </label>
-          </div>
-
-          <p class="text-control text-ink-5">
-            <template v-if="chosen.length === 0">Wähle mindestens eine Gruppe.</template>
-            <template v-else-if="recipients === undefined">Wird gezählt.</template>
-            <template v-else>
-              Das sind zurzeit {{ pluralize(recipients, 'Person', 'Personen') }}.
-            </template>
-            An unbestätigte Adressen zu schreiben heißt, an Postfächer zu schreiben, die niemandem
-            nachweislich gehören.
-          </p>
-        </Field>
-
-        <Field>
-          <FieldLabel for="broadcastSubject">Betreff</FieldLabel>
-          <Input
-            id="broadcastSubject"
-            v-model="subject"
-            name="broadcastSubject"
-            :maxlength="TEXT_LIMIT.sendBroadcast.subject.maxLength"
-            autocomplete="off"
-          />
-        </Field>
-
-        <Field>
-          <FieldLabel for="broadcastBody">Nachricht</FieldLabel>
-          <!-- The composer's writing surface: `prose-post` is the same serif at the same size the
+            <Field>
+              <FieldLabel for="broadcastBody">Nachricht</FieldLabel>
+              <!-- The composer's writing surface: `prose-post` is the same serif at the same size the
                thread is read in, so a long message is written in the type it will be read in.
                Framed like a post edited in place, because it stands on ordinary paper here. -->
-          <textarea
-            id="broadcastBody"
-            v-model="body"
-            name="broadcastBody"
-            :maxlength="TEXT_LIMIT.sendBroadcast.body.maxLength"
-            rows="14"
-            class="prose-post w-full resize-y rounded-lg border border-line-4 bg-paper-1 px-4 py-3 caret-oak outline-none focus-visible:border-line-5"
-          ></textarea>
-          <p class="text-control text-ink-5">
-            Schreib die ganze Nachricht, mit Anrede und Gruß. Angehängt wird nur die Zeile, dass sie
-            vom Team verschickt wurde. Formatierung gibt es nicht — was hier steht, kommt genau so
-            an.
+              <textarea
+                id="broadcastBody"
+                v-model="body"
+                name="broadcastBody"
+                :maxlength="TEXT_LIMIT.sendBroadcast.body.maxLength"
+                rows="14"
+                class="prose-post w-full resize-y rounded-lg border border-line-4 bg-paper-1 px-4 py-3 caret-oak outline-none focus-visible:border-line-5"
+              ></textarea>
+              <p class="text-control text-ink-5">
+                Schreib die ganze Nachricht, mit Anrede und Gruß. Angehängt wird nur die Zeile, dass
+                sie vom Team verschickt wurde. Formatierung gibt es nicht — was hier steht, kommt
+                genau so an.
+              </p>
+            </Field>
+          </FieldGroup>
+
+          <div>
+            <Button type="submit" :disabled="!isComplete || isPending">Weiter</Button>
+          </div>
+        </form>
+
+        <!-- The one thing here that cannot be undone gets said in full before it happens. -->
+        <div
+          v-if="confirming"
+          class="mt-6 max-w-[60ch] rounded-lg border border-line-4 bg-paper-1 p-4"
+        >
+          <p class="text-row text-ink-2">
+            Diese Nachricht geht an {{ pluralize(recipients ?? 0, 'Person', 'Personen') }}.
           </p>
-        </Field>
-      </FieldGroup>
+          <p class="mt-1 text-[12.5px] text-ink-5">
+            Verschickte Mails lassen sich nicht zurückholen.
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <Button :disabled="isPending" @click="send">
+              <Spinner v-if="isPending" />
+              Jetzt senden
+            </Button>
+            <Button variant="outline" :disabled="isPending" @click="confirming = false">
+              Abbrechen
+            </Button>
+          </div>
+        </div>
 
-      <div>
-        <Button type="submit" :disabled="!isComplete || isPending">Weiter</Button>
-      </div>
-    </form>
+        <p v-if="sentTo !== undefined" class="mt-4 text-note text-ink-5" role="status">
+          Die Nachricht ist an {{ pluralize(sentTo, 'Person', 'Personen') }} unterwegs.
+        </p>
 
-    <!-- The one thing here that cannot be undone gets said in full before it happens. -->
-    <div v-if="confirming" class="mt-6 max-w-[60ch] rounded-lg border border-line-4 bg-paper-1 p-4">
-      <p class="text-row text-ink-2">
-        Diese Nachricht geht an {{ pluralize(recipients ?? 0, 'Person', 'Personen') }}.
-      </p>
-      <p class="mt-1 text-[12.5px] text-ink-5">Verschickte Mails lassen sich nicht zurückholen.</p>
-      <div class="mt-3 flex flex-wrap gap-2">
-        <Button :disabled="isPending" @click="send">
-          <Spinner v-if="isPending" />
-          Jetzt senden
-        </Button>
-        <Button variant="outline" :disabled="isPending" @click="confirming = false">
-          Abbrechen
-        </Button>
-      </div>
+        <p v-if="error" class="mt-4 text-[12.5px] text-destructive" role="alert">{{ error }}</p>
+      </template>
+
+      <BroadcastSendersPanel v-else />
     </div>
-
-    <p v-if="sentTo !== undefined" class="mt-4 text-note text-ink-5" role="status">
-      Die Nachricht ist an {{ pluralize(sentTo, 'Person', 'Personen') }} unterwegs.
-    </p>
-
-    <p v-if="error" class="mt-4 text-[12.5px] text-destructive" role="alert">{{ error }}</p>
   </ModerationPage>
 </template>

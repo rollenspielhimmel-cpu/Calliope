@@ -2,7 +2,10 @@ import { assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
 import { getUserId, registerUser, request } from "@/src/test/support.ts";
-import { ROOT_ADMIN_USERNAME } from "@/src/service/root_admin_service.ts";
+import {
+  borrowPrimordialSeat,
+  returnPrimordialSeat,
+} from "@/src/test/primordial_seat.ts";
 
 /**
  * The level above the roles. Three rules, and the third is the one that makes the other two mean
@@ -20,35 +23,15 @@ const USERNAMES = [PRIMORDIAL, ADMINISTRATOR, MODERATOR, MEMBER];
 async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
-  primordial = false,
 ) {
   await db
     .updateTable("user")
-    .set({ platformRole: role, isPrimordialAdmin: primordial })
+    .set({ platformRole: role })
     .where("username", "=", username)
     .execute();
 }
 
-/** The bootstrapped `Admin` holds the only primordial seat, so the fixture borrows it. */
-async function releaseRealRootAdmin() {
-  await db
-    .updateTable("user")
-    .set({ isPrimordialAdmin: false })
-    .where("username", "=", ROOT_ADMIN_USERNAME)
-    .execute();
-}
-
-async function restoreRealRootAdmin() {
-  await db
-    .updateTable("user")
-    .set({ isPrimordialAdmin: true })
-    .where("username", "=", ROOT_ADMIN_USERNAME)
-    .execute();
-}
-
 async function fixture() {
-  await releaseRealRootAdmin();
-
   const cookies = {
     primordial: await registerUser(PRIMORDIAL),
     administrator: await registerUser(ADMINISTRATOR),
@@ -56,25 +39,23 @@ async function fixture() {
     member: await registerUser(MEMBER),
   };
 
-  await setRole(PRIMORDIAL, "administrator", true);
+  await setRole(PRIMORDIAL, "administrator");
   await setRole(ADMINISTRATOR, "administrator");
   await setRole(MODERATOR, "moderator");
+
+  // Waits for whoever else is using the one seat rather than taking it from them, which is what
+  // this file used to do — and what broke every other file the moment a third one wanted it.
+  await borrowPrimordialSeat(PRIMORDIAL);
 
   return cookies;
 }
 
 Deno.test.afterEach(async () => {
-  // The primordial flag first: the CHECK constraint refuses a row that keeps it without the role,
-  // and deleting is simpler than reasoning about the order the rows go in.
-  await db
-    .updateTable("user")
-    .set({ isPrimordialAdmin: false })
-    .where("username", "in", USERNAMES)
-    .execute();
+  // The seat first: the CHECK constraint refuses a row that keeps the flag without the role, and
+  // handing it back before deleting anything is simpler than reasoning about the order.
+  await returnPrimordialSeat();
 
   await db.deleteFrom("user").where("username", "in", USERNAMES).execute();
-
-  await restoreRealRootAdmin();
 });
 
 Deno.test("the first administrator may grant the administrator role", async () => {
