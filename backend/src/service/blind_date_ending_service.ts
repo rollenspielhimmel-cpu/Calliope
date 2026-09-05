@@ -86,7 +86,12 @@ async function endOwnBlindDate(
       .where("userId", "!=", userId)
       .execute();
 
+    // Innerhalb einer Transaktion, und die läuft über *eine* Verbindung: mehrere Abfragen darauf
+    // gleichzeitig abzusetzen ist ein Fehler, keine Beschleunigung. `Promise.all` wäre hier also
+    // nicht überflüssig, sondern falsch — und das bleibt wahr, wenn ein Paar einmal mehr als zwei
+    // Partner haben sollte.
     for (const other of others) {
+      // deno-lint-ignore no-await-in-loop -- siehe darüber: eine Verbindung, eine Abfrage
       await NotificationService.insertBlindDateEndedNotification(
         transaction,
         mine.writingGroupId,

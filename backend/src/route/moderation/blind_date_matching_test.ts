@@ -553,11 +553,16 @@ async function aPair(
     .returning("id")
     .executeTakeFirstOrThrow();
 
+  // Zwei Partnerzeilen auf dasselbe Paar. Nacheinander, weil ein eindeutiger Teilindex über
+  // `user_id WHERE is_active` genau dann greift, wenn beide gleichzeitig geschrieben würden — der
+  // Aufbau soll den Zustand herstellen und nicht die Sperre auslösen.
   for (const username of [first, second]) {
+    // deno-lint-ignore no-await-in-loop -- eine Zeile je Partner
     await db
       .insertInto("blindDatePartner")
       .values({
         pairId: pair.id,
+        // deno-lint-ignore no-await-in-loop -- die Kennung zur Zeile, die gerade entsteht
         userId: await getUserId(username),
         isActive: "running" in state,
       })

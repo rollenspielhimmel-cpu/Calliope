@@ -71,6 +71,9 @@ const NO_SESSION_RESPONSE = {
 
 const publicationId = z.object({ publicationId: z.uuidv7() });
 
+const NOT_A_SENDER =
+  "Unter diesem Konto darf nicht gesendet werden. Freigeschaltet wird es vom Ur-Admin.";
+
 export default new OpenAPIHono()
   .openapi(
     createRoute({
@@ -134,16 +137,25 @@ export default new OpenAPIHono()
           description: "Waiting, or already gone out",
           content: jsonContent(BROADCAST_RESPONSE),
         },
+        [STATUS_CODE.Forbidden]: {
+          description: "That account has not been released as a sender",
+          content: jsonContent(ERROR_RESPONSE),
+        },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
         ...BAD_REQUEST_RESPONSE,
         ...COMMON_RESPONSES,
       },
     }),
-    async (c) =>
-      c.json(
-        await BroadcastQueueService.submit(c.get("user"), c.req.valid("json")),
-        STATUS_CODE.Created,
-      ),
+    async (c) => {
+      const written = await BroadcastQueueService.submit(
+        c.get("user"),
+        c.req.valid("json"),
+      );
+
+      return written === "sender_not_released"
+        ? c.json({ error: NOT_A_SENDER }, STATUS_CODE.Forbidden)
+        : c.json(written, STATUS_CODE.Created);
+    },
   )
   .openapi(
     createRoute({
@@ -233,6 +245,10 @@ export default new OpenAPIHono()
           description: "It has already gone out",
           content: jsonContent(ERROR_RESPONSE),
         },
+        [STATUS_CODE.Forbidden]: {
+          description: "That account has not been released as a sender",
+          content: jsonContent(ERROR_RESPONSE),
+        },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
         ...BAD_REQUEST_RESPONSE,
         ...COMMON_RESPONSES,
@@ -257,6 +273,8 @@ export default new OpenAPIHono()
             },
             STATUS_CODE.Conflict,
           );
+        case "sender_not_released":
+          return c.json({ error: NOT_A_SENDER }, STATUS_CODE.Forbidden);
         default:
           return assertUnreachable(refusal);
       }

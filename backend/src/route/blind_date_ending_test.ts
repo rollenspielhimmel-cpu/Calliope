@@ -73,9 +73,13 @@ async function aRunningPair(): Promise<string> {
     .returning("id")
     .executeTakeFirstOrThrow();
 
+  // Nacheinander: Beide Partner in dieselbe Gruppe zu schreiben ist ein Aufbau, kein Messwert,
+  // und die Fremdschlüssel unten setzen voraus, dass die Zeile davor schon steht.
   for (const username of USERS) {
+    // deno-lint-ignore no-await-in-loop -- die Kennung wird für die Einfügung darunter gebraucht
     const userId = await getUserId(username);
 
+    // deno-lint-ignore no-await-in-loop -- eine Partnerzeile je Person, in fester Reihenfolge
     await db
       .insertInto("blindDatePartner")
       .values({ pairId: pair.id, userId })
@@ -86,6 +90,7 @@ async function aRunningPair(): Promise<string> {
     // cannot be told anything about it — leaving this out made the ending fail at the notification
     // with a foreign-key violation, which is the constraint doing its job on a fixture that was
     // not a real Blind-Date.
+    // deno-lint-ignore no-await-in-loop -- die Mitgliedschaft gehört zur selben Person wie oben
     await db
       .insertInto("userInWritingGroup")
       .values({
@@ -188,7 +193,10 @@ Deno.test("both are asked afterwards, and each answers only for themselves", asy
 
   await endMine(leaverCookie);
 
+  // Zwei Sitzungen nacheinander abfragen: Die Zusage ist, dass *beide* dieselbe Einladung sehen,
+  // und nacheinander gefragt liest sich das wie die Behauptung, die geprüft wird.
   for (const cookie of [leaverCookie, leftCookie]) {
+    // deno-lint-ignore no-await-in-loop -- eine Abfrage je Beteiligtem
     const invitation = await (await pendingFeedback(cookie)).json();
     assertEquals(invitation.pairId, pairId);
     assertEquals(invitation.plotTitle, PLOT);

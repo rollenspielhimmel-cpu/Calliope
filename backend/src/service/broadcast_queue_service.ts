@@ -2,6 +2,7 @@ import { sql } from "kysely";
 import { db } from "@/src/database/client.ts";
 import type { PublicationStatus } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
+import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import {
   type BroadcastAudience,
   type BroadcastGroup,
@@ -134,15 +135,25 @@ function toQueued(row: {
   };
 }
 
+export type SubmitRefusal = "sender_not_released";
+
 /**
  * Schreibt eine Rundmail in die Warteschlange.
  *
  * Vom Ur-Admin kommt sie freigegeben heraus und geht sofort raus; von allen anderen wartet sie.
+ *
+ * **Der Absender wird hier geprüft, nicht nur im Formular.** Die Liste dort schlägt vor; sie
+ * hindert niemanden daran, eine andere Kennung zu schicken — und ohne diese Prüfung könnte jede
+ * Administration unter dem Namen eines beliebigen Mitglieds an alle schreiben.
  */
 async function submit(
   author: User,
   input: BroadcastInput,
-): Promise<QueuedBroadcast> {
+): Promise<QueuedBroadcast | SubmitRefusal> {
+  if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
+    return "sender_not_released";
+  }
+
   const now = new Date().toISOString();
   const givesOwnApproval = author.isPrimordialAdmin;
 
@@ -324,7 +335,10 @@ async function approve(
   return undefined;
 }
 
-export type EditRefusal = "not_found" | "already_out";
+export type EditRefusal =
+  | "not_found"
+  | "already_out"
+  | "sender_not_released";
 
 /**
  * Ändert eine wartende oder freigegebene Rundmail — und nimmt ihr damit die Freigabe.
@@ -344,6 +358,10 @@ async function edit(
 
   if (existing.status === "released") {
     return "already_out";
+  }
+
+  if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
+    return "sender_not_released";
   }
 
   await db.transaction().execute(async (transaction) => {
@@ -375,10 +393,18 @@ async function edit(
   return undefined;
 }
 
-/** Verworfen, nicht gelöscht: Was eingereicht wurde, bleibt als Spur stehen. */
+/**
+ * Verworfen, nicht gelöscht: Was eingereicht wurde, bleibt als Spur stehen.
+ *
+ * Ein eigener Ablehnungstyp statt `EditRefusal`: Verwerfen kennt keinen Absender und kann an ihm
+ * deshalb auch nicht scheitern. Beide denselben Typ teilen zu lassen hieße, im Aufrufer einen Fall
+ * zu behandeln, den es nicht gibt.
+ */
+export type DiscardRefusal = "not_found" | "already_out";
+
 async function discard(
   publicationId: string,
-): Promise<EditRefusal | undefined> {
+): Promise<DiscardRefusal | undefined> {
   const existing = await selectOne(publicationId);
 
   if (existing === undefined) {

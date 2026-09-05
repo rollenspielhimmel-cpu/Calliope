@@ -132,8 +132,41 @@ async function withdrawSender(
   return undefined;
 }
 
+/**
+ * Darf unter diesem Konto gesendet werden?
+ *
+ * **Die Frage muss beim Senden gestellt werden, nicht nur beim Auswählen.** Die Liste im Formular
+ * schlägt vor; sie hindert niemanden daran, eine andere Kennung zu schicken. Ohne diese Prüfung
+ * könnte jede Administration eine Rundmail an alle unter dem Namen eines beliebigen Mitglieds
+ * verschicken — und die Freigabe des Ur-Admins wäre eine Empfehlung statt einer Regel.
+ *
+ * Null heißt das Ur-Admin-Konto und ist immer erlaubt: Es steht dauerhaft zur Verfügung, ohne
+ * Zeile in der Tabelle, aus denselben Gründen wie in `listSenders`.
+ */
+async function mayBeSender(userId: string | null): Promise<boolean> {
+  if (userId === null) {
+    return true;
+  }
+
+  const released = await db
+    .selectFrom("user")
+    .select("user.id")
+    .leftJoin("broadcastSender", "broadcastSender.userId", "user.id")
+    .where("user.id", "=", userId)
+    .where((eb) =>
+      eb.or([
+        eb("broadcastSender.userId", "is not", null),
+        eb("user.isPrimordialAdmin", "=", true),
+      ])
+    )
+    .executeTakeFirst();
+
+  return released !== undefined;
+}
+
 export const BroadcastSenderService = {
   listSenders,
   releaseSender,
   withdrawSender,
+  mayBeSender,
 };

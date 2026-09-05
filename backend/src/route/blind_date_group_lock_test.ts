@@ -83,8 +83,13 @@ async function aBlindDateGroup(): Promise<
     .returning("id")
     .executeTakeFirstOrThrow();
 
+  // Der Aufbau eines laufenden Blind-Dates: Mitgliedschaft und Partnerzeile gehören zusammen und
+  // entstehen je Person nacheinander, damit die zweite nicht auf halb angelegten Zeilen der ersten
+  // aufsetzt.
   for (const username of [one, two]) {
+    // deno-lint-ignore no-await-in-loop -- die Kennung wird für beide Einfügungen darunter gebraucht
     const userId = await getUserId(username);
+    // deno-lint-ignore no-await-in-loop -- eine Mitgliedschaft je Person
     await db
       .insertInto("userInWritingGroup")
       .values({
@@ -94,6 +99,7 @@ async function aBlindDateGroup(): Promise<
         status: "joined",
       })
       .execute();
+    // deno-lint-ignore no-await-in-loop -- und eine Partnerzeile zu derselben Person
     await db
       .insertInto("blindDatePartner")
       .values({ pairId: pair.id, userId })

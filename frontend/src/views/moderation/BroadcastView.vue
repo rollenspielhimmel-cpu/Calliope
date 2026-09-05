@@ -16,11 +16,13 @@ import {
   useCountBroadcastRecipients,
   useDiscardBroadcast,
   useListBroadcastQueue,
+  useListBroadcastSenders,
   useListReleasedBroadcasts,
   useSubmitBroadcast,
 } from '@/api/moderation/moderation'
 import type {
   ListBroadcastQueue200Item,
+  ListBroadcastSenders200Item,
   ListReleasedBroadcasts200Item,
   SubmitBroadcastBodyAudienceGroupsItem,
 } from '@/api/models'
@@ -80,6 +82,30 @@ const scheduledForUtc = computed<string | null>(() =>
   scheduledFor.value === '' ? null : berlinToUtc(scheduledFor.value),
 )
 
+/**
+ * Unter welchem Konto sie erscheint. Leer heißt das dauerhaft verfügbare — das Ur-Admin-Konto,
+ * das ohne Zeile in der Tabelle immer zur Verfügung steht.
+ *
+ * Die Liste schlägt vor; verbindlich ist die Prüfung im Backend. Wer hier etwas anderes schickt,
+ * bekommt eine Absage — siehe `mayBeSender`.
+ */
+const sendAs = ref<string>('')
+
+const { data: senderData } = useListBroadcastSenders()
+
+const senders = computed<ListBroadcastSenders200Item[]>(() =>
+  senderData.value?.status === 200 ? senderData.value.data : [],
+)
+
+/** Der dauerhafte Absender führt die Liste an und ist die Voreinstellung. */
+const permanentSender = computed<ListBroadcastSenders200Item | undefined>(() =>
+  senders.value.find((sender) => sender.isPermanent),
+)
+
+const releasedSenders = computed<ListBroadcastSenders200Item[]>(() =>
+  senders.value.filter((sender) => !sender.isPermanent),
+)
+
 const confirming = ref<boolean>(false)
 const sentTo = ref<number | undefined>(undefined)
 const scheduledAt = ref<string | undefined>(undefined)
@@ -131,7 +157,7 @@ async function submit() {
         body: body.value.trim(),
         audienceGroups: chosen.value,
         includeUnverified: includeUnverified.value,
-        sendAsUserId: null,
+        sendAsUserId: sendAs.value === '' ? null : sendAs.value,
         scheduledFor: scheduledForUtc.value,
       },
     })
@@ -157,6 +183,7 @@ async function submit() {
   confirming.value = false
   subject.value = ''
   scheduledFor.value = ''
+  sendAs.value = ''
   body.value = ''
 
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
@@ -271,6 +298,29 @@ function audienceOf(groups: string[]): string {
                 </template>
                 An unbestätigte Adressen zu schreiben heißt, an Postfächer zu schreiben, die
                 niemandem nachweislich gehören.
+              </p>
+            </Field>
+
+            <!--
+              Nur wenn es überhaupt eine Wahl gibt: Solange niemand freigeschaltet ist, geht jede
+              Rundmail unter dem einen dauerhaften Konto raus, und ein Feld mit einer einzigen
+              Möglichkeit ist eine Frage ohne Antwortmöglichkeit.
+            -->
+            <Field v-if="releasedSenders.length > 0">
+              <FieldLabel for="broadcastSender">Absender</FieldLabel>
+              <select
+                id="broadcastSender"
+                v-model="sendAs"
+                class="h-11 max-w-[320px] rounded-lg border border-input bg-transparent px-3 text-sm md:h-9"
+              >
+                <option value="">{{ permanentSender?.username ?? 'Admin' }}</option>
+                <option v-for="sender in releasedSenders" :key="sender.id" :value="sender.id">
+                  {{ sender.username }}
+                </option>
+              </select>
+              <p class="text-control text-ink-5">
+                Unter diesem Namen kommt sie an. Wer sie geschrieben hat, bleibt intern
+                festgehalten. Freigeschaltet werden Konten unter „Absender".
               </p>
             </Field>
 

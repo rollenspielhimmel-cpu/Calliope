@@ -4,6 +4,7 @@ import { db } from "@/src/database/client.ts";
 import {
   clearRateLimits,
   deleteUsers,
+  getUserId,
   registerUser,
   request,
 } from "@/src/test/support.ts";
@@ -64,6 +65,20 @@ async function fixture() {
   await setRole(AUTHOR, "administrator");
   await setRole(SECOND, "administrator");
   await setRole(MODERATOR, "moderator");
+
+  return cookies;
+}
+
+/**
+ * Derselbe Aufbau, aber mit dem Ur-Admin-Platz.
+ *
+ * **Getrennt, weil es genau vier Tests hier sind.** Den Platz gibt es einmal, und wer ihn hält,
+ * hält ihn für alle anderen Dateien mit. Ihn in jedem Aufbau zu leihen hieß, fünfzehn Tests warten
+ * zu lassen für etwas, das sie nicht anfassen — und das ließ die Suite von zwei auf über drei
+ * Minuten wachsen, bevor es auffiel.
+ */
+async function fixtureAsRoot() {
+  const cookies = await fixture();
 
   await borrowPrimordialSeat(ROOT);
 
@@ -200,7 +215,7 @@ Deno.test("a second administrator approves, and that sends it", async () => {
 });
 
 Deno.test("the first administrator needs no approval and it goes out at once", async () => {
-  const cookies = await fixture();
+  const cookies = await fixtureAsRoot();
 
   const created = await (await submit(cookies.root)).json() as Row;
   assertEquals(created.status, "released");
@@ -256,7 +271,7 @@ Deno.test("changing the audience takes back an approval", async () => {
 });
 
 Deno.test("what has gone out cannot be edited or discarded", async () => {
-  const cookies = await fixture();
+  const cookies = await fixtureAsRoot();
 
   const created = await (await submit(cookies.root)).json() as Row;
 
@@ -445,7 +460,7 @@ Deno.test("two runs of the ticker send once", async () => {
 
 /** Auch der Ur-Admin wartet auf die Uhr: Seine Freigabe ist erteilt, der Termin steht daneben. */
 Deno.test("even the first administrator waits for the clock", async () => {
-  const cookies = await fixture();
+  const cookies = await fixtureAsRoot();
 
   const created = await (await submit(cookies.root, {
     scheduledFor: inAnHour(),
@@ -481,4 +496,63 @@ Deno.test("editing a scheduled broadcast takes its approval back", async () => {
   // Fällig, aber nicht mehr freigegeben — also bleibt sie liegen.
   assertEquals(await BroadcastQueueService.releaseDue(), 0);
   assertEquals(only(await waiting(cookies.second)).status, "awaiting_approval");
+});
+
+/**
+ * **Die Absenderliste ist eine Regel, kein Vorschlag.**
+ *
+ * Das Formular bietet nur Freigeschaltetes an — aber es hindert niemanden daran, eine andere
+ * Kennung zu schicken. Ohne diese Prüfung könnte jede Administration eine Rundmail an alle unter
+ * dem Namen eines beliebigen Mitglieds verschicken, und die Freigabe des Ur-Admins wäre eine
+ * Empfehlung.
+ */
+Deno.test("a broadcast cannot be sent as an account that was never released", async () => {
+  const cookies = await fixture();
+
+  const refused = await submit(cookies.author, {
+    sendAsUserId: await getUserId(MODERATOR),
+  });
+
+  assertEquals(refused.status, STATUS_CODE.Forbidden);
+  assertEquals((await waiting(cookies.second)).length, 0, "nichts eingereicht");
+});
+
+Deno.test("a released account may be used as the sender", async () => {
+  const cookies = await fixtureAsRoot();
+
+  assertEquals(
+    (await request(
+      "POST",
+      "/api/moderation/broadcast/senders",
+      cookies.root,
+      { username: MODERATOR },
+    )).status,
+    STATUS_CODE.OK,
+  );
+
+  const created = await (await submit(cookies.author, {
+    sendAsUserId: await getUserId(MODERATOR),
+  })).json() as Row;
+
+  assertEquals(only(await waiting(cookies.second)).sendAsUsername, MODERATOR);
+  assertEquals(created.status, "awaiting_approval");
+});
+
+/** Und eine Bearbeitung kann den Absender nicht nachträglich auf ein fremdes Konto drehen. */
+Deno.test("editing cannot smuggle in an unreleased sender", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+
+  assertEquals(
+    (await request(
+      "PUT",
+      `/api/moderation/broadcast/queue/${created.publicationId}`,
+      cookies.author,
+      { ...BROADCAST, sendAsUserId: await getUserId(MODERATOR) },
+    )).status,
+    STATUS_CODE.Forbidden,
+  );
+
+  assertEquals(only(await waiting(cookies.second)).sendAsUsername, null);
 });

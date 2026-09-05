@@ -1,6 +1,7 @@
 import { assertEquals, assertExists, assertNotEquals } from "@std/assert";
 import { db } from "@/src/database/client.ts";
 import { verifyPassword } from "@/src/util/password.ts";
+import { withVacantPrimordialSeat } from "@/src/test/primordial_seat.ts";
 import {
   ensureRootAdmin,
   ROOT_ADMIN_USERNAME,
@@ -14,37 +15,46 @@ import {
 const PASSWORD = "a-bootstrap-test-password";
 const STANDIN = "root-admin-test-standin";
 
-async function withoutTheRealRootAdmin<T>(body: () => Promise<T>): Promise<T> {
-  // Renamed rather than deleted: it owns rows elsewhere. The address moves with the name,
-  // because that column is UNIQUE too and the bootstrap would otherwise collide with it.
-  await db
-    .updateTable("user")
-    .set({
-      username: STANDIN,
-      emailAddress: `${STANDIN}@example.invalid`,
-      isPrimordialAdmin: false,
-    })
-    .where("username", "=", ROOT_ADMIN_USERNAME)
-    .execute();
+/**
+ * **Durch die gemeinsame Sperre**, obwohl hier nichts ausgeliehen wird: Den Ur-Admin beiseite zu
+ * räumen heißt, den einen Platz zu leeren, den sich vier andere Dateien gerade teilen. Ohne die
+ * Sperre nahm das hier den Platz mitten aus einer fremden Vorrichtung heraus, lief beim Zurückgeben
+ * gegen `user_one_primordial_admin_idx`, ließ das Konto unter seinem Ersatznamen stehen — und der
+ * Rest des Laufs suchte einen `Admin`, den es nicht mehr gab.
+ */
+function withoutTheRealRootAdmin<T>(body: () => Promise<T>): Promise<T> {
+  return withVacantPrimordialSeat(
+    // Renamed rather than deleted: it owns rows elsewhere. The address moves with the name,
+    // because that column is UNIQUE too and the bootstrap would otherwise collide with it.
+    async () => {
+      await db
+        .updateTable("user")
+        .set({
+          username: STANDIN,
+          emailAddress: `${STANDIN}@example.invalid`,
+          isPrimordialAdmin: false,
+        })
+        .where("username", "=", ROOT_ADMIN_USERNAME)
+        .execute();
+    },
+    async () => {
+      await db
+        .deleteFrom("user")
+        .where("username", "=", ROOT_ADMIN_USERNAME)
+        .execute();
 
-  try {
-    return await body();
-  } finally {
-    await db
-      .deleteFrom("user")
-      .where("username", "=", ROOT_ADMIN_USERNAME)
-      .execute();
-
-    await db
-      .updateTable("user")
-      .set({
-        username: ROOT_ADMIN_USERNAME,
-        emailAddress: "admin@rollenspielhimmel.invalid",
-        isPrimordialAdmin: true,
-      })
-      .where("username", "=", STANDIN)
-      .execute();
-  }
+      await db
+        .updateTable("user")
+        .set({
+          username: ROOT_ADMIN_USERNAME,
+          emailAddress: "admin@rollenspielhimmel.invalid",
+          isPrimordialAdmin: true,
+        })
+        .where("username", "=", STANDIN)
+        .execute();
+    },
+    body,
+  );
 }
 
 Deno.test("the first start creates an administrator that can sign in unverified", async () => {
