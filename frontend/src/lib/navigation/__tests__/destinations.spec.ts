@@ -21,8 +21,9 @@ describe('DESTINATIONS', () => {
   it('opens the view members actually want, in one press', () => {
     expect(DESTINATIONS.map((destination) => [destination.label, destination.name])).toEqual([
       // First, ahead of the groups: the forum is where the whole community is in one room, while
-      // a group is a handful of people. It is not readable signed out — that was true of the forum
-      // this replaced, and is a decision still to be made about this one.
+      // a group is a handful of people. It is for members — reading it needs a session, and the
+      // bar sits behind the sign-in like every other destination here. See `backend/src/route/
+      // forum.ts` for why that is so and when to look at it again.
       ['Forum', 'forum'],
       ['Gruppen', 'myGroups'],
       // The carousel rather than either list: reading through unread ideas is the point of the page.

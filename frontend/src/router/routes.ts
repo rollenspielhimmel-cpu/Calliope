@@ -43,6 +43,11 @@ export const routes: Array<RouteRecordRaw> = [
   },
   // The forum's pages share one rail, so they hang off `ForumLayout` for the reason the group's
   // do. The parent stays unnamed; `forum` is the empty child.
+  //
+  // No `access`, so all three are `member` — which is the point rather than an oversight. The
+  // forum this replaced was `anyone`; taking Calliope's forum meant taking its rule that reading
+  // needs a session, and the API refuses without one whatever this file says. `backend/src/route/
+  // forum.ts` carries the reasoning and the note to weigh it again before the community opens.
   {
     path: '/forum',
     component: () => import('../components/layout/ForumLayout.vue'),
