@@ -27,7 +27,6 @@ import {
   Flag,
   Globe,
   ListChecks,
-  MessagesSquare,
   MailX,
   Megaphone,
   Send,
@@ -82,20 +81,14 @@ const SECTIONS: Section[] = [
         to: { name: 'moderationIpAddresses' },
       },
       {
-        title: 'Blind-Date',
-        description: 'Bewerbungen zuordnen, Handlungen anbieten, und wer nicht teilnehmen darf.',
-        icon: Shuffle,
-        to: { name: 'moderationBlindDate' },
-      },
-      {
-        title: '3-Strikes-System und Beobachtungsliste',
+        title: '3-Strikes-System & Watchlist',
         description:
           'Wer wo auf der Leiter steht, nach Stufe sortiert — und wen das Team im Auge behalten wollte.',
         icon: Eye,
         to: { name: 'moderationStrikes' },
       },
       {
-        title: 'Wörter und Domains',
+        title: 'Black-List für Wörter & Domain-Sperren',
         description:
           'Wörter, die nirgends gedruckt werden, und Anbieter, mit denen sich niemand anmelden kann.',
         icon: MailX,
@@ -107,6 +100,28 @@ const SECTIONS: Section[] = [
         description: 'Wer Moderation oder Administration ist, und wer es werden soll.',
         icon: Users,
         to: { name: 'moderationRoles' },
+      },
+    ],
+  },
+  /**
+   * Was zwischen Mitgliedern entsteht, nicht was gegen sie unternommen wird.
+   *
+   * Das Blind-Date stand unter „Mitglieder und Sicherheit", zwischen IP-Sperren und dem
+   * 3-Strikes-System — als wäre es eine Maßnahme. Es ist das Gegenteil: die Stelle, an der die
+   * Seite Leute zusammenbringt. Ein Bereich, in dem Sperren und Kuppeln nebeneinanderstehen, sagt
+   * über beides etwas Falsches.
+   *
+   * Hier gehört später auch das Forum hin, dessen Struktur bis dahin auf der Forumsseite selbst
+   * verwaltet wird — siehe die entfernte Kachel weiter unten.
+   */
+  {
+    title: 'Community',
+    tiles: [
+      {
+        title: 'Blind-Date',
+        description: 'Bewerbungen zuordnen, Handlungen anbieten, und wer nicht teilnehmen darf.',
+        icon: Shuffle,
+        to: { name: 'moderationBlindDate' },
       },
     ],
   },
@@ -150,13 +165,10 @@ const SECTIONS: Section[] = [
         to: { name: 'moderationPages' },
         administratorOnly: true,
       },
-      {
-        title: 'Forum-Struktur',
-        description: 'Kategorien und Unterforen anlegen, sortieren und ihre Sichtbarkeit setzen.',
-        icon: MessagesSquare,
-        to: { name: 'moderationForum' },
-        administratorOnly: true,
-      },
+      // Hier stand „Forum-Struktur", das Kategorien und Unterforen anlegte. Beim Wechsel auf das
+      // Forum aus Calliope ist diese Seite entfallen — dort wird die Struktur auf der Forumsseite
+      // selbst gepflegt, wo Ordner entstehen und ihre Rechte gesetzt werden. Die Kachel blieb
+      // stehen und zeigte auf eine Route, die es nicht mehr gibt.
       {
         title: 'Profilfelder',
         description: 'Welche Fragen das Profil stellt, und welche Antworten zur Auswahl stehen.',

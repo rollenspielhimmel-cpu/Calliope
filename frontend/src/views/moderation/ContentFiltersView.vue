@@ -35,7 +35,7 @@ const tabs = computed<ModerationTab[]>(() => [
 
 <template>
   <ModerationPage
-    title="Wörter und Domains"
+    title="Black-List für Wörter &amp; Domain-Sperren"
     description="Was in der Community nicht geschrieben steht, und mit welchen Anbietern sich niemand anmelden kann. Beides ändert Regeln für alle — deshalb nur für die Administration."
   >
     <ModerationTabs v-model="tab" :tabs="tabs" label="Listen" />

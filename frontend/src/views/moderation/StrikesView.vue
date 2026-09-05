@@ -40,7 +40,7 @@ const tabs = computed<ModerationTab[]>(() => [
 
 <template>
   <ModerationPage
-    title="3-Strikes-System und Beobachtungsliste"
+    title="3-Strikes-System &amp; Watchlist"
     description="Wer wo auf der Leiter steht, und wen das Team im Auge behalten wollte. Beides wird auf dem jeweiligen Profil vergeben, wo die Vorgeschichte vor der Person steht, die entscheidet."
   >
     <ModerationTabs v-model="tab" :tabs="tabs" label="Ansichten" />

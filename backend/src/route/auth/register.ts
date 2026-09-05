@@ -20,6 +20,29 @@ import {
   PASSWORD_BREACHED_BODY,
 } from "@/src/http/response.ts";
 
+/**
+ * **Noch offen: die Zustimmung vor der Registrierung.**
+ *
+ * Sie fehlt, weil es noch nichts gibt, dem man zustimmen könnte — die Nutzungsbedingungen sind
+ * ungeschrieben, und ihr Text kommt von der Betreiberin, nicht aus dem Code. Sobald er dasteht,
+ * gehört die Zustimmung hierher: als Feld am Registrierungskörper, das die Anmeldung verweigert,
+ * wenn es fehlt.
+ *
+ * **Wie festgehalten wird, ist entschieden** und steht hier, damit die Frage beim nächsten
+ * Anfassen nicht noch einmal aufgemacht wird. Protokolliert wird *wer*, *wann* und *welcher
+ * Fassung* — und die Fassung als **Prüfsumme des Textes plus Datum**, wobei **der zugestimmte
+ * Text selbst mit aufbewahrt wird**.
+ *
+ * Warum nicht anders:
+ *
+ * - Nur ein Datum wäre billig, aber zwei Änderungen am selben Tag wären nicht unterscheidbar.
+ * - Eine Versionsnummer, die jemand beim Bearbeiten hochzählt, ist verlässlich, solange jemand
+ *   daran denkt — und genau das ist die Annahme, die nach zwei Jahren nicht mehr trägt.
+ * - Eine Prüfsumme entsteht von selbst und lässt sich nicht nachträglich zurechtlegen. Aber
+ *   „hat Fassung a3f8b1… zugestimmt" beantwortet vor Gericht nichts, solange niemand sagen kann,
+ *   was in a3f8b1… stand. Deshalb der Text dazu: Ohne ihn ist die Prüfsumme wertlos.
+ */
+
 const REGISTER_BODY = USER_SCHEMA
   .pick({ username: true, emailAddress: true })
   .extend({
