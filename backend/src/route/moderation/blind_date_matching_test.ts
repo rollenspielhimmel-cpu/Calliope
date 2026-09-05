@@ -611,3 +611,70 @@ Deno.test("the participation list is an operator's, and nobody else's", async ()
 
   assertEquals((await participation(cookie)).status, STATUS_CODE.Forbidden);
 });
+
+/**
+ * **Gebunden, solange die Bewerbung offen ist** — und wieder frei, sobald sie es nicht mehr ist.
+ *
+ * Die Regel steht an drei Stellen, was Absicht ist und hier festgehalten wird: der eindeutige
+ * Index über `user_id WHERE status = 'pending'`, die Prüfung in `eligibilityFor`, und dass
+ * `withdraw` nur eine offene Bewerbung anfasst. Keine davon kennt die andere, und keine soll
+ * still wegfallen können.
+ */
+Deno.test("being matched ends the freedom to withdraw", async () => {
+  const cookie = await asOperator();
+  const first = await anApplicant(alpha);
+  const second = await anApplicant(beta);
+
+  assertEquals((await match(cookie, first, second)).status, STATUS_CODE.OK);
+
+  // deno-lint-ignore no-non-null-assertion -- `anApplicant` put the session here
+  const applicant = sessions.get(alpha)!;
+
+  // Nichts mehr zurückzuziehen: Die Bewerbung ist `matched`, nicht `pending`. Das ist die Sperre —
+  // eine Zusage, aus der man sich einseitig davonstiehlt, wäre für die andere Person eine Gruppe,
+  // die plötzlich leer ist.
+  assertEquals(
+    (await request("DELETE", "/api/blind-date/applications/mine", applicant))
+      .status,
+    STATUS_CODE.NotFound,
+  );
+
+  // Und die Oberfläche bietet es gar nicht erst an, weil sie nichts Offenes mehr findet.
+  assertEquals(
+    (await request("GET", "/api/blind-date/applications/mine", applicant))
+      .status,
+    STATUS_CODE.NotFound,
+  );
+});
+
+/**
+ * Ein Match nimmt zwei Bewerbungen aus der Warteschlange und lässt alle anderen stehen.
+ *
+ * Das ist die Regel, die am leichtesten verlorenginge: „nach dem Zuordnen aufräumen" klingt
+ * ordentlich und würde genau die Bewerbungen abräumen, aus denen die nächste Zusammenstellung
+ * entsteht.
+ */
+Deno.test("matching two leaves everybody else waiting", async () => {
+  const cookie = await asOperator();
+  const first = await anApplicant(alpha);
+  const second = await anApplicant(beta);
+  const third = await anApplicant(gamma);
+
+  assertEquals((await match(cookie, first, second)).status, STATUS_CODE.OK);
+
+  const stillWaiting = await db
+    .selectFrom("blindDateApplication")
+    .select(["id", "status"])
+    .where("id", "in", [first, second, third])
+    .execute();
+
+  const byId = new Map(stillWaiting.map((row) => [row.id, row.status]));
+
+  assertEquals(byId.get(first), "matched");
+  assertEquals(byId.get(second), "matched");
+  assertEquals(
+    byId.get(third),
+    "pending",
+    "die dritte Bewerbung wartet weiter",
+  );
+});

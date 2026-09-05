@@ -447,3 +447,34 @@ Deno.test("withdrawing when there is nothing to withdraw is a 404, not a silent 
 
   assertEquals((await withdraw(cookie)).status, STATUS_CODE.NotFound);
 });
+
+/**
+ * **Die Bindung gilt über alle Angebote hinweg, nicht je Angebot.**
+ *
+ * Der Test darüber bewirbt sich zweimal ohne Angebot und beweist damit nur den einfachen Fall.
+ * Diese Regel ist die, die jemand beim Lesen des eindeutigen Index für selbstverständlich hält —
+ * er steht auf `(user_id)` allein, und ein späteres `(user_id, offer_id)` sähe ordentlicher aus
+ * und wäre still etwas anderes: zwei Handlungen gleichzeitig.
+ */
+Deno.test("one open application binds across every offer, not just one", async () => {
+  const cookie = await registerUser(member);
+
+  const erste = await offerClosingAt(null);
+  const zweite = await offerClosingAt(null);
+
+  assertEquals(
+    (await apply(cookie, { offerId: erste })).status,
+    STATUS_CODE.OK,
+  );
+
+  const zweiter = await apply(cookie, { offerId: zweite });
+  assertEquals(zweiter.status, STATUS_CODE.Forbidden);
+  assertEquals((await zweiter.json()).reason, "already_applied");
+
+  // Zurückgezogen heißt wieder frei — dieselbe Regel von der anderen Seite.
+  await withdraw(cookie);
+  assertEquals(
+    (await apply(cookie, { offerId: zweite })).status,
+    STATUS_CODE.OK,
+  );
+});
