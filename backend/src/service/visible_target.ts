@@ -235,7 +235,6 @@ export async function resolveVisibleTarget(
         : seen(message.createdBy, () => message.text);
     }
 
-
     case "user": {
       const profile = await UserService.selectUserProfile(targetId);
       // The reported account answers for itself.
