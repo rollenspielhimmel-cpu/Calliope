@@ -115,7 +115,9 @@ const FORUM_PERMISSION = {
  * still remembers what was chosen for it (#32's slice 7).
  */
 export const FORUM_FOLDER_RESPONSE = WRITING_FOLDER_SCHEMA
-  .omit({ writingGroupId: true })
+  // `isBroadcastArchive` bleibt drinnen: Die Kennzeichnung sagt der Verwaltung, wohin Rundmails
+  // abgelegt werden, und niemandem sonst etwas. Für den Lesenden ist es ein Ordner wie jeder andere.
+  .omit({ writingGroupId: true, isBroadcastArchive: true })
   .extend(CREATED_BY_USERNAME)
   .extend(FORUM_PERMISSION)
   // Not nullable here, unlike the column: it is null only for a writing group's folder, which the
@@ -157,7 +159,12 @@ export const MEMBERSHIP_RESPONSE = USER_IN_WRITING_GROUP_SCHEMA.extend({
 
 /** A folder as the tree reads it. `depth` is derived by the server and never sent by a client. */
 export const FOLDER_RESPONSE = WRITING_FOLDER_SCHEMA
-  .omit({ memberPermission: true, effectiveMemberPermission: true })
+  .omit({
+    memberPermission: true,
+    effectiveMemberPermission: true,
+    // Ein Ordner einer Schreibgruppe kann das Rundmail-Archiv gar nicht sein — das liegt im Forum.
+    isBroadcastArchive: true,
+  })
   .extend(IN_GROUP)
   .extend(CREATED_BY_USERNAME);
 
@@ -406,6 +413,28 @@ export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
     type: z.literal("invited_to_chat_group"),
     chatGroupId: NOTIFICATION_SCHEMA.shape.chatGroupId.unwrap(),
     chatGroupTitle: z.string(),
+  }),
+  /**
+   * Eine Rundmail im Postfach — die einzige Benachrichtigung, die ihren eigenen Text mitbringt.
+   *
+   * Alle anderen zeigen auf einen Gegenstand und lassen die Worte daraus entstehen. Eine Rundmail
+   * hat aber einen Betreff, den jemand getippt hat, und keinen Gegenstand, aus dem er folgen
+   * würde.
+   *
+   * Ohne Verursacher, wie die Blind-Date-Nachrichten: Nach außen trägt die Rundmail den gewählten
+   * Absender, und wer sie wirklich geschrieben hat, bleibt der Administration vorbehalten. Ein
+   * Name an dieser Stelle würde beides vermengen.
+   */
+  z.object({
+    ...NOTIFICATION_BASE,
+    type: z.literal("broadcast_received"),
+    broadcastId: NOTIFICATION_SCHEMA.shape.broadcastId.unwrap(),
+    broadcastSubject: z.string(),
+    /**
+     * Der Faden im Forum, wenn sie dort steht — sonst null, und dann ist der Eintrag im Postfach
+     * selbst die eine Stelle mit dem Text.
+     */
+    broadcastArchiveThreadId: z.uuidv7().nullable(),
   }),
 ]);
 

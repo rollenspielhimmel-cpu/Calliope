@@ -67,6 +67,21 @@ const GROUPS: ReadonlyArray<{ value: Group; label: string }> = [
 
 const chosen = ref<Group[]>(['administrator', 'moderator', 'member'])
 const includeUnverified = ref<boolean>(false)
+
+/**
+ * Die drei Wege, einzeln zu haben.
+ *
+ * **Das Postfach ist voreingestellt, die E-Mail nicht.** Eine Rundmail ist eine Mitteilung
+ * innerhalb der Community; hinaus in fremde Postfächer geht sie, wenn jemand das ausdrücklich
+ * will. Das Archiv steht daneben und nicht darunter: Auch eine reine E-Mail-Rundmail darf im Forum
+ * nachlesbar sein.
+ *
+ * Dass mindestens einer gesetzt sein muss, prüft am Ende die Datenbank. Hier stumpft es nur den
+ * Knopf ab, damit niemand erst nach dem Absenden erfährt, dass er nichts ausgewählt hat.
+ */
+const deliverToInbox = ref<boolean>(true)
+const deliverByEmail = ref<boolean>(false)
+const publishInArchive = ref<boolean>(false)
 const subject = ref<string>('')
 const body = ref<string>('')
 /**
@@ -127,14 +142,57 @@ const { data } = useCountBroadcastRecipients(
   { query: { enabled: computed(() => chosen.value.length > 0) } },
 )
 
-const recipients = computed<number | undefined>(() =>
-  data.value?.status === 200 ? data.value.data.recipients : undefined,
-)
+/**
+ * Zwei Zahlen, weil die Wege verschieden weit reichen.
+ *
+ * Wer seine Adresse nie bestätigt hat, liest sein Postfach, bekommt aber keine Mail. Bei „nur
+ * E-Mail" ist die Differenz niemand, den irgendetwas erreicht — und genau das muss dastehen, bevor
+ * jemand den Knopf drückt.
+ */
+const reach = computed(() => (data.value?.status === 200 ? data.value.data : undefined))
+
+/** Der Satz über die Reichweite, aus den gewählten Wegen zusammengesetzt. */
+const reachSentence = computed<string | undefined>(() => {
+  if (reach.value === undefined) {
+    return undefined
+  }
+
+  const ways: string[] = []
+  if (deliverToInbox.value) {
+    ways.push(`${reach.value.inbox} im Postfach`)
+  }
+  if (deliverByEmail.value) {
+    ways.push(`${reach.value.email} per E-Mail`)
+  }
+
+  if (ways.length === 0) {
+    return publishInArchive.value
+      ? 'Geht an niemanden — sie steht nur im Forum.'
+      : 'Kein Weg gewählt: So kommt sie nirgends an.'
+  }
+
+  const skipped = reach.value.inbox - reach.value.email
+  // Nur beim reinen E-Mail-Weg ist das Überspringen folgenreich: Dort erreicht die Übersprungenen
+  // niemand, auf keinem Weg. Steht das Postfach daneben, bekommen sie es dort, und der Zusatz wäre
+  // eine Warnung vor nichts.
+  const warning =
+    deliverByEmail.value && !deliverToInbox.value && skipped > 0
+      ? ` ${skipped} ${skipped === 1 ? 'Mitglied hat' : 'Mitglieder haben'} keine bestätigte Adresse und ${skipped === 1 ? 'wird' : 'werden'} so von nichts erreicht.`
+      : ''
+
+  return `Erreicht ${ways.join(', ')}.${warning}`
+})
 
 const { mutateAsync: submitBroadcast, isPending } = useSubmitBroadcast()
 
 const isComplete = computed<boolean>(
-  () => chosen.value.length > 0 && subject.value.trim().length > 0 && body.value.trim().length > 0,
+  () =>
+    chosen.value.length > 0 &&
+    subject.value.trim().length > 0 &&
+    body.value.trim().length > 0 &&
+    // Irgendwo ankommen muss sie. Die Datenbank sagt dasselbe und hat das letzte Wort; hier steht
+    // es, damit niemand erst nach dem Absenden erfährt, dass er keinen Weg gewählt hat.
+    (deliverToInbox.value || deliverByEmail.value || publishInArchive.value),
 )
 
 /**
@@ -157,6 +215,9 @@ async function submit() {
         body: body.value.trim(),
         audienceGroups: chosen.value,
         includeUnverified: includeUnverified.value,
+        deliverToInbox: deliverToInbox.value,
+        deliverByEmail: deliverByEmail.value,
+        publishInArchive: publishInArchive.value,
         sendAsUserId: sendAs.value === '' ? null : sendAs.value,
         scheduledFor: scheduledForUtc.value,
       },
@@ -292,12 +353,53 @@ function audienceOf(groups: string[]): string {
 
               <p class="text-control text-ink-5">
                 <template v-if="chosen.length === 0">Wähle mindestens eine Gruppe.</template>
-                <template v-else-if="recipients === undefined">Wird gezählt.</template>
-                <template v-else>
-                  Das sind zurzeit {{ pluralize(recipients, 'Person', 'Personen') }}.
-                </template>
+                <template v-else-if="reachSentence === undefined">Wird gezählt.</template>
+                <template v-else>{{ reachSentence }}</template>
                 An unbestätigte Adressen zu schreiben heißt, an Postfächer zu schreiben, die
                 niemandem nachweislich gehören.
+              </p>
+            </Field>
+
+            <!--
+              Drei Haken statt einer Auswahl aus dreien: Es sind drei getrennte Fragen, und jede
+              Kombination ist erlaubt außer keiner. Eine Liste mit „Postfach / E-Mail / beides"
+              müsste für das Archiv jede Zeile verdoppeln.
+            -->
+            <Field>
+              <FieldLabel>Wege</FieldLabel>
+              <div class="flex flex-col gap-1">
+                <label
+                  class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
+                >
+                  <Checkbox
+                    :model-value="deliverToInbox"
+                    @update:model-value="(on) => (deliverToInbox = on === true)"
+                  />
+                  Ins Postfach auf der Plattform
+                </label>
+                <label
+                  class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
+                >
+                  <Checkbox
+                    :model-value="deliverByEmail"
+                    @update:model-value="(on) => (deliverByEmail = on === true)"
+                  />
+                  Per E-Mail
+                </label>
+                <label
+                  class="mt-1 flex min-h-11 items-center gap-2.5 border-t border-line-3 pt-2 text-[12.5px] text-ink-4 md:min-h-0"
+                >
+                  <Checkbox
+                    :model-value="publishInArchive"
+                    @update:model-value="(on) => (publishInArchive = on === true)"
+                  />
+                  Auch im Forum ablegen
+                </label>
+              </div>
+
+              <p class="text-control text-ink-5">
+                Im Forum steht sie zum Nachlesen und darf beantwortet werden — unabhängig davon, wie
+                sie zugestellt wird.
               </p>
             </Field>
 
@@ -394,9 +496,7 @@ function audienceOf(groups: string[]): string {
           v-if="confirming"
           class="mt-6 max-w-[60ch] rounded-lg border border-line-4 bg-paper-1 p-4"
         >
-          <p class="text-row text-ink-2">
-            Diese Nachricht geht an {{ pluralize(recipients ?? 0, 'Person', 'Personen') }}.
-          </p>
+          <p class="text-row text-ink-2">{{ reachSentence }}</p>
           <p class="mt-1 text-[12.5px] text-ink-5">
             Sie geht erst raus, wenn jemand aus der Administration sie freigibt — verschickte Mails
             lassen sich nicht zurückholen.

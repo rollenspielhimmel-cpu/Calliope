@@ -5,6 +5,7 @@ import type { User } from "@/src/service/user_service.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import {
   type BroadcastAudience,
+  type BroadcastDelivery,
   type BroadcastGroup,
   BroadcastService,
 } from "@/src/service/broadcast_service.ts";
@@ -45,6 +46,17 @@ export type BroadcastInput = {
   /** Null heißt: unter dem Ur-Admin-Konto, das dauerhaft zur Verfügung steht. */
   sendAsUserId: string | null;
   /**
+   * Die drei Wege, einzeln zu haben.
+   *
+   * Ins Postfach auf der Plattform, per E-Mail, ins Forum-Archiv — jede Kombination ist erlaubt
+   * außer keiner, und dafür sorgt `broadcast_arrives_somewhere` in der Datenbank. Die Aufteilung
+   * ist der Punkt: Eine Ankündigung an alle will man oft auch per Mail, eine Notiz an die
+   * Administration nicht, und ein Hinweis fürs Nachlesen soll niemanden anstupsen.
+   */
+  deliverToInbox: boolean;
+  deliverByEmail: boolean;
+  publishInArchive: boolean;
+  /**
    * Wann sie frühestens rausgeht, oder null für „sobald freigegeben".
    *
    * In UTC wie alles hier. Dass die Oberfläche nach Europe/Berlin rechnet, ist ihre Sache — „morgen
@@ -67,13 +79,26 @@ export type QueuedBroadcast = BroadcastInput & {
   approvedByUsername: string | null;
   approvedAt: string | null;
   releasedAt: string | null;
+  /** Wie viele es ins Postfach bekommen haben, oder null, wenn dieser Weg nicht gewählt war. */
   recipientCount: number | null;
+  /** Wie viele eine Mail bekommen haben. Weniger, wenn Adressen unbestätigt sind. */
+  emailRecipientCount: number | null;
+  /** Gesetzt, sobald sie im Archiv steht — die Oberfläche verlinkt darauf. */
+  archivePostId: string | null;
 };
 
 function audienceOf(broadcast: BroadcastInput): BroadcastAudience {
   return {
     groups: broadcast.audienceGroups,
     includeUnverified: broadcast.includeUnverified,
+  };
+}
+
+function deliveryOf(broadcast: BroadcastInput): BroadcastDelivery {
+  return {
+    toInbox: broadcast.deliverToInbox,
+    byEmail: broadcast.deliverByEmail,
+    toArchive: broadcast.publishInArchive,
   };
 }
 
@@ -100,11 +125,17 @@ function rows() {
       "approver.username as approvedByUsername",
       "publication.approvedAt",
       "publication.releasedAt",
+      "broadcast.id as broadcastId",
       "broadcast.subject",
       "broadcast.body",
       "broadcast.audienceGroups",
       "broadcast.includeUnverified",
+      "broadcast.deliverToInbox",
+      "broadcast.deliverByEmail",
+      "broadcast.publishInArchive",
+      "broadcast.archivePostId",
       "broadcast.recipientCount",
+      "broadcast.emailRecipientCount",
     ])
     .where("publication.kind", "=", "broadcast");
 }
@@ -120,11 +151,17 @@ function toQueued(row: {
   approvedByUsername: string | null;
   approvedAt: string | null;
   releasedAt: string | null;
+  broadcastId: string;
   subject: string;
   body: string;
   audienceGroups: string[];
   includeUnverified: boolean;
+  deliverToInbox: boolean;
+  deliverByEmail: boolean;
+  publishInArchive: boolean;
+  archivePostId: string | null;
   recipientCount: number | null;
+  emailRecipientCount: number | null;
 }): QueuedBroadcast {
   return {
     ...row,
@@ -181,6 +218,9 @@ async function submit(
         body: input.body,
         audienceGroups: input.audienceGroups,
         includeUnverified: input.includeUnverified,
+        deliverToInbox: input.deliverToInbox,
+        deliverByEmail: input.deliverByEmail,
+        publishInArchive: input.publishInArchive,
       })
       .execute();
 
@@ -228,15 +268,41 @@ async function release(
     return false;
   }
 
-  const result = await BroadcastService.send(
+  const broadcast = await db
+    .selectFrom("broadcast")
+    .select("id")
+    .where("publicationId", "=", publicationId)
+    .executeTakeFirstOrThrow();
+
+  const delivery = deliveryOf(input);
+
+  // **Zuerst ins Archiv, dann zustellen.** Die Postfachzeile und die Mail zeigen auf den Beitrag im
+  // Forum; gäbe es ihn beim Zustellen noch nicht, verwiese die Benachrichtigung für einen Moment
+  // ins Leere. Andersherum kostet es nichts.
+  const archivePostId = delivery.toArchive
+    ? await BroadcastService.publishInArchive(
+      input.subject,
+      input.body,
+      publicationId,
+      input.sendAsUserId,
+    )
+    : null;
+
+  const reach = await BroadcastService.send(
+    broadcast.id,
     audienceOf(input),
+    delivery,
     input.subject,
     input.body,
   );
 
   await db
     .updateTable("broadcast")
-    .set({ recipientCount: result.recipients })
+    .set({
+      recipientCount: delivery.toInbox ? reach.inbox : null,
+      emailRecipientCount: delivery.byEmail ? reach.email : null,
+      archivePostId,
+    })
     .where("publicationId", "=", publicationId)
     .execute();
 
@@ -384,6 +450,9 @@ async function edit(
         body: input.body,
         audienceGroups: input.audienceGroups,
         includeUnverified: input.includeUnverified,
+        deliverToInbox: input.deliverToInbox,
+        deliverByEmail: input.deliverByEmail,
+        publishInArchive: input.publishInArchive,
         updatedAt: new Date().toISOString(),
       })
       .where("publicationId", "=", publicationId)

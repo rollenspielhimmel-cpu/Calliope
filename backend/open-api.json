@@ -31005,6 +31005,44 @@
                               "chatGroupId",
                               "chatGroupTitle"
                             ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "occurredAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "readAt": {
+                                "type": ["string", "null"],
+                                "format": "date-time"
+                              },
+                              "actorUsername": { "type": ["string", "null"] },
+                              "type": {
+                                "type": "string",
+                                "enum": ["broadcast_received"]
+                              },
+                              "broadcastId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "broadcastSubject": { "type": "string" },
+                              "broadcastArchiveThreadId": {
+                                "type": ["string", "null"],
+                                "format": "uuid"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "occurredAt",
+                              "readAt",
+                              "actorUsername",
+                              "type",
+                              "broadcastId",
+                              "broadcastSubject",
+                              "broadcastArchiveThreadId"
+                            ]
                           }
                         ]
                       }
@@ -31313,6 +31351,328 @@
           },
           "403": {
             "description": "Email address not verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifications/broadcast/{broadcastId}": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "Read a broadcast from one's own inbox",
+        "description": "The text of a broadcast the signed-in member received. Refused with 404 rather than 403 when they did not receive it: whether a broadcast exists is itself something only its recipients need to know.",
+        "operationId": "readBroadcast",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "required": true,
+            "name": "broadcastId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The broadcast",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "subject": { "type": "string" },
+                    "body": { "type": "string" },
+                    "sendAsUsername": { "type": ["string", "null"] },
+                    "releasedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "archiveThreadId": {
+                      "type": ["string", "null"],
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "subject",
+                    "body",
+                    "sendAsUsername",
+                    "releasedAt",
+                    "archiveThreadId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Email address not verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such broadcast in this member's inbox",
             "content": {
               "application/json": {
                 "schema": {
@@ -46680,6 +47040,9 @@
                         "minItems": 1
                       },
                       "includeUnverified": { "type": "boolean" },
+                      "deliverToInbox": { "type": "boolean" },
+                      "deliverByEmail": { "type": "boolean" },
+                      "publishInArchive": { "type": "boolean" },
                       "sendAsUserId": {
                         "type": ["string", "null"],
                         "format": "uuid"
@@ -46711,13 +47074,21 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
-                      "recipientCount": { "type": ["integer", "null"] }
+                      "recipientCount": { "type": ["integer", "null"] },
+                      "emailRecipientCount": { "type": ["integer", "null"] },
+                      "archivePostId": {
+                        "type": ["string", "null"],
+                        "format": "uuid"
+                      }
                     },
                     "required": [
                       "subject",
                       "body",
                       "audienceGroups",
                       "includeUnverified",
+                      "deliverToInbox",
+                      "deliverByEmail",
+                      "publishInArchive",
                       "sendAsUserId",
                       "scheduledFor",
                       "publicationId",
@@ -46728,7 +47099,9 @@
                       "approvedByUsername",
                       "approvedAt",
                       "releasedAt",
-                      "recipientCount"
+                      "recipientCount",
+                      "emailRecipientCount",
+                      "archivePostId"
                     ]
                   }
                 }
@@ -46927,6 +47300,9 @@
                     "minItems": 1
                   },
                   "includeUnverified": { "type": "boolean" },
+                  "deliverToInbox": { "type": "boolean" },
+                  "deliverByEmail": { "type": "boolean" },
+                  "publishInArchive": { "type": "boolean" },
                   "sendAsUserId": {
                     "type": ["string", "null"],
                     "format": "uuid"
@@ -46941,6 +47317,9 @@
                   "body",
                   "audienceGroups",
                   "includeUnverified",
+                  "deliverToInbox",
+                  "deliverByEmail",
+                  "publishInArchive",
                   "sendAsUserId",
                   "scheduledFor"
                 ]
@@ -46977,6 +47356,9 @@
                       "minItems": 1
                     },
                     "includeUnverified": { "type": "boolean" },
+                    "deliverToInbox": { "type": "boolean" },
+                    "deliverByEmail": { "type": "boolean" },
+                    "publishInArchive": { "type": "boolean" },
                     "sendAsUserId": {
                       "type": ["string", "null"],
                       "format": "uuid"
@@ -47008,13 +47390,21 @@
                       "type": ["string", "null"],
                       "format": "date-time"
                     },
-                    "recipientCount": { "type": ["integer", "null"] }
+                    "recipientCount": { "type": ["integer", "null"] },
+                    "emailRecipientCount": { "type": ["integer", "null"] },
+                    "archivePostId": {
+                      "type": ["string", "null"],
+                      "format": "uuid"
+                    }
                   },
                   "required": [
                     "subject",
                     "body",
                     "audienceGroups",
                     "includeUnverified",
+                    "deliverToInbox",
+                    "deliverByEmail",
+                    "publishInArchive",
                     "sendAsUserId",
                     "scheduledFor",
                     "publicationId",
@@ -47025,7 +47415,9 @@
                     "approvedByUsername",
                     "approvedAt",
                     "releasedAt",
-                    "recipientCount"
+                    "recipientCount",
+                    "emailRecipientCount",
+                    "archivePostId"
                   ]
                 }
               }
@@ -47306,6 +47698,9 @@
                         "minItems": 1
                       },
                       "includeUnverified": { "type": "boolean" },
+                      "deliverToInbox": { "type": "boolean" },
+                      "deliverByEmail": { "type": "boolean" },
+                      "publishInArchive": { "type": "boolean" },
                       "sendAsUserId": {
                         "type": ["string", "null"],
                         "format": "uuid"
@@ -47337,13 +47732,21 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
-                      "recipientCount": { "type": ["integer", "null"] }
+                      "recipientCount": { "type": ["integer", "null"] },
+                      "emailRecipientCount": { "type": ["integer", "null"] },
+                      "archivePostId": {
+                        "type": ["string", "null"],
+                        "format": "uuid"
+                      }
                     },
                     "required": [
                       "subject",
                       "body",
                       "audienceGroups",
                       "includeUnverified",
+                      "deliverToInbox",
+                      "deliverByEmail",
+                      "publishInArchive",
                       "sendAsUserId",
                       "scheduledFor",
                       "publicationId",
@@ -47354,7 +47757,9 @@
                       "approvedByUsername",
                       "approvedAt",
                       "releasedAt",
-                      "recipientCount"
+                      "recipientCount",
+                      "emailRecipientCount",
+                      "archivePostId"
                     ]
                   }
                 }
@@ -47867,6 +48272,9 @@
                     "minItems": 1
                   },
                   "includeUnverified": { "type": "boolean" },
+                  "deliverToInbox": { "type": "boolean" },
+                  "deliverByEmail": { "type": "boolean" },
+                  "publishInArchive": { "type": "boolean" },
                   "sendAsUserId": {
                     "type": ["string", "null"],
                     "format": "uuid"
@@ -47881,6 +48289,9 @@
                   "body",
                   "audienceGroups",
                   "includeUnverified",
+                  "deliverToInbox",
+                  "deliverByEmail",
+                  "publishInArchive",
                   "sendAsUserId",
                   "scheduledFor"
                 ]
@@ -48511,8 +48922,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "recipients": { "type": "integer" } },
-                  "required": ["recipients"]
+                  "properties": {
+                    "inbox": { "type": "integer" },
+                    "email": { "type": "integer" }
+                  },
+                  "required": ["inbox", "email"]
                 }
               }
             }

@@ -48,6 +48,7 @@ export type NotificationType =
   | "blind_date_ended"
   | "blind_date_matched"
   | "blind_date_reveal_requested"
+  | "broadcast_received"
   | "invitation_accepted"
   | "invited_to_chat_group"
   | "invited_to_writing_group"
@@ -399,6 +400,9 @@ export interface Broadcast {
   audienceGroups: string[];
   body: string;
   createdAt: Generated<string>;
+  deliverByEmail: Generated<boolean>;
+  deliverToInbox: Generated<boolean>;
+  emailRecipientCount: number | null;
   id: Generated<string>;
   includeUnverified: Generated<boolean>;
   publicationId: string;
@@ -465,6 +469,7 @@ export interface Favourite {
 
 export interface Notification {
   actorId: string | null;
+  broadcastId: string | null;
   chatGroupId: string | null;
   createdAt: Generated<string>;
   id: Generated<string>;
@@ -689,6 +694,7 @@ export interface WritingFolder {
   description: string | null;
   effectiveMemberPermission: ForumPermission | null;
   id: Generated<string>;
+  isBroadcastArchive: Generated<boolean>;
   memberPermission: ForumPermission | null;
   parentFolderId: string | null;
   title: string;
@@ -857,6 +863,7 @@ export const NOTIFICATION_TYPES = [
   "blind_date_ended",
   "blind_date_matched",
   "blind_date_reveal_requested",
+  "broadcast_received",
   "invitation_accepted",
   "invited_to_chat_group",
   "invited_to_writing_group",
@@ -1277,6 +1284,9 @@ export const BROADCAST_SCHEMA = z.object({
   recipientCount: int32.nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
+  deliverToInbox: z.boolean(),
+  deliverByEmail: z.boolean(),
+  emailRecipientCount: int32.nullable(),
 });
 
 export const BROADCAST_SENDER_SCHEMA = z.object({
@@ -1347,6 +1357,7 @@ export const NOTIFICATION_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   occurredAt: z.iso.datetime({ offset: true }),
   readAt: z.iso.datetime({ offset: true }).nullable(),
+  broadcastId: z.uuidv7().nullable(),
 });
 
 export const PROFILE_ANSWER_SCHEMA = z.object({
@@ -1564,6 +1575,7 @@ export const WRITING_FOLDER_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   memberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
   effectiveMemberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
+  isBroadcastArchive: z.boolean(),
 });
 
 export const WRITING_GROUP_SCHEMA = z.object({

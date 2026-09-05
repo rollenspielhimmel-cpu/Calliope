@@ -41,6 +41,14 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'page',
     component: () => import('../views/PageView.vue'),
   },
+  // Eine Rundmail zum Nachlesen — und nur für den Fall, dass sie **nicht** im Forum steht. Mit
+  // Archiv-Haken führt die Glocke direkt in den Faden, und diese Seite bekommt niemand zu sehen;
+  // derselbe Text an zwei Orten wäre genau die Doppelung, die hier niemand will.
+  {
+    path: '/broadcasts/:broadcastId',
+    name: 'broadcast',
+    component: () => import('../views/BroadcastMessageView.vue'),
+  },
   // The forum's pages share one rail, so they hang off `ForumLayout` for the reason the group's
   // do. The parent stays unnamed; `forum` is the empty child.
   //

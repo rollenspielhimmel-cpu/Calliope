@@ -66,6 +66,13 @@ export function notificationText(notification: ListNotifications200ResultsItem):
     case 'invited_to_chat_group':
       // The two invitations are different things and land in different places.
       return `${actor} hat dich zum Chat „${notification.chatGroupTitle}“ eingeladen.`
+    case 'broadcast_received':
+      // **Der Sprung wird angesagt.** Steht die Rundmail im Forum, führt das Anklicken dorthin, wo
+      // womöglich schon jemand geantwortet hat — und in einem Faden zu landen, wenn man eine
+      // Mitteilung erwartet hat, ist eine Überraschung, die ein halber Satz erspart.
+      return notification.broadcastArchiveThreadId === null
+        ? `Rundmail „${notification.broadcastSubject}“.`
+        : `Rundmail „${notification.broadcastSubject}“ — im Forum ansehen.`
     default:
       return assertUnreachable(notification)
   }
@@ -122,6 +129,21 @@ export function notificationAction(
       }
     case 'invited_to_chat_group':
       return { kind: 'chat', chatGroupId: notification.chatGroupId }
+    case 'broadcast_received':
+      // Der Text steht an genau einer Stelle: im Forum, wenn er dort abgelegt wurde, sonst auf
+      // seiner eigenen Seite. Zwei Ziele, aber nie zwei Kopien.
+      return notification.broadcastArchiveThreadId === null
+        ? {
+            kind: 'route',
+            to: { name: 'broadcast', params: { broadcastId: notification.broadcastId } },
+          }
+        : {
+            kind: 'route',
+            to: {
+              name: 'forumThread',
+              params: { threadId: notification.broadcastArchiveThreadId },
+            },
+          }
     default:
       // A new notification type reaches here as a compile error, not a silent fallthrough to
       // some group page that may not be what it was about.

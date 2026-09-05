@@ -29,6 +29,17 @@ const BROADCAST_BODY = z.object({
     .array(z.enum(["administrator", "moderator", "member"]))
     .min(1),
   includeUnverified: z.boolean(),
+  /**
+   * Die drei Wege, getrennt zu haben: Postfach auf der Plattform, E-Mail, Forum-Archiv.
+   *
+   * Dass mindestens einer gesetzt sein muss, prüft die Datenbank
+   * (`broadcast_arrives_somewhere`) und nicht dieses Schema. Nicht aus Bequemlichkeit: Die Regel
+   * gilt für jede Zeile, gleich wer sie schreibt, und eine Bedingung, die nur im Formular steht,
+   * gilt nur für den, der das Formular benutzt.
+   */
+  deliverToInbox: z.boolean(),
+  deliverByEmail: z.boolean(),
+  publishInArchive: z.boolean(),
   /** Null heißt: unter dem Konto, das dauerhaft zur Verfügung steht. */
   sendAsUserId: z.uuidv7().nullable(),
   /**
@@ -60,8 +71,14 @@ const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   approvedByUsername: z.string().nullable(),
   approvedAt: z.iso.datetime({ offset: true }).nullable(),
   releasedAt: z.iso.datetime({ offset: true }).nullable(),
-  /** Beim Versand festgehalten, nicht später gezählt. */
+  /**
+   * Beim Versand festgehalten, nicht später gezählt — und zwei Zahlen, weil die Wege verschieden
+   * weit reichen. Null heißt jeweils: dieser Weg war nicht gewählt.
+   */
   recipientCount: z.number().int().nullable(),
+  emailRecipientCount: z.number().int().nullable(),
+  /** Gesetzt, sobald sie im Forum steht. Die Oberfläche verlinkt darauf. */
+  archivePostId: z.uuidv7().nullable(),
 });
 
 const NO_SESSION_RESPONSE = {

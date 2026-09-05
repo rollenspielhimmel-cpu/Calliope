@@ -38,6 +38,11 @@ const BROADCAST = {
   // Nur die Administration: Der Testlauf soll keine Post an erfundene Saatkonten auslösen.
   audienceGroups: ["administrator"],
   includeUnverified: false,
+  // Nur ins Postfach: Der Testlauf soll keine Post an erfundene Saatkonten auslösen, und ohne
+  // Archiv-Haken legt er auch keine Fäden im Forum an, die hinterher jemand wegräumen müsste.
+  deliverToInbox: true,
+  deliverByEmail: false,
+  publishInArchive: false,
   sendAsUserId: null,
   scheduledFor: null,
 } as const;

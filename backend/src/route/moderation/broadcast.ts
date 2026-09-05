@@ -60,7 +60,13 @@ export default new OpenAPIHono()
       responses: {
         [STATUS_CODE.OK]: {
           description: "How many members that audience holds",
-          content: jsonContent(z.object({ recipients: z.number().int() })),
+          // Zwei Zahlen, weil die Wege verschieden weit reichen: Wer seine Adresse nie bestätigt
+          // hat, liest sein Postfach, bekommt aber keine Mail. Bei „nur E-Mail" ist die Differenz
+          // niemand, den irgendetwas erreicht — und das muss vor dem Absenden dastehen.
+          content: jsonContent(z.object({
+            inbox: z.number().int(),
+            email: z.number().int(),
+          })),
         },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
         [STATUS_CODE.Forbidden]: NOT_AN_ADMINISTRATOR_RESPONSE,
@@ -70,10 +76,10 @@ export default new OpenAPIHono()
     }),
     async (c) => {
       const { groups, includeUnverified } = c.req.valid("query");
-      const recipients = await BroadcastService.countRecipients({
+      const reach = await BroadcastService.countRecipients({
         groups,
         includeUnverified,
       });
-      return c.json({ recipients }, STATUS_CODE.OK);
+      return c.json(reach, STATUS_CODE.OK);
     },
   );
