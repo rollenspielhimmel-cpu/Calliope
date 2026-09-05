@@ -7,16 +7,18 @@
  * boxes where the longest one decides the whole row. So the card is a fixed frame: the description
  * takes what is left and the deadline sits at the bottom, whatever is above it.
  *
- * **The shortening is explicit**, not `-webkit-line-clamp` — see `lib/blindDate/truncate.ts` for
- * why. A short description is shown whole, with no ellipsis and no „Weiterlesen": there is nothing
- * behind the link, and a link that leads to what you already read is a small betrayal.
+ * **The shortening is measured, not counted** — see `lib/blindDate/truncate.ts` for why, and why
+ * not `-webkit-line-clamp`. A description that fits is shown whole, with no ellipsis and no
+ * „Weiterlesen": there is nothing behind the link, and a link that leads to what you already read
+ * is a small betrayal.
  *
  * The same card serves the members' page and the team's list, because they show the same thing and
  * two of them would drift. What differs is what sits beside it, which is the caller's business.
  */
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import type { ListBlindDateOffers200Item } from '@/api/models'
-import { shortenForCard } from '@/lib/blindDate/truncate'
+import { shortenToFit } from '@/lib/blindDate/truncate'
 import { applicationsHaveClosed } from '@/lib/blindDate/offerDeadline'
 import { formatDeadline } from '@/lib/format/formatTime'
 
@@ -24,7 +26,44 @@ const props = defineProps<{
   offer: ListBlindDateOffers200Item
 }>()
 
-const shortened = computed(() => shortenForCard(props.offer.description))
+/**
+ * The paragraph is its own measuring tape: `flex-1` fixes its height to whatever the card has
+ * left, and `overflow-hidden` keeps it there however much text is inside — so `scrollHeight`
+ * greater than `clientHeight` means, exactly, that this text does not fit.
+ *
+ * Writing into `textContent` during the search rather than through the ref: each candidate has to
+ * be measured before the next is chosen, and Vue applies a ref on the next tick. The final value
+ * goes through the ref anyway, so the rendered text and the component's state agree.
+ */
+const body = ref<HTMLElement | null>(null)
+
+const shown = ref<string>(props.offer.description.trim())
+const wasCut = ref<boolean>(false)
+
+function refit() {
+  const element = body.value
+
+  if (element === null) {
+    return
+  }
+
+  const result = shortenToFit(props.offer.description, (candidate) => {
+    element.textContent = candidate
+    return element.scrollHeight <= element.clientHeight
+  })
+
+  element.textContent = result.text
+  shown.value = result.text
+  wasCut.value = result.wasCut
+}
+
+onMounted(refit)
+
+// A narrower card fits fewer words, and the rail folding in or out changes the width without the
+// window changing at all — which is why this watches the element and not the viewport.
+useResizeObserver(body, refit)
+
+watch(() => props.offer.description, refit)
 
 /**
  * The pairing, in the notation the community writes it in. Absent where the team did not say,
@@ -70,18 +109,26 @@ const expired = computed<boolean>(() => applicationsHaveClosed(props.offer.close
     </p>
 
     <!-- Takes the room that is left, so everything under it keeps its place whatever the length. -->
-    <p class="mt-1.5 flex-1 overflow-hidden text-note leading-[1.45] text-ink-3">
-      {{ shortened.text }}
+    <p ref="body" class="mt-1.5 flex-1 overflow-hidden text-note leading-[1.45] text-ink-3">
+      {{ shown }}
     </p>
 
-    <!-- Only where something was actually left out. -->
-    <RouterLink
-      v-if="shortened.wasCut"
-      :to="{ name: 'blindDateOffer', params: { offerId: offer.id } }"
-      class="mt-1 text-[12px] text-oak-deep underline-offset-[4px] hover:underline"
-    >
-      Weiterlesen →
-    </RouterLink>
+    <!--
+      The link appears only where something was actually left out — but its row is always here,
+      and that is what makes the measuring above possible at all. Otherwise: measure with the full
+      text, cut it, the link appears, the paragraph loses a line to it, and the text that just fitted
+      no longer does. Reserving the line breaks that circle, and costs every card one line of the
+      description rather than costing some cards a correct answer.
+    -->
+    <div class="mt-1 h-[17px] flex-none">
+      <RouterLink
+        v-if="wasCut"
+        :to="{ name: 'blindDateOffer', params: { offerId: offer.id } }"
+        class="text-[12px] text-oak-deep underline-offset-[4px] hover:underline"
+      >
+        Weiterlesen →
+      </RouterLink>
+    </div>
 
     <!-- Pairing first, then the genres: the first is a fact about the plot, the rest is a mood. -->
     <div
