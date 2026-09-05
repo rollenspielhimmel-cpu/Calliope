@@ -25,13 +25,11 @@ import {
 const open = defineModel<boolean>('open', { required: true })
 
 /**
- * What the sheet is called, from the page rather than from here.
- *
- * It read „Gruppen-Kontext" no matter what it held: on a phone the rail becomes this sheet, so a
- * Blind-Date's rules and a group's next steps arrived under the same wrong heading. `AppLayout`
- * already takes a `railLabel` and the desktop rail already honours it — only this did not.
+ * Both required, with no default: the sheet said „Gruppen-Kontext" wherever it was used, so the
+ * forum's rail introduced itself as a group's. A default would have been the same bug with a
+ * fallback under it.
  */
-withDefaults(defineProps<{ label?: string }>(), { label: 'Gruppen-Kontext' })
+defineProps<{ label: string; description: string }>()
 
 // reka only fills the content's id in for a `DialogTrigger`, and this opens from `open`.
 const contentId = useId()
@@ -57,9 +55,7 @@ const contentId = useId()
           <!-- Not shown: a rail carries its label and nothing more. It exists because reka
                points `aria-describedby` at it regardless, and without it that reference
                dangles — a screen reader is promised a description and finds none. -->
-          <DialogDescription class="sr-only">
-            Was hier zu tun ist, und was nachzusehen ist.
-          </DialogDescription>
+          <DialogDescription class="sr-only">{{ description }}</DialogDescription>
           <DialogClose
             class="ml-auto flex size-11 items-center justify-center rounded-md text-ink-label"
             aria-label="Schließen"

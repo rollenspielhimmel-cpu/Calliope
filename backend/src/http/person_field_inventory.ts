@@ -2,7 +2,7 @@
  * Every response that can name a person, and what was decided about each.
  *
  * **This file exists because a checklist written from memory misses things.** A group's pages
- * arrived from upstream, returned both Blind-Date partners' real usernames, and nothing noticed —
+ * arrived from upstream, returned both Blind-Date partners' real usernames, and nothing noticed â€”
  * least of all the leak test, which asked only about the endpoints somebody had thought to list in
  * it. The entries below are not written by hand either: `person_field_inventory_test.ts` derives
  * them from `open-api.json`, which is generated from the routes themselves, and fails when the two
@@ -10,31 +10,31 @@
  *
  * So a new endpoint returning `createdBy` cannot arrive quietly. The test names it, the run stops,
  * and somebody writes down which reason applies. **That decision is the point.** Masking is not
- * always the right answer — a status update names its author on purpose — and „public, deliberately"
+ * always the right answer â€” a status update names its author on purpose â€” and â€žpublic, deliberately"
  * is worth being able to read back three months later.
  *
  * **After adding or changing a route:** run `deno task person-fields:inventory`. It prints the
  * inventory as it now stands; paste it in and give anything new a reason. Do not paste without
- * reading it — the reading is the whole mechanism.
+ * reading it â€” the reading is the whole mechanism.
  */
 
 /**
  * Why a response may carry a person field.
  *
- * `masked-by-middleware` — under `/groups/{groupId}`, where `mask_pseudonymous_group.ts` blanks
+ * `masked-by-middleware` â€” under `/groups/{groupId}`, where `mask_pseudonymous_group.ts` blanks
  * every person field on the way out. Nothing for the route's author to do, which is the point of
  * putting it there.
  *
- * `masked-by-service` — the group list and creation, which sit beside that subtree rather than
+ * `masked-by-service` â€” the group list and creation, which sit beside that subtree rather than
  * inside it. `writing_group_service.ts` masks them.
  *
- * `masked-by-handler` — search, the one place that reads group content from outside the subtree.
+ * `masked-by-handler` â€” search, the one place that reads group content from outside the subtree.
  * The middleware cannot see it, so it masks for itself.
  *
- * `not-group-content` — chats, story ideas, status updates, the forum. None of them has a
+ * `not-group-content` â€” chats, story ideas, status updates, the forum. None of them has a
  * pseudonymous mode: what is written there is written under one's own name and read under it.
  *
- * `moderation-only` — behind `authorizedAsModerator`. Moderation has to see who did what, a
+ * `moderation-only` â€” behind `authorizedAsModerator`. Moderation has to see who did what, a
  * Blind-Date included; that is the work, not a leak.
  */
 export type Reason =
@@ -53,6 +53,31 @@ export type InventoryEntry = {
 };
 
 export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
+  {
+    route: "GET /api/forum/folders",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "GET /api/forum/pages",
+    fields: ["createdBy", "updatedBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "GET /api/forum/pages/{pageId}",
+    fields: ["createdBy", "updatedBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "GET /api/forum/threads",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "GET /api/forum/threads/{threadId}",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
   {
     route: "GET /api/groups/{groupId}",
     fields: ["createdBy"],
@@ -114,6 +139,11 @@ export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
     reason: "not-group-content",
   },
   {
+    route: "PATCH /api/forum/threads/{threadId}/posts/{postId}",
+    fields: ["createdBy", "editedBy"],
+    reason: "not-group-content",
+  },
+  {
     route: "PATCH /api/groups/{groupId}",
     fields: ["createdBy"],
     reason: "masked-by-middleware",
@@ -161,6 +191,26 @@ export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
   {
     route: "POST /api/chats/{chatId}/messages",
     fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "POST /api/forum/folders",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "POST /api/forum/pages",
+    fields: ["createdBy", "updatedBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "POST /api/forum/threads",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "POST /api/forum/threads/{threadId}/posts",
+    fields: ["createdBy", "editedBy"],
     reason: "not-group-content",
   },
   {
@@ -229,6 +279,31 @@ export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
     reason: "not-group-content",
   },
   {
+    route: "PUT /api/forum/folders/{folderId}",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "PUT /api/forum/folders/{folderId}/parent",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "PUT /api/forum/pages/{pageId}",
+    fields: ["createdBy", "updatedBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "PUT /api/forum/pages/{pageId}/folder",
+    fields: ["createdBy", "updatedBy"],
+    reason: "not-group-content",
+  },
+  {
+    route: "PUT /api/forum/threads/{threadId}/folder",
+    fields: ["createdBy"],
+    reason: "not-group-content",
+  },
+  {
     route: "PUT /api/groups/{groupId}/folders/{folderId}",
     fields: ["createdBy"],
     reason: "masked-by-middleware",
@@ -270,7 +345,7 @@ export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
   },
   {
     route: "QUERY /api/forum/threads/{threadId}/posts",
-    fields: ["createdBy"],
+    fields: ["createdBy", "editedBy"],
     reason: "not-group-content",
   },
   {

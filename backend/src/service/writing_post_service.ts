@@ -215,8 +215,13 @@ async function listPosts(
    * The group the thread belongs to, so the authors can be masked where it is a Blind-Date. The
    * caller has it — every route reaching this has already resolved the group to authorise the
    * read — and passing it beats a second query for a fact already in hand.
+   *
+   * **Null means the forum**, where `writing_group_id IS NULL` is precisely what makes a thread the
+   * forum's. There is nothing to mask there: pseudonymity is a property a writing group can be
+   * given, and the forum is not one. Null rather than an optional parameter, so a caller who simply
+   * forgot cannot land in the unmasked branch by omission.
    */
-  writingGroupId: string,
+  writingGroupId: string | null,
 ): Promise<ListResults<Post>> {
   // **No favourites-first ordering here, deliberately.** A thread is prose and reads in the order
   // it was written, so hoisting a favourited post above the paragraph before it would break the
@@ -248,7 +253,9 @@ async function listPosts(
 
   // And the authors, where this group hides them. Both editors too: "bearbeitet von <name>" would
   // name the very person the pseudonym exists to hide.
-  const mask = await PseudonymService.fullMaskForGroup(writingGroupId);
+  const mask = writingGroupId === null
+    ? undefined
+    : await PseudonymService.fullMaskForGroup(writingGroupId);
 
   if (mask === undefined) {
     return { ...page, results: masked.map(notUnderReview) };
@@ -277,22 +284,27 @@ async function listPosts(
   };
 }
 
-/** Returns nothing when there is no such post. Authorisation is the caller's job. */
 /**
+ * Returns nothing when there is no such post; authorisation is the caller's job.
+ *
  * `wasDraft` is the row's state before this change, which is what separates the three ways a
  * post can be written to: autosaving a draft, publishing one, and editing what is already
  * published. Only the last is an edit a reader is told about.
- */
-/**
- * `wasDraft` is the row's state before this change, which is what separates the three ways a
- * post can be written to: autosaving a draft, publishing one, and editing what is already
- * published.
  */
 async function updatePost(
   postId: string,
   changes: { document?: PostDocument; isDraft?: boolean },
   wasDraft: boolean,
-  context: { writingGroupId: string; writingThreadId: string; actorId: string },
+  context: {
+    /**
+     * Null for the public forum, whose posts belong to no group (#32) — and who hears about one
+     * is #119, so there is nothing to announce yet. Announcing it to a group's
+     * members would be the wrong answer anyway.
+     */
+    writingGroupId: string | null;
+    writingThreadId: string;
+    actorId: string;
+  },
 ): Promise<Post | undefined> {
   const { document, ...rest } = changes;
   const isPublishing = wasDraft && changes.isDraft === false;
@@ -334,7 +346,7 @@ async function updatePost(
     }
 
     // Publishing is the moment the writing becomes everybody's; editing it again is not.
-    if (isPublishing) {
+    if (isPublishing && context.writingGroupId !== null) {
       await NotificationService.insertGroupActivityNotifications(transaction, {
         type: "new_writing_post",
         writingGroupId: context.writingGroupId,

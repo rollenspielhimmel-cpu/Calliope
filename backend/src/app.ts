@@ -23,6 +23,7 @@ import health from "./route/health.ts";
 import chats from "./route/chats.ts";
 import notifications from "./route/notifications.ts";
 import search from "./route/search.ts";
+import forum from "./route/forum.ts";
 import storyIdeas from "./route/story_ideas.ts";
 import blocks from "@/src/route/blocks.ts";
 import reports from "@/src/route/reports.ts";
@@ -33,7 +34,6 @@ import statusUpdates from "./route/status_updates.ts";
 import moderation from "./route/moderation.ts";
 import pages from "./route/pages.ts";
 import profileQuestions from "./route/profile_questions.ts";
-import forum from "./route/forum.ts";
 import blindDate from "./route/blind_date.ts";
 
 // Everything the API serves, without the prefix it is mounted under. Keeping the prefix out

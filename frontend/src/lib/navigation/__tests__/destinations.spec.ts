@@ -20,8 +20,9 @@ const NAMES = routeNames(routes)
 describe('DESTINATIONS', () => {
   it('opens the view members actually want, in one press', () => {
     expect(DESTINATIONS.map((destination) => [destination.label, destination.name])).toEqual([
-      // First, ahead of the groups: the forum is the open half of the site, and the one place
-      // somebody without an account can arrive at.
+      // First, ahead of the groups: the forum is where the whole community is in one room, while
+      // a group is a handful of people. It is not readable signed out — that was true of the forum
+      // this replaced, and is a decision still to be made about this one.
       ['Forum', 'forum'],
       ['Gruppen', 'myGroups'],
       // The carousel rather than either list: reading through unread ideas is the point of the page.

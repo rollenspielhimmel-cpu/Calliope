@@ -41,6 +41,31 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'page',
     component: () => import('../views/PageView.vue'),
   },
+  // The forum's pages share one rail, so they hang off `ForumLayout` for the reason the group's
+  // do. The parent stays unnamed; `forum` is the empty child.
+  {
+    path: '/forum',
+    component: () => import('../components/layout/ForumLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'forum',
+        component: () => import('../views/ForumView.vue'),
+        // This page is the forum's tree, so the rail would show it twice.
+        meta: { listsForumContents: true },
+      },
+      {
+        path: 'threads/:threadId',
+        name: 'forumThread',
+        component: () => import('../views/ForumThreadView.vue'),
+      },
+      {
+        path: 'pages/:pageId',
+        name: 'forumPage',
+        component: () => import('../views/ForumPageView.vue'),
+      },
+    ],
+  },
   // Readable signed out: a legal notice has to be reachable from the sign-in page too. English
   // path like every other route, even though the page is titled „Impressum" — the rule holds and
   // nothing legal turns on the URL.
@@ -79,26 +104,6 @@ export const routes: Array<RouteRecordRaw> = [
     path: '/story-ideas/:ideaId',
     name: 'storyIdea',
     component: () => import('../views/StoryIdeaView.vue'),
-  },
-  // `anyone`: a sub-forum may be readable without an account, and which ones those are is the
-  // data's own business — the API filters, so the guard here must not refuse first.
-  {
-    path: '/forum',
-    name: 'forum',
-    component: () => import('../views/ForumView.vue'),
-    meta: { access: 'anyone' },
-  },
-  {
-    path: '/forum/sub-forums/:subForumId',
-    name: 'subForum',
-    component: () => import('../views/SubForumView.vue'),
-    meta: { access: 'anyone' },
-  },
-  {
-    path: '/forum/threads/:threadId',
-    name: 'forumThread',
-    component: () => import('../views/ForumThreadView.vue'),
-    meta: { access: 'anyone' },
   },
   // `anyone`: a page may be public, and which ones are is the data's own business — the API
   // answers 404 for a private one read without a session, so the guard must not refuse first.
@@ -197,12 +202,6 @@ export const routes: Array<RouteRecordRaw> = [
     path: '/moderation/pages',
     name: 'moderationPages',
     component: () => import('../views/moderation/PagesView.vue'),
-    meta: { access: 'administrator' },
-  },
-  {
-    path: '/moderation/forum',
-    name: 'moderationForum',
-    component: () => import('../views/moderation/ForumStructureView.vue'),
     meta: { access: 'administrator' },
   },
   {

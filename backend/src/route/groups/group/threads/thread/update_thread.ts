@@ -109,6 +109,7 @@ export default new OpenAPIHono().openapi(
     }
 
     const updated = await WritingThreadService.updateThread(
+      groupId,
       threadId,
       { title },
       c.get("user").id,

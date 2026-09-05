@@ -12,6 +12,7 @@ export const THREADS_TAG = "threads";
 export const STEPS_TAG = "steps";
 export const PAGES_TAG = "pages";
 export const FOLDERS_TAG = "folders";
+export const FORUM_TAG = "forum";
 export const POSTS_TAG = "posts";
 export const USERS_TAG = "users";
 export const NOTIFICATIONS_TAG = "notifications";
@@ -25,7 +26,6 @@ export const STATUS_UPDATES_TAG = "status-updates";
 export const MODERATION_TAG = "moderation";
 // The site's own fixed text pages, not a group's pages — those are `PAGES_TAG`.
 export const CUSTOM_PAGES_TAG = "custom-pages";
-export const FORUM_TAG = "forum";
 export const BLIND_DATE_TAG = "blind-date";
 
 type Tag =
@@ -37,6 +37,7 @@ type Tag =
   | typeof STEPS_TAG
   | typeof PAGES_TAG
   | typeof FOLDERS_TAG
+  | typeof FORUM_TAG
   | typeof POSTS_TAG
   | typeof USERS_TAG
   | typeof NOTIFICATIONS_TAG
@@ -49,7 +50,6 @@ type Tag =
   | typeof STATUS_UPDATES_TAG
   | typeof MODERATION_TAG
   | typeof CUSTOM_PAGES_TAG
-  | typeof FORUM_TAG
   | typeof BLIND_DATE_TAG;
 
 // Type safe tags to descriptions mapping, so there cannot be new tags without descriptions
@@ -79,6 +79,8 @@ const TAGS_WITH_DESCRIPTIONS: Record<Tag, string> = {
     "A group's reference pages: material that is written and revised rather than replied to",
   [FOLDERS_TAG]:
     "The folders a group nests its threads and pages in, named by the members themselves",
+  [FORUM_TAG]:
+    "The public forum: its folders, the threads and pages in them, and the posts to a thread",
   [USERS_TAG]:
     "Finding other members by name, so they can be invited to a group",
   [CHATS_TAG]: "Chats between members, and the messages in them",
@@ -91,8 +93,6 @@ const TAGS_WITH_DESCRIPTIONS: Record<Tag, string> = {
     "The operators' own tools: the addresses an account has connected from, address bans, warnings and suspensions, the watchlist, and which email domains may register",
   [CUSTOM_PAGES_TAG]:
     "Fixed text pages the operators write themselves — the rules, an FAQ — and editing them",
-  [FORUM_TAG]:
-    "The public forum: its categories and sub-forums, what each reader may see of them, and the structure administration keeps",
   [BLIND_DATE_TAG]:
     "Blind-Date: applying to write with somebody without knowing who, and what the team offers to write about",
 };

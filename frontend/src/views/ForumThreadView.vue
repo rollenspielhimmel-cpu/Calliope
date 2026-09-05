@@ -1,147 +1,232 @@
 <script setup lang="ts">
 /**
- * One forum thread: its posts, oldest first, and a box to answer in.
+ * One thread of the forum, its posts, and the composer for another — the group's paged endpoint
+ * and the same `useDraft`, because a forum post *is* a `writing_post`.
  *
- * The posts are drawn the way a thread's posts are drawn — recessed metadata and a hairline
- * divider, no boxes — because that rule comes from what members said about reading, and a forum
- * post is read the same way a group post is.
- *
- * Whether a reply is offered comes from the thread's `effectiveVisibility`, which the API has
- * already resolved as the stricter of the thread's own setting and its sub-forum's.
+ * What differs is who may write: a group asks the member's role, this asks the thread.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { keepPreviousData, useQueryClient } from '@tanstack/vue-query'
+import { exactKeyFilter, listKeyPrefix } from '@/lib/api/queryKeys'
 import {
+  createForumPost as createForumPostRequest,
+  deleteForumPost as deleteForumPostRequest,
   getGetForumThreadQueryKey,
   getListForumPostsQueryKey,
+  getListForumThreadsQueryKey,
+  listForumPosts as listForumPostsRequest,
+  updateForumPost as updateForumPostRequest,
   useCreateForumPost,
   useDeleteForumPost,
   useGetForumThread,
   useListForumPosts,
   useUpdateForumPost,
 } from '@/api/forum/forum'
-import { useGetCurrentUser } from '@/api/auth/auth'
-import { GetCurrentUser200PlatformRole } from '@/api/models'
-import type { ListForumPosts200ResultsItem, ListForumPostsBody, PostDocument } from '@/api/models'
-import { TEXT_LIMIT } from '@/api/textLimit'
+import type { GetForumThread200, ListForumPosts200ResultsItem, PostDocument } from '@/api/models'
+import { Flag, ShieldCheck } from '@lucide/vue'
+import { useForumTree } from '@/composables/useForumTree'
+import { useIsOperator } from '@/composables/useIsOperator'
+import { mayWriteInForum } from '@/lib/forum/permission'
+import { usePagedList } from '@/composables/usePagedList'
+import PathToHere from '@/components/folder/PathToHere.vue'
+import PostItem from '@/components/thread/PostItem.vue'
+import ReportDialog from '@/components/report/ReportDialog.vue'
+import ForumPermissionDialog from '@/components/forum/ForumPermissionDialog.vue'
+import ListPagination from '@/components/common/ListPagination.vue'
+import FavouriteToggle from '@/components/favourite/FavouriteToggle.vue'
+import { pluralize } from '@/lib/format/formatText'
 import { emptyDocument } from '@/lib/document/emptyDocument'
 import { failureMessage } from '@/lib/format/failure'
 import { firstMessage, postSchema } from '@/lib/validation/fieldSchemas'
-import { queryClient } from '@/lib/api/queryClient'
-import { listKeyPrefix } from '@/lib/api/queryKeys'
-import { formatActivityTime } from '@/lib/format/formatTime'
-import { usePagedList } from '@/composables/usePagedList'
-import { restrictedForumLabel } from '@/lib/format/forumVisibility'
-import { ChevronLeft, Eye, FolderInput } from '@lucide/vue'
-import AppLayout from '@/components/layout/AppLayout.vue'
-import ListPagination from '@/components/common/ListPagination.vue'
-import ForumPostItem from '@/components/forum/ForumPostItem.vue'
-import MoveThreadDialog from '@/components/forum/MoveThreadDialog.vue'
-import ThreadVisibilityDialog from '@/components/forum/ThreadVisibilityDialog.vue'
-import ModerationToolButton from '@/components/moderation/ModerationToolButton.vue'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { useDraft } from '@/composables/useDraft'
+import PostComposer from '@/components/thread/PostComposer.vue'
 import DeletePostDialog from '@/components/thread/DeletePostDialog.vue'
-import PostEditor from '@/components/thread/PostEditor.vue'
-import ReportDialog from '@/components/report/ReportDialog.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
+import { TEXT_LIMIT } from '@/api/textLimit'
+import { useGetCurrentUser } from '@/api/auth/auth'
 
-const PAGE_SIZE = 20
+const POSTS_PER_PAGE = 20
 
 const route = useRoute()
 const threadId = computed<string>(() => String(route.params.threadId))
 
-const { data: currentUserData } = useGetCurrentUser()
-const signedIn = computed<boolean>(() => currentUserData.value?.status === 200)
+const queryClient = useQueryClient()
 
-const currentUserId = computed<string | undefined>(() =>
-  currentUserData.value?.status === 200 ? currentUserData.value.data.id : undefined,
-)
-
-/**
- * The same rule the write endpoints apply — `mayModeratePlatform` covers both roles — so the row
- * of actions never offers what the API would refuse.
- */
-const mayModerate = computed<boolean>(
-  () =>
-    currentUserData.value?.status === 200 &&
-    (currentUserData.value.data.platformRole === GetCurrentUser200PlatformRole.moderator ||
-      currentUserData.value.data.platformRole === GetCurrentUser200PlatformRole.administrator),
-)
-
-const { data: threadData, isPending: threadPending } = useGetForumThread(threadId)
-
-const thread = computed(() =>
+const { data: threadData, isPending, isError } = useGetForumThread(threadId)
+const thread = computed<GetForumThread200 | undefined>(() =>
   threadData.value?.status === 200 ? threadData.value.data : undefined,
 )
 
-const { page, offset, total, itemsPerPage, goToPage } = usePagedList(
-  PAGE_SIZE,
-  () => totalResults.value,
+const { tree } = useForumTree()
+
+const isOperator = useIsOperator()
+
+const { data: userData } = useGetCurrentUser()
+/** Absent until the session answers; `PostItem` hides „Melden" without it, and your own post. */
+const currentUserId = computed<string | undefined>(() =>
+  userData.value?.status === 200 ? userData.value.data.id : undefined,
 )
 
-const body = computed<ListForumPostsBody>(() => ({
-  limit: PAGE_SIZE,
+/** A member's action rather than moderation, so it waits for neither #62 nor slice 7. */
+const reportedPost = ref<ListForumPosts200ResultsItem | undefined>(undefined)
+const reportingPost = computed<boolean>({
+  get: () => reportedPost.value !== undefined,
+  set: (open) => {
+    if (!open) {
+      reportedPost.value = undefined
+    }
+  },
+})
+const reportingThread = ref<boolean>(false)
+
+/** An operator setting what members may do with this thread (#32's slice 7). */
+const settingPermission = ref<boolean>(false)
+
+/** Reporting your own thread is not a thing, the rule `PostItem` applies to a post. */
+const mayReportThread = computed<boolean>(
+  () =>
+    currentUserId.value !== undefined &&
+    thread.value !== undefined &&
+    thread.value.createdBy !== currentUserId.value,
+)
+
+// Declared before the query it pages: the request body needs `offset` while vue-query builds
+// the key, and the total it corrects against comes back from that same query.
+const { page, offset, total, itemsPerPage, goToPage } = usePagedList(
+  POSTS_PER_PAGE,
+  () => postCount.value,
+)
+
+const postsQuery = computed(() => ({
+  limit: POSTS_PER_PAGE,
   offset: offset.value,
-  sortAttribute: 'createdAt',
-  sortOrder: 'asc',
+  sortAttribute: 'createdAt' as const,
+  // Oldest first: a thread reads in the order it was written.
+  sortOrder: 'asc' as const,
 }))
 
-const { data, isPending } = useListForumPosts(threadId, body)
+const { data: postsData } = useListForumPosts(threadId, postsQuery, {
+  // Without this the strip vanishes between pages: a new page is a new query key, so the count
+  // it is built from is briefly unknown.
+  query: { placeholderData: keepPreviousData },
+})
 
 const posts = computed<ListForumPosts200ResultsItem[]>(() =>
-  data.value?.status === 200 ? data.value.data.results : [],
+  postsData.value?.status === 200 ? postsData.value.data.results : [],
+)
+const postCount = computed<number | undefined>(() =>
+  postsData.value?.status === 200 ? postsData.value.data.totalResults : undefined,
 )
 
-const totalResults = computed<number>(() =>
-  data.value?.status === 200 ? data.value.data.totalResults : 0,
+const meta = computed<string>(() => {
+  const count = postCount.value
+  return count === undefined ? '' : pluralize(count, 'Beitrag', 'Beiträge')
+})
+
+/** The limits come from this operation's own entry, never another's. */
+const NEW_POST = postSchema(TEXT_LIMIT.createForumPost.document)
+
+/**
+ * Only where the thread grants `write`, which is the forum's „locked". The API refuses either way;
+ * this keeps the box off a page that cannot use it.
+ */
+const mayWrite = computed<boolean>(() =>
+  mayWriteInForum(thread.value?.effectiveMemberPermission, isOperator.value),
 )
 
-watch(threadId, () => goToPage(1))
+const draft = ref<PostDocument>(emptyDocument())
+const draftText = ref<string>('')
+const sendError = ref<string | undefined>(undefined)
 
-/** Everything on this page reads the same list, so one invalidation serves all of it. */
-async function refreshPosts() {
-  await queryClient.invalidateQueries({
-    queryKey: listKeyPrefix(getListForumPostsQueryKey(threadId.value, body.value)),
-  })
-}
+const {
+  status: draftStatus,
+  draftId,
+  forget: forgetDraft,
+} = useDraft(
+  threadId,
+  {
+    load: async () => {
+      const response = await listForumPostsRequest(threadId.value, {
+        isDraft: true,
+        limit: 1,
+      })
+      return response.status === 200 ? response.data.results[0] : undefined
+    },
+    create: async (document) => {
+      const created = await createForumPostRequest(threadId.value, {
+        document,
+        isDraft: true,
+      })
+      return created.status === 201 ? created.data.id : undefined
+    },
+    update: (postId, document, options) =>
+      updateForumPostRequest(threadId.value, postId, { document }, options),
+    remove: (postId) => deleteForumPostRequest(threadId.value, postId),
+  },
+  draft,
+  draftText,
+)
 
-const document = ref<PostDocument>(emptyDocument())
-const text = ref<string>('')
-const error = ref<string | undefined>(undefined)
-
-const { mutateAsync: reply, isPending: isSending } = useCreateForumPost()
+const { mutateAsync: createReply, isPending: sending } = useCreateForumPost()
+const { mutateAsync: publishDraft, isPending: publishing } = useUpdateForumPost()
 
 async function submit() {
-  if (text.value.trim().length === 0) return
-
-  error.value = undefined
-
-  try {
-    await reply({ threadId: threadId.value, data: { document: document.value } })
-  } catch {
-    // The composer keeps what was written: the member's copy is the one that matters.
-    error.value = 'Das ist gerade nicht möglich. Versuche es später noch einmal.'
+  sendError.value = undefined
+  if (draftText.value.trim().length === 0) {
     return
   }
 
-  document.value = emptyDocument()
-  text.value = ''
+  // Checked here rather than with `maxlength` on the composer: prose stopping dead mid-word with
+  // no explanation is worse than being told why, and the draft is kept either way.
+  sendError.value = firstMessage(NEW_POST.safeParse(draftText.value))
+  if (sendError.value !== undefined) {
+    return
+  }
 
-  await refreshPosts()
+  try {
+    // Publishing clears the draft's flag rather than writing a second post: the autosaved row
+    // and the published one have to be the same row.
+    if (draftId.value !== undefined) {
+      await publishDraft({
+        threadId: threadId.value,
+        postId: draftId.value,
+        data: { document: draft.value, isDraft: false },
+      })
+      forgetDraft()
+    } else {
+      await createReply({ threadId: threadId.value, data: { document: draft.value } })
+    }
+  } catch (error) {
+    // The draft is kept either way, which is what the clearing below guarantees.
+    sendError.value = failureMessage(
+      error,
+      'Der Beitrag konnte nicht gesendet werden. Versuche es noch einmal.',
+    )
+    return
+  }
 
-  // The answer lands at the end, which is where the last page is.
-  goToPage(Math.max(1, Math.ceil((totalResults.value + 1) / PAGE_SIZE)))
+  // Only cleared once the post is really stored, so nothing written is lost.
+  draft.value = emptyDocument()
+  draftText.value = ''
+
+  // Every page, not the one on screen: a new post changes the count, and with it which page
+  // anything sits on.
+  await queryClient.invalidateQueries({
+    queryKey: listKeyPrefix(getListForumPostsQueryKey(threadId.value)),
+  })
+
+  // Land where the new post is — a thread reads oldest first, so that is the last page.
+  goToPage(Math.ceil(((postCount.value ?? 0) + 1) / POSTS_PER_PAGE))
 }
 
-/** An empty edit is a mistake; an empty composer is just a composer nobody has typed in yet. */
 const EDITED_POST = postSchema(TEXT_LIMIT.updateForumPost.document, 'Ein Beitrag braucht Text.')
 
-const { mutateAsync: savePost, isPending: savingPost } = useUpdateForumPost()
-
+/** The thread decides which post is open, so two cannot be edited at once. */
 const editingPostId = ref<string | undefined>(undefined)
 const editError = ref<string | undefined>(undefined)
+
+const { mutateAsync: saveReply, isPending: savingReply } = useUpdateForumPost()
 
 function startEditing(postId: string) {
   editError.value = undefined
@@ -153,32 +238,44 @@ function stopEditing() {
   editingPostId.value = undefined
 }
 
-async function saveEdit(postId: string, edited: PostDocument, editedText: string) {
-  // Checked here rather than with `maxlength`, for the reason the composer states: prose that
-  // stops dead mid-word is worse than being told why.
-  editError.value = firstMessage(EDITED_POST.safeParse(editedText))
-  if (editError.value !== undefined) return
+async function refreshReplies(): Promise<void> {
+  await queryClient.invalidateQueries({
+    queryKey: listKeyPrefix(getListForumPostsQueryKey(threadId.value)),
+  })
+}
+
+async function saveEdit(postId: string, document: PostDocument, text: string) {
+  editError.value = firstMessage(EDITED_POST.safeParse(text))
+  if (editError.value !== undefined) {
+    return
+  }
 
   try {
-    await savePost({ threadId: threadId.value, postId, data: { document: edited } })
-  } catch (failure) {
+    await saveReply({ threadId: threadId.value, postId, data: { document } })
+  } catch (error) {
     editError.value = failureMessage(
-      failure,
+      error,
       'Der Beitrag konnte nicht gespeichert werden. Versuche es noch einmal.',
     )
     return
   }
 
-  await refreshPosts()
+  await refreshReplies()
   stopEditing()
 }
 
 const deletingPost = ref<ListForumPosts200ResultsItem | undefined>(undefined)
 const deletePostError = ref<string | undefined>(undefined)
+const { mutateAsync: removeReply, isPending: removingReply } = useDeleteForumPost()
 
-const { mutateAsync: removePost, isPending: removingPost } = useDeleteForumPost()
+const deletingPostOpen = computed<boolean>({
+  get: () => deletingPost.value !== undefined,
+  set: (open) => {
+    if (!open) deletingPost.value = undefined
+  },
+})
 
-/** Named only when it is somebody else's and that account still exists. */
+/** Named only when it is somebody else's, which is the case worth a second look. */
 const deletingPostAuthor = computed<string | undefined>(() =>
   deletingPost.value !== undefined && deletingPost.value.createdBy !== currentUserId.value
     ? (deletingPost.value.createdByUsername ?? undefined)
@@ -190,12 +287,11 @@ async function confirmDeletePost() {
   if (post === undefined) return
 
   deletePostError.value = undefined
-
   try {
-    await removePost({ threadId: threadId.value, postId: post.id })
-  } catch (failure) {
+    await removeReply({ threadId: threadId.value, postId: post.id })
+  } catch (error) {
     deletePostError.value = failureMessage(
-      failure,
+      error,
       'Der Beitrag konnte nicht gelöscht werden. Versuche es noch einmal.',
     )
     return
@@ -203,188 +299,153 @@ async function confirmDeletePost() {
 
   // The post being edited may be the one just deleted.
   if (editingPostId.value === post.id) stopEditing()
-  await refreshPosts()
+  await refreshReplies()
   deletingPost.value = undefined
-
-  // Removing the last post removes the thread with it, and `getForumThread` then answers 404 —
-  // which is the "Kein Thema gefunden" state below, and is the truth.
-  await queryClient.invalidateQueries({
-    queryKey: getGetForumThreadQueryKey(threadId.value),
-  })
 }
 
-// A moved thread leaves the reader where they were, on the thread: nothing about it has
-// changed but where its breadcrumb points, and that redraws itself.
-const movingThread = ref<boolean>(false)
-const changingVisibility = ref<boolean>(false)
-
-const reportedPost = ref<ListForumPosts200ResultsItem | undefined>(undefined)
-
-const reportingPost = computed<boolean>({
-  get: () => reportedPost.value !== undefined,
-  set: (open) => {
-    if (!open) reportedPost.value = undefined
-  },
-})
+/**
+ * The list as well as the thread: the rail draws its favourite mark from the list. Exact-keyed,
+ * because a GET list's key is a prefix of every item under it.
+ */
+async function refresh(): Promise<void> {
+  await queryClient.invalidateQueries({ queryKey: getGetForumThreadQueryKey(threadId) })
+  await queryClient.invalidateQueries(exactKeyFilter(getListForumThreadsQueryKey()))
+}
 </script>
 
 <template>
-  <AppLayout>
-    <div class="flex-1 overflow-auto px-gutter py-5 pb-8 md:px-10">
-      <div v-if="threadPending" class="flex items-center gap-2 text-note text-ink-5">
-        <Spinner />
-        Einen Moment.
-      </div>
+  <div class="flex-1 overflow-auto px-gutter pt-7 pb-8 md:px-10">
+    <div class="reading-column">
+      <p v-if="isPending" class="text-body text-ink-4">Das Thema wird geladen …</p>
 
-      <template v-else-if="thread">
-        <RouterLink
-          :to="{ name: 'subForum', params: { subForumId: thread.subForumId } }"
-          class="inline-flex items-center gap-1 text-[12.5px] text-ink-5 hover:text-oak-deep"
-        >
-          <ChevronLeft :size="14" :stroke-width="1.5" aria-hidden="true" />
-          {{ thread.subForumTitle }}
-        </RouterLink>
-
-        <div class="mt-3 flex items-start gap-3">
-          <div class="min-w-0 flex-1">
-            <h1 class="text-h1">
-              {{ thread.title }}
-              <!-- Said once, next to the title, and only where it is not the ordinary case —
-                   the same rule the sub-forum's own mark follows on the front page. -->
-              <span
-                v-if="restrictedForumLabel(thread.effectiveVisibility)"
-                class="ml-2 align-middle text-[11.5px] text-ink-6"
-              >
-                {{ restrictedForumLabel(thread.effectiveVisibility) }}
-              </span>
-            </h1>
-            <p class="mt-1 text-[12px] text-ink-6">
-              von {{ thread.createdByUsername ?? 'einem gelöschten Konto' }},
-              {{ formatActivityTime(thread.createdAt) }}
-            </p>
-          </div>
-
-          <!-- Small and quiet, as on a profile: these are the operators' tools, not the page. -->
-          <TooltipProvider v-if="mayModerate">
-            <div class="flex flex-none items-center gap-1">
-              <ModerationToolButton
-                :icon="FolderInput"
-                label="Thema verschieben"
-                @click="movingThread = true"
-              />
-              <ModerationToolButton
-                :icon="Eye"
-                label="Sichtbarkeit des Themas"
-                :active="thread.visibility !== null"
-                @click="changingVisibility = true"
-              />
-            </div>
-          </TooltipProvider>
-        </div>
-
-        <div v-if="isPending" class="mt-6 flex items-center gap-2 text-note text-ink-5">
-          <Spinner />
-          Einen Moment.
-        </div>
-
-        <!-- Posts are not boxed: recessed metadata and a hairline, as in a group thread. -->
-        <div v-else class="mt-6 flex flex-col">
-          <ForumPostItem
-            v-for="(post, index) in posts"
-            :key="post.id"
-            :post="post"
-            :first="index === 0"
-            :divider="index < posts.length - 1"
-            :current-user-id="currentUserId"
-            :may-moderate="mayModerate"
-            :editing="editingPostId === post.id"
-            :saving="savingPost && editingPostId === post.id"
-            :error="editingPostId === post.id ? editError : undefined"
-            @report="reportedPost = post"
-            @favourite-changed="refreshPosts"
-            @edit="startEditing(post.id)"
-            @cancel="stopEditing"
-            @save="(edited, editedText) => saveEdit(post.id, edited, editedText)"
-            @delete="deletingPost = post"
-          />
-        </div>
-
-        <div v-if="totalResults > PAGE_SIZE" class="mt-7 border-t border-line-2 pt-3">
-          <ListPagination v-model:page="page" :total="total" :items-per-page="itemsPerPage" />
-        </div>
-
-        <section v-if="signedIn" class="mt-8 border-t border-line-3 pt-6">
-          <h2 class="font-mono text-[11px] tracking-wide text-ink-label uppercase">Antworten</h2>
-
-          <Alert v-if="error" variant="destructive" role="alert" class="mt-3">
-            <AlertDescription>{{ error }}</AlertDescription>
-          </Alert>
-
-          <PostEditor
-            v-model:document="document"
-            v-model:text="text"
-            :disabled="isSending"
-            framed
-            class="mt-3"
-          />
-
-          <div class="mt-3">
-            <Button :disabled="text.trim().length === 0 || isSending" @click="submit">
-              <Spinner v-if="isSending" />
-              Beitrag senden
-            </Button>
-          </div>
-        </section>
-
-        <p v-else class="mt-8 border-t border-line-3 pt-6 text-note text-ink-5">
-          <RouterLink :to="{ name: 'login' }" class="text-oak-deep underline underline-offset-2"
-            >Melde dich an</RouterLink
-          >, um zu antworten.
-        </p>
-      </template>
+      <p v-else-if="isError || thread === undefined" class="text-body text-ink-4">
+        Dieses Thema gibt es nicht.
+      </p>
 
       <template v-else>
-        <h1 class="text-h1">Kein Thema gefunden</h1>
-        <p class="mt-5 max-w-[60ch] text-note text-ink-5">
-          Es gibt dieses Thema nicht, oder du darfst es nicht lesen.
-        </p>
+        <div class="mb-7">
+          <PathToHere
+            :tree="tree"
+            root-title="Forum"
+            :root-to="{ name: 'forum' }"
+            :folder-id="thread.folderId"
+          />
+
+          <h2 class="mb-[5px] text-h2 text-ink-1">{{ thread.title }}</h2>
+          <div class="text-[12.5px] leading-[1.3] text-ink-5">{{ meta }}</div>
+
+          <div class="mt-3.5 flex items-center gap-2 text-note text-ink-4">
+            <FavouriteToggle
+              target-type="writing_thread"
+              :target-id="thread.id"
+              :is-favourite="thread.isFavourite"
+              @changed="refresh"
+            />
+
+            <!-- A raw button, as a post's own „Melden" is: these are text actions sharing a
+                 baseline rather than buttons, so they carry the 44px rule themselves. -->
+            <button
+              v-if="mayReportThread"
+              type="button"
+              class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+              @click="reportingThread = true"
+            >
+              <Flag :size="14" :stroke-width="1.5" aria-hidden="true" />
+              Melden
+            </button>
+
+            <!-- An operator's act and only theirs: what members may do here is nobody else's to
+                 set, since the forum has no administrators. -->
+            <button
+              v-if="isOperator"
+              type="button"
+              class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+              @click="settingPermission = true"
+            >
+              <ShieldCheck :size="14" :stroke-width="1.5" aria-hidden="true" />
+              Rechte
+            </button>
+          </div>
+        </div>
+
+        <p v-if="posts.length === 0" class="text-body text-ink-4">Hier steht noch nichts.</p>
+
+        <PostItem
+          v-for="(post, index) in posts"
+          :key="post.id"
+          :post="post"
+          :divider="index > 0"
+          :first="index === 0"
+          :current-user-id="currentUserId"
+          :may-write="mayWrite"
+          :editing="editingPostId === post.id"
+          :saving="savingReply"
+          :error="editingPostId === post.id ? editError : undefined"
+          @report="reportedPost = post"
+          @edit="startEditing(post.id)"
+          @cancel="stopEditing"
+          @save="(document, text) => saveEdit(post.id, document, text)"
+          @delete="deletingPost = post"
+        />
+
+        <ListPagination
+          v-if="posts.length > 0"
+          v-model:page="page"
+          :total="total"
+          :items-per-page="itemsPerPage"
+          class="mt-7"
+        />
+
+        <Alert v-if="sendError" variant="destructive" role="alert" class="mt-3.5">
+          <AlertDescription>{{ sendError }}</AlertDescription>
+        </Alert>
       </template>
     </div>
-  </AppLayout>
+  </div>
 
-  <MoveThreadDialog
-    v-if="thread && mayModerate"
-    v-model:open="movingThread"
-    :thread-id="thread.id"
-    :title="thread.title"
-    :sub-forum-id="thread.subForumId"
-    :visibility="thread.visibility"
+  <PostComposer
+    v-if="mayWrite"
+    v-model="draft"
+    v-model:text="draftText"
+    :sending="sending || publishing"
+    :draft-status="draftStatus"
+    @submit="submit"
   />
 
-  <ThreadVisibilityDialog
-    v-if="thread && mayModerate"
-    v-model:open="changingVisibility"
-    :thread-id="thread.id"
-    :title="thread.title"
-    :visibility="thread.visibility"
-    :effective-visibility="thread.effectiveVisibility"
+  <DeletePostDialog
+    v-if="deletingPost"
+    v-model:open="deletingPostOpen"
+    :author-name="deletingPostAuthor"
+    :pending="removingReply"
+    :error="deletePostError"
+    @confirmed="confirmDeletePost"
   />
 
   <ReportDialog
     v-if="reportedPost"
     v-model:open="reportingPost"
-    target-type="forum_post"
+    target-type="writing_post"
     :target-id="reportedPost.id"
     :subject="reportedPost.createdByUsername ?? 'Gelöschtes Konto'"
   />
 
-  <DeletePostDialog
-    v-if="deletingPost"
-    :open="deletingPost !== undefined"
-    :author-name="deletingPostAuthor"
-    :pending="removingPost"
-    :error="deletePostError"
-    @update:open="deletingPost = $event ? deletingPost : undefined"
-    @confirmed="confirmDeletePost"
+  <ReportDialog
+    v-if="thread"
+    v-model:open="reportingThread"
+    target-type="writing_thread"
+    :target-id="thread.id"
+    :subject="thread.title"
+  />
+
+  <!-- `v-if` as its neighbours have it: a shut dialog keeps its content otherwise, and this one
+       opens on a stored value that would then be the previous thread's. -->
+  <ForumPermissionDialog
+    v-if="thread"
+    v-model:open="settingPermission"
+    target-type="thread"
+    :target-id="thread.id"
+    :member-permission="thread.memberPermission"
+    :title="thread.title"
+    @changed="refresh"
   />
 </template>

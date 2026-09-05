@@ -21,13 +21,24 @@ const props = withDefaults(
      */
     railLabel?: string
     /**
+     * What the sheet holds, for a reader who cannot see it. `ContextSheet` requires this and takes
+     * no default of its own, deliberately: it once introduced every rail as a group's. Here it does
+     * get a default, because unlike the label this sentence is generic by nature — a page whose
+     * rail holds something particular says so, the rest would write the same line eight times.
+     */
+    railDescription?: string
+    /**
      * No collapsing where the rail *is* the way to act on the page — Blind-Date's is how somebody
      * applies, and a control that hides it would hide the point of the page. It still becomes the
      * sheet below `lg`, because there is no room for a rail on a phone either way.
      */
     railAlwaysOpen?: boolean
   }>(),
-  { railLabel: 'Gruppen-Kontext', railAlwaysOpen: false },
+  {
+    railLabel: 'Gruppen-Kontext',
+    railDescription: 'Was hier zu tun ist, und was nachzusehen ist.',
+    railAlwaysOpen: false,
+  },
 )
 // Both rails' blocks are accordions, and `collapsible` is true only where the rail is a rail —
 // in the sheet they are stacked.
@@ -155,7 +166,12 @@ const railSlack = computed<Record<string, string>>(() => ({
           @click="rightOpen = true"
         />
 
-        <ContextSheet v-else v-model:open="sheetOpen" :label="railLabel">
+        <ContextSheet
+          v-else
+          v-model:open="sheetOpen"
+          :label="railLabel"
+          :description="railDescription"
+        >
           <slot name="rail" :collapsible="false" />
           <slot name="infoRail" :collapsible="false" />
         </ContextSheet>

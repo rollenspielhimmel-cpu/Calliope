@@ -51,7 +51,6 @@ export const favouritesOf = (userId: string) =>
       "writingPageId",
       "storyIdeaId",
       "chatGroupId",
-      "forumPostId",
     ])
     .where("userId", "=", userId)
     .execute();

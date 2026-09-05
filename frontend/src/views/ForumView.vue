@@ -1,156 +1,296 @@
 <script setup lang="ts">
 /**
- * The forum's front page: categories as headings, the sub-forums under them as the rows people
- * actually open, and what the footer of the original called „Statistik".
+ * The forum's own page: its structure, and where a thread or a page is started. The tree carries
+ * the actions here and the rail reads the same rows without them, as a group's does.
  *
- * Everything here is already filtered by the API to what this reader may see — a sub-forum they
- * may not read is absent rather than shown as refused, and a category left with nothing in it
- * does not appear at all. There is deliberately no "you may not see this" state to render.
- *
- * Readable without an account, which is why the page copes with there being no session: the
- * layout leaves its top bar out, and the sign-in link takes its place.
+ * Folders are not created here — their permissions need a surface of their own (#32's slice 7).
  */
-import { computed } from 'vue'
-import { useGetForumOverview } from '@/api/forum/forum'
-import { useGetCurrentUser } from '@/api/auth/auth'
-import type {
-  GetForumOverview200CategoriesItem,
-  GetForumOverview200CategoriesItemSubForumsItem,
-} from '@/api/models'
-import { formatActivityTime } from '@/lib/format/formatTime'
-import { formatCount } from '@/lib/format/formatNumber'
-import { restrictedForumLabel } from '@/lib/format/forumVisibility'
-import { MessagesSquare } from '@lucide/vue'
-import AppLayout from '@/components/layout/AppLayout.vue'
-import { Spinner } from '@/components/ui/spinner'
+import { computed, provide, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { Plus } from '@lucide/vue'
+import { useIsOperator } from '@/composables/useIsOperator'
+import { useForumTree } from '@/composables/useForumTree'
+import FolderTreeNode from '@/components/folder/FolderTreeNode.vue'
+import CreateKindItems from '@/components/folder/CreateKindItems.vue'
+import ThreadDialog from '@/components/thread/ThreadDialog.vue'
+import PageDialog from '@/components/page/PageDialog.vue'
+import FolderDialog from '@/components/folder/FolderDialog.vue'
+import type { EditableFolder } from '@/components/folder/FolderDialog.vue'
+import MoveDialog from '@/components/folder/MoveDialog.vue'
+import type { Movable } from '@/components/folder/MoveDialog.vue'
+import { countLeaves, findFolder } from '@/lib/folder/countLeaves'
+import { useDeleteForumFolder, getListForumFoldersQueryKey } from '@/api/forum/forum'
+import { useQueryClient } from '@tanstack/vue-query'
+import { exactKeyFilter } from '@/lib/api/queryKeys'
+import { failureMessage } from '@/lib/format/failure'
+import type { TreeFolder, TreeNode } from '@/lib/folder/buildTree'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { START_FORUM_CREATE } from '@/lib/folder/treeScope'
+import type { StartForumCreate, TreeScope } from '@/lib/folder/treeScope'
 
-const { data, isPending } = useGetForumOverview()
-const { data: currentUserData } = useGetCurrentUser()
+const { tree } = useForumTree()
 
-const signedIn = computed<boolean>(() => currentUserData.value?.status === 200)
+const isOperator = useIsOperator()
 
-const categories = computed<GetForumOverview200CategoriesItem[]>(() =>
-  data.value?.status === 200 ? data.value.data.categories : [],
-)
+const router = useRouter()
 
-const totalThreads = computed<number>(() =>
-  data.value?.status === 200 ? data.value.data.totalThreads : 0,
-)
+/** Where it would create. `null` is the root; `undefined` is no dialog, as the group's tree has it. */
+const creatingThreadIn = ref<string | null | undefined>(undefined)
+const creatingPageIn = ref<string | null | undefined>(undefined)
 
-const totalPosts = computed<number>(() =>
-  data.value?.status === 200 ? data.value.data.totalPosts : 0,
-)
+const threadDialogOpen = computed<boolean>({
+  get: () => creatingThreadIn.value !== undefined,
+  set: (open) => {
+    if (!open) creatingThreadIn.value = undefined
+  },
+})
+const pageDialogOpen = computed<boolean>({
+  get: () => creatingPageIn.value !== undefined,
+  set: (open) => {
+    if (!open) creatingPageIn.value = undefined
+  },
+})
 
 /**
- * Which sub-forums are open to somebody without an account. Shown only to a reader who has one,
- * and only where it differs from the ordinary case — a badge on every row would be noise.
+ * All three at the root, now that slice 7 can make a room: the top level is where a new one
+ * belongs, and every room the seed has is there — without this an operator could nest rooms
+ * forever and never add one beside „Forenspiele".
  */
-function isPublic(subForum: GetForumOverview200CategoriesItemSubForumsItem): boolean {
-  return subForum.visibility === 'everyone'
+function createAtRoot(kind: 'folder' | 'page' | 'thread') {
+  if (kind === 'folder') creatingFolderUnder.value = null
+  else startCreate(kind, null)
 }
+
+const startCreate: StartForumCreate = (kind, folderId) => {
+  if (kind === 'thread') creatingThreadIn.value = folderId
+  else creatingPageIn.value = folderId
+}
+
+// The rows are five levels deep at most and recursive, so this reaches them by injection rather
+// than by every level re-emitting.
+provide(START_FORUM_CREATE, startCreate)
+
+/** Only an operator may write to the root: nothing above it answers, so its constant does. */
+const mayCreateAtRoot = isOperator
+
+/** The dialog says where to go afterwards is the caller's, so this lands on the new writing. */
+function openThread(threadId: string) {
+  void router.push({ name: 'forumThread', params: { threadId } })
+}
+
+function openPage(pageId: string) {
+  void router.push({ name: 'forumPage', params: { pageId } })
+}
+
+/** Collapsed rather than expanded, so a folder somebody just made is open. */
+const collapsed = reactive<Set<string>>(new Set())
+
+function toggle(folderId: string) {
+  if (collapsed.has(folderId)) collapsed.delete(folderId)
+  else collapsed.add(folderId)
+}
+
+/**
+ * The first two levels start open and everything below starts shut, or a forum several levels
+ * deep opens as a wall of rows. Decided once per folder, as it first appears — so a folder the
+ * member opened stays open across a refetch, which re-deriving it would undo.
+ */
+const decided = new Set<string>()
+
+function collapseBelowLevelTwo(nodes: ReadonlyArray<TreeNode>): void {
+  for (const node of nodes) {
+    if (node.kind !== 'folder') continue
+
+    if (!decided.has(node.id)) {
+      decided.add(node.id)
+      if (node.depth > 2) collapsed.add(node.id)
+    }
+
+    collapseBelowLevelTwo(node.children)
+  }
+}
+
+const queryClient = useQueryClient()
+
+/**
+ * The forum's structure, which the tree emits and this view owns — as `FolderTree` owns a group's.
+ * Five levels of rows do not each mount their own dialog.
+ */
+const creatingFolderUnder = ref<string | null | undefined>(undefined)
+const editingFolder = ref<EditableFolder | undefined>(undefined)
+const moving = ref<Movable | undefined>(undefined)
+
+const folderDialogOpen = computed<boolean>({
+  get: () => creatingFolderUnder.value !== undefined || editingFolder.value !== undefined,
+  set: (open) => {
+    if (!open) {
+      creatingFolderUnder.value = undefined
+      editingFolder.value = undefined
+    }
+  },
+})
+
+const moveDialogOpen = computed<boolean>({
+  get: () => moving.value !== undefined,
+  set: (open) => {
+    if (!open) moving.value = undefined
+  },
+})
+
+/**
+ * The row's own setting travels into the dialog, not the reduced one: what an operator chose is
+ * what they should see when they open it again, even where a folder above has closed it.
+ */
+function editFolder(folder: TreeFolder) {
+  editingFolder.value = {
+    id: folder.id,
+    title: folder.title,
+    description: folder.description,
+    memberPermission: folder.memberPermission,
+  }
+}
+
+/** What the folder being edited holds, for the dialog's warning. The tree is already loaded. */
+const holds = computed<{ threads: number; pages: number } | undefined>(() => {
+  const id = editingFolder.value?.id
+  if (id === undefined) return undefined
+
+  const folder = findFolder(nodes.value, id)
+  return folder?.kind === 'folder' ? countLeaves(folder.children) : undefined
+})
+
+/** The dialog needs where the thing sits now, which a folder's node does not carry. */
+function movableOf(node: TreeNode): Movable {
+  return {
+    kind: node.kind,
+    id: node.id,
+    title: node.title,
+    parentId: node.kind === 'folder' ? parentOf(node.id) : node.folderId,
+  }
+}
+
+/** A folder's own parent is not on its node, so it is read back out of the tree. */
+function parentOf(folderId: string): string | null {
+  const walk = (list: TreeNode[], parent: string | null): string | null | undefined => {
+    for (const node of list) {
+      if (node.kind !== 'folder') continue
+      if (node.id === folderId) return parent
+
+      const found = walk(node.children, node.id)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  return walk(nodes.value, null) ?? null
+}
+
+const deleteError = ref<string | undefined>(undefined)
+const { mutateAsync: deleteFolder } = useDeleteForumFolder()
+
+/** No confirmation: only an empty folder offers it, so there is nothing to lose by pressing it. */
+async function removeFolder(folder: TreeFolder) {
+  deleteError.value = undefined
+  try {
+    await deleteFolder({ folderId: folder.id })
+  } catch (error) {
+    deleteError.value = failureMessage(
+      error,
+      `„${folder.title}" konnte nicht gelöscht werden. Inzwischen liegt vielleicht etwas darin.`,
+    )
+    return
+  }
+  await queryClient.invalidateQueries(exactKeyFilter(getListForumFoldersQueryKey()))
+}
+
+const nodes = computed<TreeNode[]>(() => tree.value)
+const scope = computed<TreeScope>(() => ({
+  kind: 'forum',
+  isOperator: isOperator.value,
+}))
+
+watch(nodes, collapseBelowLevelTwo, { immediate: true })
 </script>
 
 <template>
-  <AppLayout>
-    <div class="flex-1 overflow-auto px-gutter py-5 pb-8 md:px-10">
-      <h1 class="text-h1">Forum</h1>
-      <p class="mt-2 max-w-[60ch] text-body text-ink-4">
-        Was hier besprochen wird, steht offen — anders als in den Schreibgruppen, die privat sind.
-      </p>
+  <div class="flex-1 overflow-auto px-gutter pt-7 pb-8 md:px-10">
+    <div class="reading-column">
+      <div class="mb-1.5 flex items-baseline gap-2">
+        <h1 class="text-h1 text-ink-1">Forum</h1>
 
-      <p v-if="!signedIn && !isPending" class="mt-3 text-note text-ink-5">
-        Du liest gerade ohne Konto.
-        <RouterLink :to="{ name: 'login' }" class="text-oak-deep underline underline-offset-2"
-          >Melde dich an</RouterLink
-        >, um alles zu sehen und mitzuschreiben.
-      </p>
-
-      <div v-if="isPending" class="mt-6 flex items-center gap-2 text-note text-ink-5">
-        <Spinner />
-        Einen Moment.
+        <DropdownMenu v-if="mayCreateAtRoot">
+          <DropdownMenuTrigger
+            class="flex min-h-11 items-center gap-1 text-note text-ink-5 hover:text-ink-2 md:min-h-0"
+          >
+            <Plus :size="14" :stroke-width="1.5" aria-hidden="true" />
+            Anlegen
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <CreateKindItems @choose="createAtRoot" />
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      <p v-else-if="categories.length === 0" class="mt-6 max-w-[60ch] text-note text-ink-5">
-        <template v-if="signedIn">
-          Es gibt noch keine Foren-Abteile. Die Administration legt sie an.
-        </template>
-        <template v-else>
-          Ohne Konto ist hier zurzeit nichts zu lesen. Melde dich an, um das Forum zu sehen.
-        </template>
+      <p class="mb-7 text-body text-ink-4">
+        Hier wird öffentlich geschrieben. Was in einer Schreibgruppe entsteht, bleibt dort.
       </p>
 
-      <template v-else>
-        <section v-for="category in categories" :key="category.id" class="mt-8">
-          <h2 class="font-mono text-[11px] tracking-wide text-ink-label uppercase">
-            {{ category.title }}
-          </h2>
+      <Alert v-if="deleteError" variant="destructive" role="alert" class="mb-3.5">
+        <AlertDescription>{{ deleteError }}</AlertDescription>
+      </Alert>
 
-          <!-- The original drew this as a table with THEMEN / BEITRÄGE / LETZTER BEITRAG columns.
-               Here each sub-forum is a card, and the three numbers sit as a line under the
-               description — a table of four columns does not survive a 375px screen, and the
-               counts are read far less often than the title they belong to. -->
-          <ul class="mt-3 flex flex-col gap-2.5">
-            <li
-              v-for="subForum in category.subForums"
-              :key="subForum.id"
-              class="rounded-lg border border-line-3 bg-paper-0 p-4 shadow-card"
-            >
-              <div class="flex items-start gap-3">
-                <span
-                  class="mt-0.5 flex size-8 flex-none items-center justify-center rounded-lg bg-paper-3 text-oak-deep"
-                >
-                  <MessagesSquare :size="16" :stroke-width="1.5" aria-hidden="true" />
-                </span>
+      <p v-if="nodes.length === 0" class="text-body text-ink-4">Noch nichts angelegt.</p>
 
-                <div class="min-w-0 flex-1">
-                  <p class="text-h2 text-ink-1">
-                    <RouterLink
-                      :to="{ name: 'subForum', params: { subForumId: subForum.id } }"
-                      class="text-ink-1 underline-offset-[6px] hover:underline"
-                    >
-                      {{ subForum.title }}
-                    </RouterLink>
-                    <!-- Said once, next to the title, and only where it is not the ordinary
-                         case — the same rule the group privacy mark follows. -->
-                    <span
-                      v-if="restrictedForumLabel(subForum.visibility)"
-                      class="ml-2 align-middle text-[11.5px] text-ink-6"
-                    >
-                      {{ restrictedForumLabel(subForum.visibility) }}
-                    </span>
-                    <span
-                      v-else-if="signedIn && isPublic(subForum)"
-                      class="ml-2 align-middle text-[11.5px] text-ink-6"
-                    >
-                      Auch ohne Konto lesbar
-                    </span>
-                  </p>
-
-                  <p class="mt-1 max-w-[70ch] text-note text-ink-4">{{ subForum.description }}</p>
-
-                  <p class="mt-2 text-[12px] text-ink-6">
-                    {{ formatCount(subForum.threads) }} Themen ·
-                    {{ formatCount(subForum.posts) }} Beiträge
-                    <!-- Absent where nothing has been written that this reader may see. The
-                         original showed a last post beside "0 Themen, 0 Beiträge", which cannot
-                         both be true; here the two come from the same filter. -->
-                    <template v-if="subForum.lastPost">
-                      · zuletzt
-                      {{ subForum.lastPost.createdByUsername ?? 'ein gelöschtes Konto' }},
-                      {{ formatActivityTime(subForum.lastPost.createdAt) }}
-                    </template>
-                  </p>
-                </div>
-              </div>
-            </li>
-          </ul>
-        </section>
-
-        <p class="mt-10 border-t border-line-3 pt-4 text-[12.5px] text-ink-5">
-          Themen insgesamt: {{ formatCount(totalThreads) }} · Beiträge insgesamt:
-          {{ formatCount(totalPosts) }}
-        </p>
-      </template>
+      <!-- The page's own row, not the rail's: the rail's is tuned for 262px, which on a page
+           reads as too quiet and too shallowly indented. -->
+      <ul v-else>
+        <FolderTreeNode
+          v-for="node in nodes"
+          :key="node.id"
+          :node="node"
+          :scope="scope"
+          :collapsed="collapsed"
+          @toggle="toggle"
+          @add-folder="creatingFolderUnder = $event"
+          @add-page="creatingPageIn = $event"
+          @add-thread="creatingThreadIn = $event"
+          @edit="editFolder"
+          @move="moving = movableOf($event)"
+          @remove="removeFolder"
+        />
+      </ul>
     </div>
-  </AppLayout>
+  </div>
+
+  <FolderDialog
+    v-model:open="folderDialogOpen"
+    :scope="{ kind: 'forum' }"
+    :folder="editingFolder"
+    :parent-folder-id="creatingFolderUnder ?? null"
+    :holds="holds"
+  />
+
+  <MoveDialog
+    v-model:open="moveDialogOpen"
+    :scope="{ kind: 'forum' }"
+    :tree="nodes"
+    :item="moving"
+  />
+
+  <ThreadDialog
+    v-model:open="threadDialogOpen"
+    :scope="{ kind: 'forum' }"
+    :folder-id="creatingThreadIn ?? undefined"
+    @created="openThread"
+  />
+
+  <PageDialog
+    v-model:open="pageDialogOpen"
+    :scope="{ kind: 'forum' }"
+    :folder-id="creatingPageIn ?? undefined"
+    @created="openPage"
+  />
 </template>

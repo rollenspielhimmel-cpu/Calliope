@@ -13,7 +13,11 @@ import {
   useGetThread,
 } from '@/api/threads/threads'
 import {
+  createPost as createPostRequest,
+  deletePost as deletePostRequest,
   getListPostsQueryKey,
+  listPosts as listPostsRequest,
+  updatePost as updatePostRequest,
   useCreatePost,
   useDeletePost,
   useListPosts,
@@ -33,6 +37,7 @@ import DeleteThreadDialog from '@/components/thread/DeleteThreadDialog.vue'
 import ThreadDialog from '@/components/thread/ThreadDialog.vue'
 import ThreadHeader from '@/components/thread/ThreadHeader.vue'
 import PathToHere from '@/components/folder/PathToHere.vue'
+import { useFolderTree } from '@/composables/useFolderTree'
 import ReportDialog from '@/components/report/ReportDialog.vue'
 import DeletePostDialog from '@/components/thread/DeletePostDialog.vue'
 import PostItem from '@/components/thread/PostItem.vue'
@@ -67,6 +72,10 @@ const currentUserId = computed<string | undefined>(() =>
 )
 
 const groupId = computed<string>(() => String(route.params.groupId))
+
+// Der Pfad über dem Titel braucht den Baum der Gruppe: `PathToHere` holt ihn nicht selbst, weil
+// Gruppe und Forum beide einen haben und es nicht wissen soll, welchen es gerade zeigt.
+const { tree: folderTree } = useFolderTree(groupId)
 
 const threadId = computed<string>(() => String(route.params.threadId))
 
@@ -340,7 +349,34 @@ const {
   status: draftStatus,
   draftId,
   forget: forgetDraft,
-} = useDraft(groupId, threadId, draft, draftText)
+} = useDraft(
+  threadId,
+  // Named here rather than inside `useDraft`, because a draft in the forum is the same idea
+  // reached through different addresses — the composable holds the behaviour, the caller says
+  // where. See `ForumThreadView.vue` for the forum's four.
+  {
+    load: async () => {
+      // At most one draft per member per thread, enforced by a partial unique index.
+      const response = await listPostsRequest(groupId.value, threadId.value, {
+        isDraft: true,
+        limit: 1,
+      })
+      return response.status === 200 ? response.data.results[0] : undefined
+    },
+    create: async (document) => {
+      const created = await createPostRequest(groupId.value, threadId.value, {
+        document,
+        isDraft: true,
+      })
+      return created.status === 201 ? created.data.id : undefined
+    },
+    update: (postId, document, options) =>
+      updatePostRequest(groupId.value, threadId.value, postId, { document }, options),
+    remove: (postId) => deletePostRequest(groupId.value, threadId.value, postId),
+  },
+  draft,
+  draftText,
+)
 
 async function submit() {
   sendError.value = undefined
@@ -413,8 +449,9 @@ async function submit() {
         <div class="reading-column">
           <PathToHere
             v-if="group"
-            :group-id="groupId"
-            :group-title="group.title"
+            :tree="folderTree"
+            :root-title="group.title"
+            :root-to="{ name: 'group', params: { groupId } }"
             :folder-id="thread.folderId"
           />
 
@@ -547,7 +584,12 @@ async function submit() {
     </template>
   </AppLayout>
 
-  <ThreadDialog v-if="thread" v-model:open="renamingThread" :group-id="groupId" :thread="thread" />
+  <ThreadDialog
+    v-if="thread"
+    v-model:open="renamingThread"
+    :scope="{ kind: 'group', groupId }"
+    :thread="thread"
+  />
 
   <ReportDialog
     v-if="reportedPost"

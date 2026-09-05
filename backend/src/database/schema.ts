@@ -38,11 +38,7 @@ export type BlindDateVerdict = "no" | "partly" | "yes";
 
 export type BlindDateWritingStyle = "asterisk" | "prose";
 
-export type ForumVisibility =
-  | "administration"
-  | "everyone"
-  | "members"
-  | "moderation";
+export type ForumPermission = "hidden" | "read" | "write";
 
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
@@ -103,7 +99,6 @@ export type ReportStatus = "closed" | "in_progress" | "open";
 export type ReportTargetType =
   | "chat_group"
   | "chat_message"
-  | "forum_post"
   | "story_idea"
   | "user"
   | "writing_group"
@@ -459,7 +454,6 @@ export interface CustomPage {
 export interface Favourite {
   chatGroupId: string | null;
   createdAt: Generated<string>;
-  forumPostId: string | null;
   id: Generated<string>;
   storyIdeaId: string | null;
   userId: string;
@@ -467,35 +461,6 @@ export interface Favourite {
   writingPageId: string | null;
   writingPostId: string | null;
   writingThreadId: string | null;
-}
-
-export interface ForumCategory {
-  createdAt: Generated<string>;
-  id: Generated<string>;
-  position: Generated<number>;
-  title: string;
-}
-
-export interface ForumPost {
-  createdAt: Generated<string>;
-  createdBy: string | null;
-  document: unknown;
-  editedAt: string | null;
-  editedBy: string | null;
-  forumThreadId: string;
-  id: Generated<string>;
-  text: string;
-}
-
-export interface ForumThread {
-  createdAt: Generated<string>;
-  createdBy: string | null;
-  id: Generated<string>;
-  lastActivityAt: Generated<string>;
-  publicationId: string | null;
-  subForumId: string;
-  title: string;
-  visibility: ForumVisibility | null;
 }
 
 export interface Notification {
@@ -561,7 +526,6 @@ export interface Report {
   reportedAuthorId: string | null;
   reportedChatGroupId: string | null;
   reportedChatMessageId: string | null;
-  reportedForumPostId: string | null;
   reportedStoryIdeaId: string | null;
   reportedUserId: string | null;
   reportedWritingGroupId: string | null;
@@ -626,16 +590,6 @@ export interface Strike {
   severity: StrikeSeverity;
   suspendedUntil: string | null;
   userId: string;
-}
-
-export interface SubForum {
-  categoryId: string;
-  createdAt: Generated<string>;
-  description: string;
-  id: Generated<string>;
-  position: Generated<number>;
-  title: string;
-  visibility: Generated<ForumVisibility>;
 }
 
 export interface User {
@@ -733,10 +687,12 @@ export interface WritingFolder {
   createdBy: string | null;
   depth: number;
   description: string | null;
+  effectiveMemberPermission: ForumPermission | null;
   id: Generated<string>;
+  memberPermission: ForumPermission | null;
   parentFolderId: string | null;
   title: string;
-  writingGroupId: string;
+  writingGroupId: string | null;
 }
 
 export interface WritingGroup {
@@ -778,10 +734,11 @@ export interface WritingPage {
   folderId: string | null;
   id: Generated<string>;
   lastActivityAt: Generated<string>;
+  memberPermission: ForumPermission | null;
   text: string;
   title: string;
   updatedBy: string | null;
-  writingGroupId: string;
+  writingGroupId: string | null;
 }
 
 export interface WritingPost {
@@ -802,8 +759,10 @@ export interface WritingThread {
   folderId: string | null;
   id: Generated<string>;
   lastActivityAt: Generated<string>;
+  memberPermission: ForumPermission | null;
+  publicationId: string | null;
   title: string;
-  writingGroupId: string;
+  writingGroupId: string | null;
 }
 
 export interface DB {
@@ -825,9 +784,6 @@ export interface DB {
   chatMessage: ChatMessage;
   customPage: CustomPage;
   favourite: Favourite;
-  forumCategory: ForumCategory;
-  forumPost: ForumPost;
-  forumThread: ForumThread;
   notification: Notification;
   profileAnswer: ProfileAnswer;
   profileQuestion: ProfileQuestion;
@@ -839,7 +795,6 @@ export interface DB {
   storyIdea: StoryIdea;
   storyIdeaReader: StoryIdeaReader;
   strike: Strike;
-  subForum: SubForum;
   user: User;
   userAvatar: UserAvatar;
   userBlock: UserBlock;
@@ -898,14 +853,6 @@ export const BLIND_DATE_WRITING_STYLE_SCHEMA = z.enum(
   BLIND_DATE_WRITING_STYLES,
 );
 
-export const FORUM_VISIBILITIES = [
-  "administration",
-  "everyone",
-  "members",
-  "moderation",
-] as const;
-export const FORUM_VISIBILITY_SCHEMA = z.enum(FORUM_VISIBILITIES);
-
 export const NOTIFICATION_TYPES = [
   "blind_date_ended",
   "blind_date_matched",
@@ -957,19 +904,6 @@ export const REPORT_OUTCOME_SCHEMA = z.enum(REPORT_OUTCOMES);
 
 export const REPORT_STATUSES = ["closed", "in_progress", "open"] as const;
 export const REPORT_STATUS_SCHEMA = z.enum(REPORT_STATUSES);
-
-export const REPORT_TARGET_TYPES = [
-  "chat_group",
-  "chat_message",
-  "forum_post",
-  "story_idea",
-  "user",
-  "writing_group",
-  "writing_page",
-  "writing_post",
-  "writing_thread",
-] as const;
-export const REPORT_TARGET_TYPE_SCHEMA = z.enum(REPORT_TARGET_TYPES);
 
 export const STORY_CONTENT_WARNINGS = [
   "abuse",
@@ -1210,6 +1144,21 @@ export const PUBLICATION_STATUS_SCHEMA = z.enum(PUBLICATION_STATUSES);
 export const PUBLICATION_KINDS = ["broadcast", "forum_thread"] as const;
 export const PUBLICATION_KIND_SCHEMA = z.enum(PUBLICATION_KINDS);
 
+export const FORUM_PERMISSIONS = ["hidden", "read", "write"] as const;
+export const FORUM_PERMISSION_SCHEMA = z.enum(FORUM_PERMISSIONS);
+
+export const REPORT_TARGET_TYPES = [
+  "chat_group",
+  "chat_message",
+  "story_idea",
+  "user",
+  "writing_group",
+  "writing_page",
+  "writing_post",
+  "writing_thread",
+] as const;
+export const REPORT_TARGET_TYPE_SCHEMA = z.enum(REPORT_TARGET_TYPES);
+
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
   windowStart: z.iso.datetime({ offset: true }),
@@ -1383,36 +1332,6 @@ export const FAVOURITE_SCHEMA = z.object({
   storyIdeaId: z.uuidv7().nullable(),
   chatGroupId: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
-  forumPostId: z.uuidv7().nullable(),
-});
-
-export const FORUM_CATEGORY_SCHEMA = z.object({
-  id: z.uuidv7(),
-  title: z.string(),
-  position: int32,
-  createdAt: z.iso.datetime({ offset: true }),
-});
-
-export const FORUM_POST_SCHEMA = z.object({
-  id: z.uuidv7(),
-  forumThreadId: z.uuidv7(),
-  document: z.unknown(),
-  text: z.string(),
-  createdBy: z.uuidv7().nullable(),
-  createdAt: z.iso.datetime({ offset: true }),
-  editedAt: z.iso.datetime({ offset: true }).nullable(),
-  editedBy: z.uuidv7().nullable(),
-});
-
-export const FORUM_THREAD_SCHEMA = z.object({
-  id: z.uuidv7(),
-  subForumId: z.uuidv7(),
-  title: z.string(),
-  visibility: FORUM_VISIBILITY_SCHEMA.nullable(),
-  createdBy: z.uuidv7().nullable(),
-  createdAt: z.iso.datetime({ offset: true }),
-  lastActivityAt: z.iso.datetime({ offset: true }),
-  publicationId: z.uuidv7().nullable(),
 });
 
 export const NOTIFICATION_SCHEMA = z.object({
@@ -1488,7 +1407,6 @@ export const REPORT_SCHEMA = z.object({
   closingOutcome: REPORT_OUTCOME_SCHEMA.nullable(),
   closingNote: z.string().nullable(),
   status: REPORT_STATUS_SCHEMA,
-  reportedForumPostId: z.uuidv7().nullable(),
 });
 
 export const STATUS_UPDATE_SCHEMA = z.object({
@@ -1543,16 +1461,6 @@ export const STRIKE_SCHEMA = z.object({
   suspendedUntil: z.iso.datetime({ offset: true }).nullable(),
   issuedBy: z.uuidv7().nullable(),
   issuedAt: z.iso.datetime({ offset: true }),
-});
-
-export const SUB_FORUM_SCHEMA = z.object({
-  id: z.uuidv7(),
-  categoryId: z.uuidv7(),
-  title: z.string(),
-  description: z.string(),
-  visibility: FORUM_VISIBILITY_SCHEMA,
-  position: int32,
-  createdAt: z.iso.datetime({ offset: true }),
 });
 
 export const USER_SCHEMA = z.object({
@@ -1647,13 +1555,15 @@ export const WATCHLIST_ENTRY_SCHEMA = z.object({
 
 export const WRITING_FOLDER_SCHEMA = z.object({
   id: z.uuidv7(),
-  writingGroupId: z.uuidv7(),
+  writingGroupId: z.uuidv7().nullable(),
   parentFolderId: z.uuidv7().nullable(),
   depth: int16,
   title: z.string(),
   description: z.string().nullable(),
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
+  memberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
+  effectiveMemberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
 });
 
 export const WRITING_GROUP_SCHEMA = z.object({
@@ -1690,7 +1600,7 @@ export const WRITING_GROUP_NEXT_STEP_SCHEMA = z.object({
 
 export const WRITING_PAGE_SCHEMA = z.object({
   id: z.uuidv7(),
-  writingGroupId: z.uuidv7(),
+  writingGroupId: z.uuidv7().nullable(),
   title: z.string(),
   document: z.unknown(),
   text: z.string(),
@@ -1699,6 +1609,7 @@ export const WRITING_PAGE_SCHEMA = z.object({
   lastActivityAt: z.iso.datetime({ offset: true }),
   updatedBy: z.uuidv7().nullable(),
   folderId: z.uuidv7().nullable(),
+  memberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
 });
 
 export const WRITING_POST_SCHEMA = z.object({
@@ -1715,10 +1626,12 @@ export const WRITING_POST_SCHEMA = z.object({
 
 export const WRITING_THREAD_SCHEMA = z.object({
   id: z.uuidv7(),
-  writingGroupId: z.uuidv7(),
+  writingGroupId: z.uuidv7().nullable(),
   title: z.string(),
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
   folderId: z.uuidv7().nullable(),
+  memberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
+  publicationId: z.uuidv7().nullable(),
 });

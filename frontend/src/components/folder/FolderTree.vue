@@ -170,7 +170,7 @@ const nodes = computed<TreeNode[]>(() => tree.value)
         v-for="node in nodes"
         :key="node.id"
         :node="node"
-        :group-id="groupId"
+        :scope="{ kind: 'group', groupId }"
         :may-write="mayWrite"
         :collapsed="collapsed"
         @toggle="toggle"
@@ -197,22 +197,27 @@ const nodes = computed<TreeNode[]>(() => tree.value)
       </DropdownMenuContent>
     </DropdownMenu>
 
-    <MoveDialog v-model:open="moveDialogOpen" :group-id="groupId" :tree="nodes" :item="moving" />
+    <MoveDialog
+      v-model:open="moveDialogOpen"
+      :scope="{ kind: 'group', groupId }"
+      :tree="nodes"
+      :item="moving"
+    />
     <FolderDialog
       v-model:open="folderDialogOpen"
-      :group-id="groupId"
+      :scope="{ kind: 'group', groupId }"
       :folder="editing"
       :parent-folder-id="creatingFolderUnder ?? null"
     />
     <PageDialog
       v-model:open="pageDialogOpen"
-      :group-id="groupId"
+      :scope="{ kind: 'group', groupId }"
       :folder-id="creatingPageUnder ?? undefined"
       @created="openPage"
     />
     <ThreadDialog
       v-model:open="threadDialogOpen"
-      :group-id="groupId"
+      :scope="{ kind: 'group', groupId }"
       :folder-id="creatingThreadUnder ?? undefined"
       @created="openThread"
     />

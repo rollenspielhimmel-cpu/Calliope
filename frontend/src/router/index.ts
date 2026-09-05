@@ -13,6 +13,9 @@ declare module 'vue-router' {
      * it rather than exposing it.
      */
     access?: 'member' | 'guest' | 'anyone' | 'operator' | 'administrator'
+
+    /** Set by the forum page that is itself the tree, so `ForumLayout` does not show it twice. */
+    listsForumContents?: boolean
   }
 }
 

@@ -34,7 +34,6 @@ export default defineConfig({
           listReports: { query: { useQuery: true } },
           listIpOverview: { query: { useQuery: true } },
           listSharedIpAddresses: { query: { useQuery: true } },
-          listForumThreads: { query: { useQuery: true } },
           listForumPosts: { query: { useQuery: true } },
           listBlindDateParticipation: { query: { useQuery: true } },
         },

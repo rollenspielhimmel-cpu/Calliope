@@ -127,7 +127,6 @@ const TARGET_LABELS: Record<Report['targetType'], string> = {
   story_idea: 'Storyidee',
   chat_group: 'Chat',
   chat_message: 'Nachricht',
-  forum_post: 'Forenbeitrag',
   user: 'Mitglied',
 }
 

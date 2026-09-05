@@ -21,7 +21,7 @@ export const DESTINATIONS: ReadonlyArray<{
     label: 'Forum',
     icon: MessagesSquare,
     name: 'forum',
-    belongsTo: ['forum'],
+    belongsTo: ['forum', 'forumThread', 'forumPage'],
   },
   {
     label: 'Gruppen',

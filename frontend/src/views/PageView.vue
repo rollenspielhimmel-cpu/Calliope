@@ -40,6 +40,7 @@ import PostEditor from '@/components/thread/PostEditor.vue'
 import DeletePageDialog from '@/components/page/DeletePageDialog.vue'
 import ReportDialog from '@/components/report/ReportDialog.vue'
 import PathToHere from '@/components/folder/PathToHere.vue'
+import { useFolderTree } from '@/composables/useFolderTree'
 import FavouriteToggle from '@/components/favourite/FavouriteToggle.vue'
 import StepList from '@/components/context/StepList.vue'
 import StoryStatus from '@/components/context/StoryStatus.vue'
@@ -57,6 +58,11 @@ const router = useRouter()
 const queryClient = useQueryClient()
 
 const groupId = computed<string>(() => String(route.params.groupId))
+
+// Der Pfad über dem Titel braucht den Baum der Gruppe: `PathToHere` holt ihn nicht selbst, weil
+// Gruppe und Forum beide einen haben und es nicht wissen soll, welchen es gerade zeigt.
+const { tree: folderTree } = useFolderTree(groupId)
+
 const pageId = computed<string>(() => String(route.params.pageId))
 
 const LIMIT = TEXT_LIMIT.updatePage
@@ -256,8 +262,9 @@ watch(pageId, () => {
           <div class="mb-7">
             <PathToHere
               v-if="group"
-              :group-id="groupId"
-              :group-title="group.title"
+              :tree="folderTree"
+              :root-title="group.title"
+              :root-to="{ name: 'group', params: { groupId } }"
               :folder-id="page.folderId"
             />
 
