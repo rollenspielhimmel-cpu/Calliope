@@ -234,8 +234,16 @@ watch(nodes, collapseBelowLevelTwo, { immediate: true })
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <!--
+        „Für alle Mitglieder sichtbar“, nicht „öffentlich“: Der Gegensatz, der hier gemeint ist,
+        ist die Schreibgruppe — und „öffentlich“ liest sich auch als „für jeden im Netz“, was heute
+        nicht stimmt, weil das Forum eine Anmeldung verlangt. So beschreibt der Satz, was gilt, und
+        muss bewusst angefasst werden, falls wir das Forum später wirklich nach außen öffnen.
+        Die Begründung dazu steht in `backend/src/route/forum.ts`.
+      -->
       <p class="mb-7 text-body text-ink-4">
-        Hier wird öffentlich geschrieben. Was in einer Schreibgruppe entsteht, bleibt dort.
+        Hier wird für alle Mitglieder sichtbar geschrieben. Was in einer Schreibgruppe entsteht,
+        bleibt dort.
       </p>
 
       <Alert v-if="deleteError" variant="destructive" role="alert" class="mb-3.5">
