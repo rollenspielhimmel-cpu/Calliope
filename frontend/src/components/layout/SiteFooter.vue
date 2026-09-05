@@ -19,9 +19,19 @@
  *
  * It addresses the **commit this build was made from**, not the branch: what is owed is the source
  * of the version somebody is using. See `RUNNING_SOURCE_URL`.
+ *
+ * **The copyright line is about the site, not the code.** The code is AGPL and its source is the
+ * link beside it; what this claims is the site itself and what is written on it. Both standing in
+ * one row is the honest arrangement — a © with no source link next to it would read as a claim
+ * over the software, which would be wrong.
+ *
+ * **No year, deliberately.** A notice needs none to be valid, and a year is a thing that goes stale:
+ * a footer saying 2026 in 2028 reads as a site nobody maintains, which is the opposite of what a
+ * copyright line is there to say. It also takes the name from `APP_NAME` rather than spelling it
+ * out, so an instance running under another name says its own.
  */
 import { RouterLink } from 'vue-router'
-import { RUNNING_SOURCE_URL } from '@/lib/branding'
+import { APP_NAME, RUNNING_SOURCE_URL } from '@/lib/branding'
 
 const LINKS = [
   { name: 'imprint', label: 'Impressum' },
@@ -57,5 +67,9 @@ const LINKS = [
         </li>
       </ul>
     </nav>
+
+    <!-- `ml-auto` puts it at the far end where a wide footer has room, and lets it wrap under the
+         links rather than crowd them on a phone. -->
+    <p class="ml-auto text-note text-ink-6">© {{ APP_NAME }}</p>
   </footer>
 </template>
