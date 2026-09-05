@@ -69,10 +69,12 @@ async function setRole(
  *   erst heran.
  * - **MEMBER** ist die Gegenprobe. Eine Rundmail an die Administration darf ihn nicht erreichen.
  *
- * **Nirgends wird mit festen Zahlen gerechnet.** Die Datenbank enthält weitere Administratoren —
- * Saatkonten und was andere Läufe hinterlassen —, und ein Test, der „genau drei" behauptet, prüft
- * am Ende nur, wer sonst noch angemeldet ist. Die Erwartung wird deshalb aus derselben Regel
- * abgeleitet, die auch der Dienst anwendet.
+ * **Nirgends wird eine Gesamtzahl behauptet, auch keine berechnete.** Die Datenbank enthält weitere
+ * Administratoren — Saatkonten und was andere Dateien dieses Laufs gerade anlegen und wieder
+ * löschen. „Genau drei" wäre falsch, und „so viele wie gerade in der Tabelle stehen" wäre nicht
+ * besser: Zwischen dem Versand und dem Nachzählen kann eine andere Datei fertig geworden sein.
+ * Geprüft wird deshalb, was unabhängig davon gilt — unsere vier Konten, und die Zahlen gegen sich
+ * selbst.
  */
 async function fixture() {
   const cookies = {
@@ -99,16 +101,6 @@ async function fixture() {
   return cookies;
 }
 
-/** Der Empfängerkreis „Administration", wie der Dienst ihn auch bildet. */
-async function administrators() {
-  return await db
-    .selectFrom("user")
-    .select(["username", "emailAddressVerifiedAt"])
-    .where("platformRole", "=", "administrator")
-    .where("bannedAt", "is", null)
-    .execute();
-}
-
 /**
  * **Die Rundmails müssen mit weg, nicht nur die Konten.**
  *
@@ -117,13 +109,14 @@ async function administrators() {
  * beantworten kann. Für diese Datei heißt das: Ohne dieses Aufräumen findet der zweite Test zwei
  * Rundmails mit demselben Betreff und geht rot, ohne dass etwas kaputt wäre.
  *
- * Der Faden im Forum hängt nur lose an der Veröffentlichung (`ON DELETE SET NULL`), also wird er
- * eigens gelöscht — sonst sammelt das Archiv bei jedem Lauf einen Test-Faden mehr.
+ * Der Archiv-Faden dagegen bleibt stehen: Es gibt genau einen, er gehört der Plattform und nicht
+ * diesem Lauf. Weg müssen nur die Beiträge, die diese Datei hineingelegt hat — sonst wächst das
+ * Archiv bei jedem Lauf um eine Test-Ankündigung.
  */
 async function cleanUp() {
   await db
-    .deleteFrom("writingThread")
-    .where("title", "=", SUBJECT)
+    .deleteFrom("writingPost")
+    .where("text", "like", `${SUBJECT}%`)
     .execute();
 
   await db
@@ -180,13 +173,25 @@ Deno.test("ins Postfach heißt: eine Zeile für jeden Empfänger", async () => {
     const broadcast = await theBroadcast();
 
     const notified = await db
-      .selectFrom("notification")
-      .innerJoin("user", "user.id", "notification.recipientId")
-      .select("user.username")
-      .where("notification.broadcastId", "=", broadcast.id)
+      .selectFrom("chatGroup")
+      .innerJoin(
+        "userInChatGroup",
+        "userInChatGroup.chatGroupId",
+        "chatGroup.id",
+      )
+      .innerJoin("user", "user.id", "userInChatGroup.userId")
+      .select(["user.username", "userInChatGroup.status", "chatGroup.title"])
+      .where("chatGroup.broadcastId", "=", broadcast.id)
       .execute();
 
     const reached = notified.map((row) => row.username);
+
+    // Der Betreff ist der Titel des Gesprächs — so findet man sie im Postfach wieder.
+    assert(notified.every((row) => row.title === SUBJECT));
+
+    // **Beigetreten, nicht eingeladen.** Eine Rundmail nimmt man nicht an; eine Einladung, die erst
+    // bestätigt werden müsste, wäre eine Hürde vor einer Mitteilung, die schon ausgesprochen ist.
+    assert(notified.every((row) => row.status === "joined"));
 
     // Der mit der unbestätigten Adresse ist dabei: Die Bestätigung ist eine Frage an die E-Mail,
     // nicht an die Mitgliedschaft.
@@ -194,20 +199,81 @@ Deno.test("ins Postfach heißt: eine Zeile für jeden Empfänger", async () => {
     assert(reached.includes(UNVERIFIED));
     assert(reached.includes(SECOND));
 
-    // Und das gewöhnliche Mitglied nicht — die Rundmail ging an die Administration.
+    // Und das gewöhnliche Mitglied nicht — die Rundmail ging an die Administration. Das ist die
+    // Aussage, auf die es ankommt: dass der Empfängerkreis wirklich filtert.
+    //
+    // **Kein Vergleich mit der vollständigen Kontenliste**, so verlockend er wäre: Die Dateien
+    // dieses Laufs legen nebenher Administratoren an und löschen sie wieder, und ein Test, der die
+    // Liste nach dem Versand noch einmal abfragt, prüft am Ende nur, wer gerade sonst angemeldet
+    // ist. Genau daran ging die Reichweite hier einmal rot, während sie allein grün war.
     assert(!reached.includes(MEMBER));
-
-    // Genau der Kreis und niemand sonst, gegen dieselbe Regel geprüft, die der Dienst anwendet.
-    assertEquals(
-      reached.toSorted(),
-      (await administrators()).map((row) => row.username).toSorted(),
-    );
   } finally {
     await cleanUp();
   }
 });
 
-Deno.test("die Benachrichtigung nennt keinen Verursacher", async () => {
+Deno.test("der Absender sitzt in keinem der Gespräche", async () => {
+  const cookies = await fixture();
+
+  try {
+    // **Als Kunstfigur, und das ist keine Bequemlichkeit.** Schickte der Ur-Admin unter eigenem
+    // Namen, wäre er zugleich Empfänger — er ist ja Administration —, und ein Gespräch in seinem
+    // Postfach wäre dann völlig richtig. Der Fall, um den es geht, ist der Weihnachtsmann: ein
+    // Konto, das die Rundmail trägt, ohne im Empfängerkreis zu stehen.
+    const sender = await db
+      .selectFrom("user")
+      .select("id")
+      .where("username", "=", MEMBER)
+      .executeTakeFirstOrThrow();
+
+    const releasedBy = await db
+      .selectFrom("user")
+      .select("id")
+      .where("username", "=", ROOT)
+      .executeTakeFirstOrThrow();
+
+    await db
+      .insertInto("broadcastSender")
+      .values({ userId: sender.id, enabledBy: releasedBy.id })
+      .onConflict((conflict) => conflict.column("userId").doNothing())
+      .execute();
+
+    await submit(cookies.root, { sendAsUserId: sender.id });
+
+    const broadcast = await theBroadcast();
+
+    // **Das ist der ganze Trick des Entwurfs.** Ohne Zeile in `user_in_chat_group` taucht das
+    // Gespräch beim Absender nirgends auf — weder beim Ur-Admin, in dessen Postfach niemand sieht,
+    // noch bei einer Kunstfigur wie dem Weihnachtsmann. Stünde er drin, hätte er nach einer
+    // Rundmail an alle hundert Gespräche im eigenen Postfach.
+    const senderIsIn = await db
+      .selectFrom("userInChatGroup")
+      .innerJoin("chatGroup", "chatGroup.id", "userInChatGroup.chatGroupId")
+      .select("userInChatGroup.userId")
+      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("userInChatGroup.userId", "=", sender.id)
+      .execute();
+
+    assertEquals(senderIsIn, []);
+
+    // Den Namen trägt die Nachricht trotzdem — sonst käme sie von niemandem.
+    const messages = await db
+      .selectFrom("chatMessage")
+      .innerJoin("chatGroup", "chatGroup.id", "chatMessage.chatGroupId")
+      .select(["chatMessage.createdBy", "chatMessage.text"])
+      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .execute();
+
+    assert(messages.length > 0);
+    assert(messages.every((row) => row.createdBy === sender.id));
+    // Der ganze Text, nicht ein Verweis darauf.
+    assert(messages.every((row) => row.text === BODY));
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("das Gespräch gehört dem Absender, nicht der schreibenden Person", async () => {
   const cookies = await fixture();
 
   try {
@@ -215,17 +281,25 @@ Deno.test("die Benachrichtigung nennt keinen Verursacher", async () => {
 
     const broadcast = await theBroadcast();
 
-    const actors = await db
-      .selectFrom("notification")
-      .select("actorId")
+    const author = await db
+      .selectFrom("user")
+      .select("id")
+      .where("username", "=", ROOT)
+      .executeTakeFirstOrThrow();
+
+    const chats = await db
+      .selectFrom("chatGroup")
+      .select("createdBy")
       .where("broadcastId", "=", broadcast.id)
       .execute();
 
-    // Nicht kosmetisch: `notification_actor_is_not_recipient` verbietet, dass jemand sich selbst
-    // benachrichtigt — und wer an alle schreibt, ist fast immer selbst unter „alle". Stünde der
-    // Absender hier, fiele genau seine Zeile um und mit ihr die ganze Anweisung.
-    assert(actors.length > 0);
-    assert(actors.every((row) => row.actorId === null));
+    // **Die Ecke, an die niemand denkt.** `created_by` am Gespräch sieht sich nie jemand an — und
+    // genau deshalb wäre dort der echte Name die Stelle, an der die Maske fällt. Hier hält ROOT den
+    // Ur-Admin-Platz, ist also zugleich Absender; der Test prüft die Regel trotzdem, weil der
+    // nächste Absender eine Kunstfigur sein wird.
+    assert(chats.length > 0);
+    assert(chats.every((row) => row.createdBy !== null));
+    assert(chats.every((row) => row.createdBy === author.id));
   } finally {
     await cleanUp();
   }
@@ -244,18 +318,16 @@ Deno.test("zwei Zahlen: das Postfach reicht weiter als die E-Mail", async () => 
     assertEquals(response.status, STATUS_CODE.OK);
 
     const reach = await response.json();
-    const admins = await administrators();
 
-    assertEquals(reach.inbox, admins.length);
-    assertEquals(
-      reach.email,
-      admins.filter((row) => row.emailAddressVerifiedAt !== null).length,
-    );
-
-    // Und die beiden Zahlen fallen wirklich auseinander — sonst prüfte das Obige nur, dass zweimal
-    // dasselbe gezählt wurde. Der mit der unbestätigten Adresse liest sein Postfach und bekommt
-    // keine Mail.
-    assert(reach.inbox > reach.email);
+    // **Was unabhängig davon gilt, wer sonst gerade angemeldet ist.** Die anderen Dateien dieses
+    // Laufs legen nebenher Administratoren an und löschen sie wieder; eine Zahl mit ihrer eigenen
+    // Liste zu vergleichen prüft am Ende nur, wie schnell die andere Datei war.
+    //
+    // Unsere drei sind darunter, und die beiden Zahlen fallen um mindestens einen auseinander —
+    // um den mit der unbestätigten Adresse, der sein Postfach liest und keine Mail bekommt. Das ist
+    // die Aussage; die genauen Zahlen sind Zufall des Augenblicks.
+    assert(reach.inbox >= 3);
+    assert(reach.inbox - reach.email >= 1);
   } finally {
     await cleanUp();
   }
@@ -272,73 +344,16 @@ Deno.test("ohne Postfach-Weg entsteht keine Zeile im Postfach", async () => {
 
     const broadcast = await theBroadcast();
 
-    const notifications = await db
-      .selectFrom("notification")
+    const chats = await db
+      .selectFrom("chatGroup")
       .select("id")
       .where("broadcastId", "=", broadcast.id)
       .execute();
 
-    assertEquals(notifications, []);
+    assertEquals(chats, []);
     // Leer statt null: Eine Null sähe aus wie „an niemanden zugestellt" statt „dieser Weg war
     // nicht gewählt".
     assertEquals(broadcast.recipientCount, null);
-  } finally {
-    await cleanUp();
-  }
-});
-
-Deno.test("der Archiv-Haken legt einen Faden im Forum an", async () => {
-  const cookies = await fixture();
-
-  try {
-    await submit(cookies.root, { publishInArchive: true });
-
-    const broadcast = await theBroadcast();
-    assert(broadcast.archivePostId !== null);
-
-    const post = await db
-      .selectFrom("writingPost")
-      .innerJoin(
-        "writingThread",
-        "writingThread.id",
-        "writingPost.writingThreadId",
-      )
-      .innerJoin("writingFolder", "writingFolder.id", "writingThread.folderId")
-      .select([
-        "writingThread.title",
-        "writingThread.writingGroupId",
-        "writingFolder.isBroadcastArchive",
-        "writingPost.text",
-      ])
-      .where("writingPost.id", "=", broadcast.archivePostId)
-      .executeTakeFirstOrThrow();
-
-    assertEquals(post.title, SUBJECT);
-    // Ohne Schreibgruppe: Genau das macht eine Zeile zu einer des Forums.
-    assertEquals(post.writingGroupId, null);
-    assert(post.isBroadcastArchive);
-    assertEquals(post.text, BODY);
-  } finally {
-    await cleanUp();
-  }
-});
-
-Deno.test("ohne Archiv-Haken bleibt das Forum unberührt", async () => {
-  const cookies = await fixture();
-
-  try {
-    await submit(cookies.root);
-
-    const broadcast = await theBroadcast();
-    assertEquals(broadcast.archivePostId, null);
-
-    const threads = await db
-      .selectFrom("writingThread")
-      .select("id")
-      .where("title", "=", SUBJECT)
-      .execute();
-
-    assertEquals(threads, []);
   } finally {
     await cleanUp();
   }
@@ -364,75 +379,6 @@ Deno.test("eine Rundmail ohne jeden Weg wird abgelehnt", async () => {
   }
 });
 
-Deno.test("gelesen wird nur, was im eigenen Postfach liegt", async () => {
-  const cookies = await fixture();
-
-  try {
-    await submit(cookies.root, { audienceGroups: ["moderator"] });
-
-    const broadcast = await theBroadcast();
-
-    // An die Moderation gerichtet, und niemand hier ist Moderation: Auch die Administration, die
-    // sie geschrieben hat, liest sie nicht über diesen Weg. Ihre eigene Liste zeigt ihr mehr.
-    const response = await request(
-      "GET",
-      `/api/notifications/broadcast/${broadcast.id}`,
-      cookies.root,
-    );
-
-    assertEquals(response.status, STATUS_CODE.NotFound);
-  } finally {
-    await cleanUp();
-  }
-});
-
-Deno.test("wer sie bekommen hat, liest sie nach", async () => {
-  const cookies = await fixture();
-
-  try {
-    await submit(cookies.root);
-
-    const broadcast = await theBroadcast();
-
-    const response = await request(
-      "GET",
-      `/api/notifications/broadcast/${broadcast.id}`,
-      cookies.second,
-    );
-
-    assertEquals(response.status, STATUS_CODE.OK);
-
-    const read = await response.json();
-    assertEquals(read.subject, SUBJECT);
-    assertEquals(read.body, BODY);
-    // Kein Archiv-Haken, also kein Faden — und dann ist dieser Eintrag die eine Stelle mit dem Text.
-    assertEquals(read.archiveThreadId, null);
-  } finally {
-    await cleanUp();
-  }
-});
-
-Deno.test("steht sie im Forum, verweist das Nachlesen dorthin", async () => {
-  const cookies = await fixture();
-
-  try {
-    await submit(cookies.root, { publishInArchive: true });
-
-    const broadcast = await theBroadcast();
-
-    const response = await request(
-      "GET",
-      `/api/notifications/broadcast/${broadcast.id}`,
-      cookies.second,
-    );
-
-    assertEquals(response.status, STATUS_CODE.OK);
-    assert((await response.json()).archiveThreadId !== null);
-  } finally {
-    await cleanUp();
-  }
-});
-
 Deno.test("die Reichweite wird beim Versand festgehalten", async () => {
   const cookies = await fixture();
 
@@ -441,10 +387,132 @@ Deno.test("die Reichweite wird beim Versand festgehalten", async () => {
 
     const broadcast = await theBroadcast();
 
-    assertEquals(broadcast.recipientCount, (await administrators()).length);
+    const chats = await db
+      .selectFrom("chatGroup")
+      .select("id")
+      .where("broadcastId", "=", broadcast.id)
+      .execute();
+
+    // **Gegen die eigenen Gespräche geprüft, nicht gegen die Kontenliste von jetzt.** Die Dateien
+    // dieses Laufs legen nebenher Administratoren an und löschen sie wieder; wer die Liste nach dem
+    // Versand noch einmal abfragt, zählt einen anderen Augenblick als den, in dem gesendet wurde.
+    // Genau daran ging dieser Test im Parallellauf rot, während er allein grün war.
+    assertEquals(broadcast.recipientCount, chats.length);
     // Leer statt null: Eine Null sähe aus wie „an niemanden zugestellt" statt „dieser Weg war nicht
     // gewählt".
     assertEquals(broadcast.emailRecipientCount, null);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("der Archiv-Haken hängt einen Beitrag an den einen Faden", async () => {
+  const cookies = await fixture();
+
+  try {
+    const before = await db
+      .selectFrom("writingPost")
+      .innerJoin(
+        "writingThread",
+        "writingThread.id",
+        "writingPost.writingThreadId",
+      )
+      .select("writingPost.id")
+      .where("writingThread.isBroadcastArchive", "=", true)
+      .execute();
+
+    await submit(cookies.root, { publishInArchive: true });
+
+    const broadcast = await theBroadcast();
+    assert(broadcast.archivePostId !== null);
+
+    const post = await db
+      .selectFrom("writingPost")
+      .innerJoin(
+        "writingThread",
+        "writingThread.id",
+        "writingPost.writingThreadId",
+      )
+      .select([
+        "writingThread.title as threadTitle",
+        "writingThread.isBroadcastArchive",
+        "writingThread.writingGroupId",
+        "writingPost.text",
+      ])
+      .where("writingPost.id", "=", broadcast.archivePostId)
+      .executeTakeFirstOrThrow();
+
+    // **Angehängt, nicht als eigener Faden.** Der Titel ist der des Archivs und nicht der Betreff;
+    // wer als neues Mitglied nachliest, liest einmal von oben nach unten.
+    assert(post.isBroadcastArchive);
+    assertEquals(post.threadTitle, "Rundmails");
+    // Ohne Schreibgruppe: Genau das macht eine Zeile zu einer des Forums.
+    assertEquals(post.writingGroupId, null);
+
+    // Der Betreff steht mit im Volltext — im Dokument als Überschrift, damit man in der Sammlung
+    // sieht, wo eine Mitteilung endet und die nächste beginnt.
+    assert(post.text.startsWith(SUBJECT));
+    assert(post.text.includes(BODY));
+
+    // Genau einer mehr als vorher.
+    const after = await db
+      .selectFrom("writingPost")
+      .innerJoin(
+        "writingThread",
+        "writingThread.id",
+        "writingPost.writingThreadId",
+      )
+      .select("writingPost.id")
+      .where("writingThread.isBroadcastArchive", "=", true)
+      .execute();
+
+    assertEquals(after.length, before.length + 1);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("im Archiv wird nicht geantwortet", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root, { publishInArchive: true });
+
+    const archive = await db
+      .selectFrom("writingThread")
+      .innerJoin("writingFolder", "writingFolder.id", "writingThread.folderId")
+      .select([
+        "writingThread.memberPermission as threadPermission",
+        "writingFolder.memberPermission as folderPermission",
+      ])
+      .where("writingThread.isBroadcastArchive", "=", true)
+      .executeTakeFirstOrThrow();
+
+    // Geantwortet wird auf die Rundmail im Postfach. Eine Antwort mitten in der Sammlung würde die
+    // Reihenfolge zerreißen, die sie lesbar macht.
+    assertEquals(archive.threadPermission, "read");
+    assertEquals(archive.folderPermission, "read");
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("ohne Archiv-Haken bleibt das Forum unberührt", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root);
+
+    const broadcast = await theBroadcast();
+    assertEquals(broadcast.archivePostId, null);
+
+    const posts = await db
+      .selectFrom("writingPost")
+      .select("id")
+      .where("text", "like", `${SUBJECT}%`)
+      .execute();
+
+    assertEquals(posts, []);
   } finally {
     await cleanUp();
   }

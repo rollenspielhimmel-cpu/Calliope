@@ -73,7 +73,14 @@ export const THREAD_RESPONSE = WRITING_THREAD_SCHEMA
   // `publicationId` bleibt drinnen: Ob ein Thread aus einer Veröffentlichung entstanden ist, ist
   // Buchführung des Teams und keine Angabe, aus der eine Lesende etwas machen kann. Sichtbar wird
   // es dort, wo es hingehört — im Moderationsbereich.
-  .omit({ memberPermission: true, publicationId: true })
+  // Und `isBroadcastArchive` aus demselben Grund: Welcher Faden das Rundmail-Archiv ist, sagt dem
+  // Team, wohin abgelegt wird. Für alle anderen ist es ein Faden wie jeder andere — und ein Faden
+  // einer Schreibgruppe kann es ohnehin nicht sein.
+  .omit({
+    memberPermission: true,
+    publicationId: true,
+    isBroadcastArchive: true,
+  })
   .extend(IN_GROUP)
   .extend(CREATED_BY_USERNAME)
   .extend(OWN_FAVOURITE);
@@ -125,7 +132,11 @@ export const FORUM_FOLDER_RESPONSE = WRITING_FOLDER_SCHEMA
   .extend({ memberPermission: FORUM_PERMISSION_SCHEMA });
 
 export const FORUM_THREAD_RESPONSE = WRITING_THREAD_SCHEMA
-  .omit({ writingGroupId: true, publicationId: true })
+  .omit({
+    writingGroupId: true,
+    publicationId: true,
+    isBroadcastArchive: true,
+  })
   .extend(CREATED_BY_USERNAME)
   .extend(OWN_FAVOURITE)
   .extend(FORUM_PERMISSION)
@@ -414,42 +425,40 @@ export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
     chatGroupId: NOTIFICATION_SCHEMA.shape.chatGroupId.unwrap(),
     chatGroupTitle: z.string(),
   }),
-  /**
-   * Eine Rundmail im Postfach — die einzige Benachrichtigung, die ihren eigenen Text mitbringt.
-   *
-   * Alle anderen zeigen auf einen Gegenstand und lassen die Worte daraus entstehen. Eine Rundmail
-   * hat aber einen Betreff, den jemand getippt hat, und keinen Gegenstand, aus dem er folgen
-   * würde.
-   *
-   * Ohne Verursacher, wie die Blind-Date-Nachrichten: Nach außen trägt die Rundmail den gewählten
-   * Absender, und wer sie wirklich geschrieben hat, bleibt der Administration vorbehalten. Ein
-   * Name an dieser Stelle würde beides vermengen.
-   */
-  z.object({
-    ...NOTIFICATION_BASE,
-    type: z.literal("broadcast_received"),
-    broadcastId: NOTIFICATION_SCHEMA.shape.broadcastId.unwrap(),
-    broadcastSubject: z.string(),
-    /**
-     * Der Faden im Forum, wenn sie dort steht — sonst null, und dann ist der Eintrag im Postfach
-     * selbst die eine Stelle mit dem Text.
-     */
-    broadcastArchiveThreadId: z.uuidv7().nullable(),
-  }),
 ]);
 
 /** A chat as its list entry: the group, its founder's name, and this member's unread count. */
-export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA.extend({
-  ...OWN_FAVOURITE,
-  /** The reader's own standing in it, so the interface knows whether to show a conversation. */
-  status: USER_IN_CHAT_GROUP_SCHEMA.shape.status,
-  createdByUsername: z.string().nullable(),
-  unreadMessages: z.number().int(),
-});
+export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA
+  // Als Ja/Nein statt als Kennung: Die Oberfläche muss eine Rundmail im Postfach erkennen können,
+  // um sie hervorzuheben — mehr braucht sie nicht. Die Kennung wäre ein Griff auf etwas, das dem
+  // Team gehört, und Mitglieder könnten damit ohnehin nichts anfangen.
+  .omit({ broadcastId: true })
+  .extend({
+    ...OWN_FAVOURITE,
+    /** The reader's own standing in it, so the interface knows whether to show a conversation. */
+    status: USER_IN_CHAT_GROUP_SCHEMA.shape.status,
+    createdByUsername: z.string().nullable(),
+    unreadMessages: z.number().int(),
+    /** Eine Rundmail des Teams statt einer gewöhnlichen Nachricht. */
+    isBroadcast: z.boolean(),
+  });
 
-export const CHAT_MESSAGE_RESPONSE = CHAT_MESSAGE_SCHEMA.extend({
-  createdByUsername: z.string().nullable(),
-});
+/**
+ * **`writtenBy` bleibt draußen, und das ist keine Aufräumarbeit.**
+ *
+ * Die Spalte hält fest, wer eine Antwort der Administration wirklich getippt hat, während
+ * `created_by` nach außen den gewählten Absender trägt. Käme sie hier mit, stünde der echte Name in
+ * der Antwort an das Mitglied — nicht sichtbar in der Oberfläche, aber in jeder Netzwerkanzeige,
+ * die jemand aufklappt. Die ganze Trennung wäre für eine vergessene Zeile dahin.
+ *
+ * Bei gewöhnlichen Nachrichten ist die Spalte ohnehin leer; dort ist `created_by` keine Maske,
+ * sondern die Wahrheit.
+ */
+export const CHAT_MESSAGE_RESPONSE = CHAT_MESSAGE_SCHEMA
+  .omit({ writtenBy: true })
+  .extend({
+    createdByUsername: z.string().nullable(),
+  });
 
 export const CHAT_MEMBERSHIP_RESPONSE = USER_IN_CHAT_GROUP_SCHEMA
   .pick({

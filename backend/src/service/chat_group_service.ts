@@ -32,6 +32,13 @@ export type ChatGroup =
     unreadMessages: number;
     /** The reader's own favourite, visible to nobody else. */
     isFavourite: boolean;
+    /**
+     * Eine Rundmail des Teams statt einer gewöhnlichen Nachricht.
+     *
+     * Ja/Nein statt der Kennung: Die Oberfläche hebt sie damit im Postfach hervor, und mehr braucht
+     * sie dafür nicht.
+     */
+    isBroadcast: boolean;
   };
 
 const SELECTED_COLUMNS = [
@@ -74,6 +81,15 @@ function chatsWithDetail(user: User) {
       ...SELECTED_COLUMNS,
       "userInChatGroup.status",
       "user.username as createdByUsername",
+      // Als Ja/Nein, nicht als Kennung: Die Oberfläche hebt eine Rundmail im Postfach damit hervor,
+      // und die Kennung dahinter gehört dem Team.
+      //
+      // `$castTo` ist hier nicht geschummelt: Kyselys `SqlBool` lässt auch 0 und 1 zu, weil manche
+      // Treiber keinen eigenen Wahrheitswert kennen. PostgreSQL hat einen und liefert ihn, also ist
+      // die Einschränkung eine Aussage über den Treiber und keine Behauptung über die Daten.
+      eb("chatGroup.broadcastId", "is not", null)
+        .$castTo<boolean>()
+        .as("isBroadcast"),
       // Counted against the member's own last_read_at, which is why it cannot be a column on
       // the chat: the same chat is a different number of unread messages per person.
       // Wrapped in coalesce so the type is not nullable: a correlated subquery is optional to

@@ -2,6 +2,7 @@ import { db } from "@/src/database/client.ts";
 import { Mailer } from "@/src/mail/mailer.ts";
 import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
+import { generate as generateUuidV7 } from "@std/uuid/v7";
 
 /**
  * One message to many members. The only thing here that is not obvious is who is left out, and
@@ -135,7 +136,7 @@ async function countRecipients(
  * Zeilen trennen Absätze, einzelne Umbrüche bleiben Umbrüche — wer den Text so getippt hat, wie er
  * aussehen soll, findet ihn im Forum wieder.
  */
-function documentOf(body: string) {
+function documentOf(subject: string, body: string) {
   const paragraphs = body
     .split(/\n\s*\n/)
     .map((paragraph) => paragraph.trim())
@@ -143,76 +144,178 @@ function documentOf(body: string) {
 
   return {
     type: "doc",
-    content: paragraphs.map((paragraph) => ({
-      type: "paragraph",
-      content: paragraph.split("\n").flatMap((line, index) => [
-        ...(index > 0 ? [{ type: "hardBreak" }] : []),
-        { type: "text", text: line },
-      ]),
-    })),
+    content: [
+      // **Der Betreff als Überschrift, weil alle Rundmails in einem Faden stehen.** Ohne sie wäre
+      // die Sammlung eine Folge von Beiträgen, in der niemand sieht, wo eine Mitteilung endet und
+      // die nächste beginnt. Ebene 3, weil der Editor nur 2 und 3 zulässt und 2 der Fadentitel ist.
+      {
+        type: "heading",
+        attrs: { level: 3 },
+        content: [{ type: "text", text: subject }],
+      },
+      ...paragraphs.map((paragraph) => ({
+        type: "paragraph",
+        content: paragraph.split("\n").flatMap((line, index) => [
+          ...(index > 0 ? [{ type: "hardBreak" }] : []),
+          { type: "text", text: line },
+        ]),
+      })),
+    ],
   };
 }
 
 /**
- * Legt die Rundmail als Forenbeitrag ab und gibt die Beitragskennung zurück.
+ * Hängt die Rundmail an den Archiv-Faden und gibt die Beitragskennung zurück.
  *
- * **Der Ordner wird an seiner Kennzeichnung erkannt, nicht an seinem Titel** — siehe die Migration.
+ * **Ein Faden für alle, nicht einer je Rundmail.** Wer als neues Mitglied nachlesen will, was es je
+ * gab, liest einmal von oben nach unten — statt eine Liste von Fäden zu finden und jeden einzeln zu
+ * öffnen. Der Betreff steht deshalb als Überschrift im Beitrag: In einer Sammlung muss man sehen,
+ * wo eine Mitteilung endet und die nächste beginnt.
+ *
+ * **Der Faden wird an seiner Kennzeichnung erkannt, nicht an seinem Titel** — siehe die Migration.
  * Fehlt er, wird nichts abgelegt und nichts behauptet: Der Aufrufer bekommt `null` und trägt es
  * nirgends ein, statt dass eine Rundmail scheinbar im Archiv steht.
  *
- * Verfasst unter dem gewählten Absender, wie die Mail auch. Nach außen ist das dieselbe Stimme;
- * wer sie wirklich geschrieben hat, steht auf der Veröffentlichung und bleibt der Administration
- * vorbehalten.
+ * Verfasst unter dem gewählten Absender, wie die Nachricht auch. Nach außen ist das dieselbe
+ * Stimme; wer sie wirklich geschrieben hat, steht auf der Veröffentlichung und bleibt der
+ * Administration vorbehalten.
  */
 async function publishInArchive(
   subject: string,
   body: string,
-  publicationId: string,
   sendAsUserId: string | null,
 ): Promise<string | null> {
-  const folder = await db
-    .selectFrom("writingFolder")
+  const thread = await db
+    .selectFrom("writingThread")
     .select("id")
     .where("isBroadcastArchive", "=", true)
     .executeTakeFirst();
 
-  if (folder === undefined) {
+  if (thread === undefined) {
     console.warn(
-      "No folder is marked as the broadcast archive; skipping the archive copy",
+      "No thread is marked as the broadcast archive; skipping the archive copy",
     );
     return null;
   }
 
-  return await db.transaction().execute(async (transaction) => {
-    const thread = await transaction
-      .insertInto("writingThread")
-      .values({
-        writingGroupId: null,
-        folderId: folder.id,
+  // Aufgelöst wie im Postfach: Ein Beitrag ohne Verfasser sähe im Forum aus, als hätte ihn niemand
+  // geschrieben, während dieselbe Rundmail in der Nachricht den Absender trägt.
+  const sender = await resolveSender(sendAsUserId);
+
+  const post = await db
+    .insertInto("writingPost")
+    .values({
+      writingThreadId: thread.id,
+      document: JSON.stringify(documentOf(subject, body)),
+      // Der Betreff gehört mit in den Volltext: Er steht im Dokument als Überschrift, und wer im
+      // Forum nach einer alten Ankündigung sucht, sucht meistens genau danach.
+      text: `${subject}\n\n${body}`,
+      isDraft: false,
+      createdBy: sender,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+
+  return post.id;
+}
+
+/**
+ * Unter welchem Konto die Rundmail nach außen erscheint.
+ *
+ * Leer heißt: das dauerhaft verfügbare Konto, das ohne Zeile in `broadcast_sender` immer zur
+ * Verfügung steht. Für ein Gespräch reicht „leer" aber nicht — im Postfach muss ein Name stehen,
+ * also wird hier aufgelöst.
+ */
+async function resolveSender(
+  sendAsUserId: string | null,
+): Promise<string | null> {
+  if (sendAsUserId !== null) {
+    return sendAsUserId;
+  }
+
+  const rootAdmin = await db
+    .selectFrom("user")
+    .select("id")
+    .where("isPrimordialAdmin", "=", true)
+    .executeTakeFirst();
+
+  return rootAdmin?.id ?? null;
+}
+
+/**
+ * Legt die Rundmail als vollständige Nachricht in jedem Postfach ab.
+ *
+ * **Ein Gespräch je Empfänger, und darin sitzt nur das Mitglied.** Ohne Zeile in
+ * `user_in_chat_group` taucht es beim Absender nirgends auf — weder beim Ur-Admin, in dessen
+ * Postfach niemand sieht, noch bei einer Kunstfigur wie dem Weihnachtsmann. Den Namen trägt die
+ * Nachricht trotzdem, weil `created_by` auf sein Konto zeigt. Das Team liest die Antworten über die
+ * Rundmail, nicht über ein Postfach.
+ *
+ * Der Preis ist die Zahl: Hundert Mitglieder sind hundert Gespräche. Das ist der Preis dafür, dass
+ * niemand die Antwort eines anderen sieht.
+ *
+ * **`joined` und nicht `invited`:** Eine Rundmail nimmt man nicht an. Eine Einladung, die erst
+ * bestätigt werden müsste, wäre eine Hürde vor einer Mitteilung, die ohnehin schon ausgesprochen
+ * ist.
+ *
+ * **`created_by` ist der Absender, nicht die schreibende Person.** Auch am Gespräch selbst — das ist
+ * die Ecke, an die niemand denkt: Stünde dort der Mensch aus der Administration, wäre die Maske
+ * über eine Spalte zu umgehen, die nie jemand ansieht.
+ */
+async function deliverToInbox(
+  broadcastId: string,
+  subject: string,
+  body: string,
+  sendAsUserId: string | null,
+  recipientIds: string[],
+): Promise<void> {
+  const sender = await resolveSender(sendAsUserId);
+
+  // **Die Kennungen entstehen hier, nicht in der Datenbank.** Mitgliedschaft und Nachricht hängen
+  // an ihnen, und sie aus einem `RETURNING` zurückzulesen hieße, sich auf eine Reihenfolge zu
+  // verlassen, die PostgreSQL nirgends zusagt. Version 7, wie die Vorgabewerte der Tabellen: Die
+  // Kennung trägt ihre Entstehungszeit, und darauf beruht die Sortierung der Nachrichten.
+  const chats = recipientIds.map((recipientId) => ({
+    id: generateUuidV7(),
+    recipientId,
+  }));
+
+  const now = new Date().toISOString();
+
+  await db.transaction().execute(async (transaction) => {
+    await transaction
+      .insertInto("chatGroup")
+      .values(chats.map((chat) => ({
+        id: chat.id,
         title: subject,
-        // Pflicht für einen Forenfaden — `writing_thread_permission_is_forum_only` verlangt genau
-        // dann eine Angabe, wenn keine Schreibgruppe dahintersteht. `write`, weil Antworten das
-        // Einzige ist, was das Archiv kann und das Postfach nicht.
-        memberPermission: "write",
-        createdBy: sendAsUserId,
-        publicationId,
-      })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+        createdBy: sender,
+        broadcastId,
+      })))
+      .execute();
 
-    const post = await transaction
-      .insertInto("writingPost")
-      .values({
-        writingThreadId: thread.id,
-        document: JSON.stringify(documentOf(body)),
+    await transaction
+      .insertInto("userInChatGroup")
+      .values(chats.map((chat) => ({
+        chatGroupId: chat.id,
+        userId: chat.recipientId,
+        status: "joined" as const,
+        joinedAt: now,
+      })))
+      .execute();
+
+    await transaction
+      .insertInto("chatMessage")
+      .values(chats.map((chat) => ({
+        chatGroupId: chat.id,
         text: body,
-        isDraft: false,
-        createdBy: sendAsUserId,
-      })
-      .returning("id")
-      .executeTakeFirstOrThrow();
-
-    return post.id;
+        createdBy: sender,
+        // Leer, obwohl es eine echte Verfasserin gibt: Die steht auf der Veröffentlichung, und
+        // dieselbe Angabe zweimal zu führen heißt, sie irgendwann an einer Stelle zu vergessen.
+        // Für Antworten der Administration ist die Spalte da — dort gibt es keine Veröffentlichung,
+        // die sie tragen könnte.
+        writtenBy: null,
+      })))
+      .execute();
   });
 }
 
@@ -235,6 +338,7 @@ async function send(
   delivery: BroadcastDelivery,
   subject: string,
   body: string,
+  sendAsUserId: string | null,
 ): Promise<BroadcastResult> {
   const recipients = await selectRecipients(audience);
   const byEmail = recipients.filter((recipient) =>
@@ -242,22 +346,13 @@ async function send(
   );
 
   if (delivery.toInbox && recipients.length > 0) {
-    // Eine Anweisung für alle Empfänger, nicht eine je Empfänger: Bei tausend Mitgliedern wären das
-    // sonst tausend Umläufe zur Datenbank für etwas, das die Datenbank in einem tut.
-    //
-    // `actorId` bleibt leer, und das ist keine Nachlässigkeit: `notification_actor_is_not_recipient`
-    // verbietet, dass jemand sich selbst benachrichtigt — und wer eine Rundmail an alle schickt, ist
-    // fast immer selbst unter „alle". Genau seine Zeile würde umfallen und mit ihr die ganze
-    // Anweisung. Wer sie verschickt hat, steht ohnehin auf der Veröffentlichung.
-    await db
-      .insertInto("notification")
-      .values(recipients.map((recipient) => ({
-        recipientId: recipient.id,
-        type: "broadcast_received" as const,
-        broadcastId,
-        actorId: null,
-      })))
-      .execute();
+    await deliverToInbox(
+      broadcastId,
+      subject,
+      body,
+      sendAsUserId,
+      recipients.map((recipient) => recipient.id),
+    );
   }
 
   if (delivery.byEmail) {
@@ -285,38 +380,8 @@ async function send(
   };
 }
 
-/**
- * Eine Rundmail, wie ihr Empfänger sie liest — oder nichts.
- *
- * **Die Benachrichtigung ist der Schlüssel.** Wer die Rundmail bekommen hat, hat eine Zeile im
- * Postfach; wer keine hat, bekommt hier nichts, auch als Administration nicht. Die Verwaltung liest
- * Rundmails über ihre eigene Liste, und die zeigt ohnehin mehr — wer sie verfasst und wer sie
- * freigegeben hat.
- */
-async function readReceived(broadcastId: string, recipientId: string) {
-  return await db
-    .selectFrom("broadcast")
-    .innerJoin("publication", "publication.id", "broadcast.publicationId")
-    .innerJoin("notification", "notification.broadcastId", "broadcast.id")
-    .leftJoin("user as sender", "sender.id", "publication.sendAsUserId")
-    // Der Faden, nicht der Beitrag: Steht die Rundmail im Forum, gehört sie dorthin, und die
-    // Oberfläche schickt den Lesenden gleich weiter, statt denselben Text zweimal zu zeigen.
-    .leftJoin("writingPost", "writingPost.id", "broadcast.archivePostId")
-    .select([
-      "broadcast.subject",
-      "broadcast.body",
-      "writingPost.writingThreadId as archiveThreadId",
-      "sender.username as sendAsUsername",
-      "publication.releasedAt",
-    ])
-    .where("broadcast.id", "=", broadcastId)
-    .where("notification.recipientId", "=", recipientId)
-    .executeTakeFirst();
-}
-
 export const BroadcastService = {
   countRecipients,
   send,
   publishInArchive,
-  readReceived,
 };

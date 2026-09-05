@@ -20,6 +20,7 @@ import { formatActivityTime } from '@/lib/format/formatTime'
 import { listOnlyFilter } from '@/lib/api/queryKeys'
 import ChatInvite from '@/components/chat/ChatInvite.vue'
 import LeaveChatDialog from '@/components/chat/LeaveChatDialog.vue'
+import MessageText from '@/components/chat/MessageText.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -350,10 +351,9 @@ async function submit() {
           <span v-if="!row.startsRun" class="sr-only">
             {{ row.message.createdByUsername ?? 'Gelöschtes Konto' }}:
           </span>
-          <!-- Plain text, deliberately: a chat is remarks, not prose. The interpolation touches
-               both tags because `whitespace-pre-wrap` keeps whatever it is given, and on its own
-               line it was given this template's indentation — a space before every message. -->
-          <p class="text-note whitespace-pre-wrap text-ink-2">{{ row.message.text }}</p>
+          <!-- Plain text, deliberately: a chat is remarks, not prose. Lange Nachrichten werden
+               angeschnitten — siehe `MessageText.vue`, das es wegen der Rundmails gibt. -->
+          <MessageText :text="row.message.text" />
 
           <!-- The same row a post carries, at the same weight and in the same place. -->
           <div

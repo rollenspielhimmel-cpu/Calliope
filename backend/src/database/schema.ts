@@ -430,6 +430,7 @@ export interface BroadcastTemplate {
 }
 
 export interface ChatGroup {
+  broadcastId: string | null;
   createdAt: Generated<string>;
   createdBy: string | null;
   id: Generated<string>;
@@ -443,6 +444,7 @@ export interface ChatMessage {
   createdBy: string | null;
   id: Generated<string>;
   text: string;
+  writtenBy: string | null;
 }
 
 export interface CustomPage {
@@ -469,7 +471,6 @@ export interface Favourite {
 
 export interface Notification {
   actorId: string | null;
-  broadcastId: string | null;
   chatGroupId: string | null;
   createdAt: Generated<string>;
   id: Generated<string>;
@@ -764,6 +765,7 @@ export interface WritingThread {
   createdBy: string | null;
   folderId: string | null;
   id: Generated<string>;
+  isBroadcastArchive: Generated<boolean>;
   lastActivityAt: Generated<string>;
   memberPermission: ForumPermission | null;
   publicationId: string | null;
@@ -1312,6 +1314,7 @@ export const CHAT_GROUP_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
+  broadcastId: z.uuidv7().nullable(),
 });
 
 export const CHAT_MESSAGE_SCHEMA = z.object({
@@ -1320,6 +1323,7 @@ export const CHAT_MESSAGE_SCHEMA = z.object({
   text: z.string(),
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
+  writtenBy: z.uuidv7().nullable(),
 });
 
 export const CUSTOM_PAGE_SCHEMA = z.object({
@@ -1357,7 +1361,6 @@ export const NOTIFICATION_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   occurredAt: z.iso.datetime({ offset: true }),
   readAt: z.iso.datetime({ offset: true }).nullable(),
-  broadcastId: z.uuidv7().nullable(),
 });
 
 export const PROFILE_ANSWER_SCHEMA = z.object({
@@ -1646,4 +1649,5 @@ export const WRITING_THREAD_SCHEMA = z.object({
   folderId: z.uuidv7().nullable(),
   memberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
   publicationId: z.uuidv7().nullable(),
+  isBroadcastArchive: z.boolean(),
 });

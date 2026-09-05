@@ -64,9 +64,6 @@ type NotificationRow = {
   writingPageTitle: string | null;
   chatGroupId: string | null;
   chatGroupTitle: string | null;
-  broadcastId: string | null;
-  broadcastSubject: string | null;
-  broadcastArchiveThreadId: string | null;
 };
 
 function toNotification(row: NotificationRow): Notification {
@@ -143,15 +140,17 @@ function toNotification(row: NotificationRow): Notification {
         chatGroupTitle: required(row.chatGroupTitle, "chatGroupTitle"),
       };
     case "broadcast_received":
-      return {
-        ...base,
-        type: row.type,
-        broadcastId: required(row.broadcastId, "broadcastId"),
-        broadcastSubject: required(row.broadcastSubject, "broadcastSubject"),
-        // Darf fehlen: Eine Rundmail ohne Archiv-Haken steht in keinem Forenbeitrag, und dann ist
-        // der Eintrag im Postfach selbst die eine Stelle, an der der Text steht.
-        broadcastArchiveThreadId: row.broadcastArchiveThreadId,
-      };
+      // **Ein Wert, den es nur noch in der Aufzählung gibt.** Eine Rundmail ist jetzt eine
+      // Nachricht im Postfach, keine Benachrichtigung; die Migration hat die letzten Zeilen
+      // entfernt, und geschrieben wird der Wert nirgends mehr. Entfernen ließ er sich nicht —
+      // PostgreSQL kennt kein DROP VALUE, und eine Aufzählung neu zu bauen hieße, jede
+      // Fremdbeziehung darauf anzufassen.
+      //
+      // Ein Wurf statt eines stillen Rückgabewerts: Käme hier je eine Zeile an, wäre das keine
+      // Anzeigefrage, sondern ein Hinweis darauf, dass irgendwo wieder welche geschrieben werden.
+      throw new Error(
+        "broadcast_received is a retired notification type; broadcasts arrive as chat messages",
+      );
     default:
       // A new notification type reaches here as a compile error, not a missing line.
       return assertUnreachable(row.type);
@@ -196,14 +195,6 @@ function notificationsFor(recipientId: string) {
       "notification.writingThreadId",
     )
     .leftJoin("writingPage", "writingPage.id", "notification.writingPageId")
-    // Die Rundmail trägt ihren Betreff selbst — anders als jede andere Benachrichtigung, die auf
-    // einen Gegenstand zeigt und ihre Worte daraus bekommt. `archivePostId` ist das Sprungziel:
-    // Steht die Rundmail im Forum, führt die Glocke dorthin, wo womöglich schon geantwortet wurde.
-    .leftJoin("broadcast", "broadcast.id", "notification.broadcastId")
-    // Über den Beitrag zum Faden: Die Spalte zeigt auf den Beitrag, verlinkt wird aber der Faden —
-    // dort steht die Rundmail mit dem, was inzwischen darunter geschrieben wurde. Ohne Alias, weil
-    // dies die einzige Verbindung zu `writingPost` hier ist und der Listenhelfer keinen verträgt.
-    .leftJoin("writingPost", "writingPost.id", "broadcast.archivePostId")
     .where("notification.recipientId", "=", recipientId)
     .select([
       "notification.id",
@@ -226,9 +217,6 @@ function notificationsFor(recipientId: string) {
       "notification.writingPostId",
       "notification.chatGroupId",
       "chatGroup.title as chatGroupTitle",
-      "notification.broadcastId",
-      "broadcast.subject as broadcastSubject",
-      "writingPost.writingThreadId as broadcastArchiveThreadId",
     ]);
 }
 

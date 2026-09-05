@@ -276,14 +276,13 @@ async function release(
 
   const delivery = deliveryOf(input);
 
-  // **Zuerst ins Archiv, dann zustellen.** Die Postfachzeile und die Mail zeigen auf den Beitrag im
-  // Forum; gäbe es ihn beim Zustellen noch nicht, verwiese die Benachrichtigung für einen Moment
-  // ins Leere. Andersherum kostet es nichts.
+  // **Zuerst ins Archiv, dann zustellen.** Nicht mehr, weil etwas darauf verwiese — das Postfach
+  // trägt den ganzen Text und zeigt nirgendwo hin —, sondern weil das Ablegen die kleinere und
+  // sicherere Hälfte ist: Schlägt sie fehl, ist noch nichts an Hunderte zugestellt.
   const archivePostId = delivery.toArchive
     ? await BroadcastService.publishInArchive(
       input.subject,
       input.body,
-      publicationId,
       input.sendAsUserId,
     )
     : null;
@@ -294,6 +293,7 @@ async function release(
     delivery,
     input.subject,
     input.body,
+    input.sendAsUserId,
   );
 
   await db
