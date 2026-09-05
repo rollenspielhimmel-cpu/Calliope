@@ -1698,7 +1698,7 @@ INSERT INTO public.custom_page VALUES ('blind-date-regelwerk', 'Blind-Date — R
 
 2.1 Wenn du dich für das Blind-Date anmeldest, schmeißt du alle Vorurteile über Bord, die du manch anderen User:innen gegenüber vielleicht hast. Wir möchten verhindern, dass zugeteilte Partner:innen direkt abgelehnt werden, daher werden die Blind-Date-Schreiber:innen mit einem Pseudonym angezeigt.
 
-2.2 Innerhalb des Blind-Dates schreibt ihr ausschließlich über eure Pseudonyme; einen privaten Chat zwischen „Blind-Date-Partner 1“ und „Blind-Date-Partner 2“ gibt es nicht. Außerhalb seid ihr gewöhnliche Mitglieder und könnt einander schreiben wie allen anderen auch — ihr wisst dabei nur nicht, wer die andere Person im Blind-Date ist. Eure Identität gebt ihr einander ausschließlich über die gemeinsame Enthüllung preis (siehe 2.3), niemals einseitig.
+2.2 Ein direkter Chat zwischen den beiden Beteiligten ist während der Anonymität technisch gesperrt. Solltet ihr eure Identität dennoch gegenseitig preisgeben wollen, geschieht das ausschließlich über die gemeinsame Enthüllung (siehe 2.3) — niemals einseitig.
 
 2.3 Eine Enthüllung der eigenen Identität ist erst möglich, wenn 50 gemeinsame Beiträge im eigentlichen Rollenspiel-Thread zusammengekommen sind, und nur wenn beide Beteiligten zustimmen. Niemand soll gespoilert werden, der:die es nicht möchte.
 
