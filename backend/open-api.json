@@ -46684,6 +46684,10 @@
                         "type": ["string", "null"],
                         "format": "uuid"
                       },
+                      "scheduledFor": {
+                        "type": ["string", "null"],
+                        "format": "date-time"
+                      },
                       "publicationId": { "type": "string", "format": "uuid" },
                       "status": {
                         "type": "string",
@@ -46715,6 +46719,7 @@
                       "audienceGroups",
                       "includeUnverified",
                       "sendAsUserId",
+                      "scheduledFor",
                       "publicationId",
                       "status",
                       "sendAsUsername",
@@ -46925,6 +46930,10 @@
                   "sendAsUserId": {
                     "type": ["string", "null"],
                     "format": "uuid"
+                  },
+                  "scheduledFor": {
+                    "type": ["string", "null"],
+                    "format": "date-time"
                   }
                 },
                 "required": [
@@ -46932,7 +46941,8 @@
                   "body",
                   "audienceGroups",
                   "includeUnverified",
-                  "sendAsUserId"
+                  "sendAsUserId",
+                  "scheduledFor"
                 ]
               }
             }
@@ -46971,6 +46981,10 @@
                       "type": ["string", "null"],
                       "format": "uuid"
                     },
+                    "scheduledFor": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
                     "publicationId": { "type": "string", "format": "uuid" },
                     "status": {
                       "type": "string",
@@ -47002,6 +47016,7 @@
                     "audienceGroups",
                     "includeUnverified",
                     "sendAsUserId",
+                    "scheduledFor",
                     "publicationId",
                     "status",
                     "sendAsUsername",
@@ -47256,6 +47271,10 @@
                         "type": ["string", "null"],
                         "format": "uuid"
                       },
+                      "scheduledFor": {
+                        "type": ["string", "null"],
+                        "format": "date-time"
+                      },
                       "publicationId": { "type": "string", "format": "uuid" },
                       "status": {
                         "type": "string",
@@ -47287,6 +47306,7 @@
                       "audienceGroups",
                       "includeUnverified",
                       "sendAsUserId",
+                      "scheduledFor",
                       "publicationId",
                       "status",
                       "sendAsUsername",
@@ -47811,6 +47831,10 @@
                   "sendAsUserId": {
                     "type": ["string", "null"],
                     "format": "uuid"
+                  },
+                  "scheduledFor": {
+                    "type": ["string", "null"],
+                    "format": "date-time"
                   }
                 },
                 "required": [
@@ -47818,7 +47842,8 @@
                   "body",
                   "audienceGroups",
                   "includeUnverified",
-                  "sendAsUserId"
+                  "sendAsUserId",
+                  "scheduledFor"
                 ]
               }
             }

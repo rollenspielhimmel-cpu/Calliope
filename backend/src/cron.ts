@@ -1,3 +1,4 @@
+import { BroadcastQueueService } from "./service/broadcast_queue_service.ts";
 import { ActivityService } from "./service/activity_service.ts";
 import { UserAvatarService } from "./service/user_avatar_service.ts";
 import { UserTokenService } from "./service/user_token_service.ts";
@@ -46,6 +47,36 @@ export function scheduleCronJobs() {
     async () => {
       const deletedTokens = await UserTokenService.deleteExpiredTokens();
       console.log(`Deleted ${deletedTokens} expired user token(s)`);
+    },
+  );
+
+  /**
+   * **Jede Minute**, als einzige Aufgabe hier — und das ist der Punkt.
+   *
+   * „Sonntag um 20 Uhr" heißt für jemanden, der es eintippt, Sonntag um 20 Uhr. Ein stündlicher
+   * Lauf würde daraus „irgendwann zwischen 20 und 21 Uhr", und eine Ankündigung, die eine
+   * Dreiviertelstunde nach der angekündigten Zeit eintrifft, ist keine Ankündigung mehr. Die
+   * Abfrage kostet nichts: Ein Teilindex über `scheduled_for WHERE status = 'approved'` beantwortet
+   * sie, und in aller Regel ist die Antwort leer.
+   *
+   * Die Zeitzone steht nicht hier. Der Termin liegt in UTC in der Spalte, verglichen wird mit der
+   * Uhr der Datenbank; Europe/Berlin ist eine Sache der Oberfläche, die den eingetippten Zeitpunkt
+   * umrechnet. Ein Taktgeber, der Zeitzonen kennt, wäre eine zweite Stelle, an der die Sommerzeit
+   * falsch sein kann.
+   *
+   * Nichts wird protokolliert, wenn nichts anlag: Eine Zeile pro Minute wäre ein Logbuch, in dem
+   * das Seltene nicht mehr auffällt.
+   */
+  Deno.cron(
+    "Release due broadcasts",
+    "* * * * *",
+    { signal: getAbortSignalForShutdown() },
+    async () => {
+      const sent = await BroadcastQueueService.releaseDue();
+
+      if (sent > 0) {
+        console.log(`Released ${sent} due broadcast(s)`);
+      }
     },
   );
 }

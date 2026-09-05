@@ -31,6 +31,12 @@ const BROADCAST_BODY = z.object({
   includeUnverified: z.boolean(),
   /** Null heißt: unter dem Konto, das dauerhaft zur Verfügung steht. */
   sendAsUserId: z.uuidv7().nullable(),
+  /**
+   * Frühestens wann, oder null für „sobald freigegeben". In UTC — die Oberfläche rechnet den
+   * eingetippten Zeitpunkt aus Europe/Berlin um, damit die Sommerzeit an genau einer Stelle
+   * bedacht werden muss.
+   */
+  scheduledFor: z.iso.datetime({ offset: true }).nullable(),
 });
 
 const BROADCAST_RESPONSE = BROADCAST_BODY.extend({

@@ -28,6 +28,7 @@ import { queryClient } from '@/lib/api/queryClient'
 import { ApiError } from '@/lib/api/apiFetch'
 import { failureMessage } from '@/lib/format/failure'
 import { formatActivityTime } from '@/lib/format/formatTime'
+import { berlinToUtc, formatBerlin } from '@/lib/format/berlinTime'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { pluralize } from '@/lib/format/formatText'
 import ModerationPage from '@/components/moderation/ModerationPage.vue'
@@ -66,9 +67,25 @@ const chosen = ref<Group[]>(['administrator', 'moderator', 'member'])
 const includeUnverified = ref<boolean>(false)
 const subject = ref<string>('')
 const body = ref<string>('')
+/**
+ * Der Termin, wie er im Feld steht: Berliner Wanduhr, leer für „sobald freigegeben".
+ *
+ * Nach Europe/Berlin und nicht nach der Uhr des Geräts — wer aus dem Urlaub eine Ankündigung für
+ * Sonntagabend einstellt, meint den deutschen Sonntagabend. Die Umrechnung steht in
+ * `lib/format/berlinTime.ts`, samt der beiden Stunden im Jahr, die aus der Reihe fallen.
+ */
+const scheduledFor = ref<string>('')
+
+const scheduledForUtc = computed<string | null>(() =>
+  scheduledFor.value === '' ? null : berlinToUtc(scheduledFor.value),
+)
+
 const confirming = ref<boolean>(false)
 const sentTo = ref<number | undefined>(undefined)
-const waited = ref<boolean>(false)
+const scheduledAt = ref<string | undefined>(undefined)
+
+/** Was beim Einreichen herauskam. Undefined, solange nichts eingereicht wurde. */
+const outcome = ref<'sent' | 'scheduled' | 'waiting' | undefined>(undefined)
 const error = ref<string | undefined>(undefined)
 
 function toggleGroup(group: Group, on: boolean) {
@@ -103,8 +120,9 @@ const isComplete = computed<boolean>(
  */
 async function submit() {
   error.value = undefined
+  outcome.value = undefined
   sentTo.value = undefined
-  waited.value = false
+  scheduledAt.value = undefined
 
   try {
     const answer = await submitBroadcast({
@@ -114,15 +132,22 @@ async function submit() {
         audienceGroups: chosen.value,
         includeUnverified: includeUnverified.value,
         sendAsUserId: null,
+        scheduledFor: scheduledForUtc.value,
       },
     })
 
     if (answer.status === 201) {
-      if (answer.data.status === 'released') {
-        sentTo.value = answer.data.recipientCount ?? undefined
-      } else {
-        waited.value = true
-      }
+      // Drei Ausgänge, nicht zwei — und der mittlere ist der, den der Ur-Admin mit Termin nimmt:
+      // freigegeben, aber noch nicht raus. Bevor er hier stand, bekam er den Satz für „wartet auf
+      // eine fremde Freigabe" zu lesen, obwohl seine längst erteilt war.
+      outcome.value =
+        answer.data.status === 'released'
+          ? 'sent'
+          : answer.data.status === 'approved'
+            ? 'scheduled'
+            : 'waiting'
+      sentTo.value = answer.data.recipientCount ?? undefined
+      scheduledAt.value = answer.data.scheduledFor ?? undefined
     }
   } catch (failure) {
     error.value = failureMessage(failure, 'Das ging nicht. Versuch es noch einmal.')
@@ -131,6 +156,7 @@ async function submit() {
 
   confirming.value = false
   subject.value = ''
+  scheduledFor.value = ''
   body.value = ''
 
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
@@ -259,6 +285,34 @@ function audienceOf(groups: string[]): string {
               />
             </Field>
 
+            <!--
+              Leer ist der Normalfall und heißt „sobald freigegeben". Ein Terminfeld, das
+              vorausgefüllt wäre, würde jede Rundmail zu einer geplanten machen — und der Satz
+              darunter sagt ausdrücklich Berliner Zeit, weil das Feld die Uhr des Geräts anzeigt
+              und beides auseinanderfallen kann.
+            -->
+            <Field>
+              <FieldLabel for="broadcastSchedule"
+                >Termin <span class="text-ink-6">optional</span></FieldLabel
+              >
+              <Input
+                id="broadcastSchedule"
+                v-model="scheduledFor"
+                name="broadcastSchedule"
+                type="datetime-local"
+                class="max-w-[260px]"
+              />
+              <p class="text-control text-ink-5">
+                <template v-if="scheduledFor === ''">
+                  Ohne Termin geht sie raus, sobald sie freigegeben ist.
+                </template>
+                <template v-else>
+                  Geht frühestens am {{ formatBerlin(scheduledForUtc ?? '') }} raus — deutsche Zeit,
+                  unabhängig davon, wo du gerade bist. Freigegeben sein muss sie trotzdem.
+                </template>
+              </p>
+            </Field>
+
             <Field>
               <FieldLabel for="broadcastBody">Nachricht</FieldLabel>
               <!-- The composer's writing surface: `prose-post` is the same serif at the same size the
@@ -308,13 +362,18 @@ function audienceOf(groups: string[]): string {
           </div>
         </div>
 
-        <!-- Was geschehen ist, sagt die Antwort: Der Ur-Admin gibt mit dem Schreiben frei, alle
-             anderen warten. Siehe `submit`. -->
-        <p v-if="sentTo !== undefined" class="mt-4 text-note text-ink-5" role="status">
-          Die Nachricht ist an {{ pluralize(sentTo, 'Person', 'Personen') }} unterwegs.
+        <!-- Was geschehen ist, sagt die Antwort und nicht die eigene Rolle — siehe `submit`. -->
+        <p v-if="outcome === 'sent'" class="mt-4 text-note text-ink-5" role="status">
+          Die Nachricht ist an {{ pluralize(sentTo ?? 0, 'Person', 'Personen') }} unterwegs.
         </p>
 
-        <p v-else-if="waited" class="mt-4 text-note text-ink-5" role="status">
+        <p v-else-if="outcome === 'scheduled'" class="mt-4 text-note text-ink-5" role="status">
+          Freigegeben. Sie geht am
+          {{ scheduledAt === undefined ? 'vereinbarten Termin' : formatBerlin(scheduledAt) }}
+          von selbst raus — bis dahin steht sie unter „Warteschlange" und lässt sich noch ändern.
+        </p>
+
+        <p v-else-if="outcome === 'waiting'" class="mt-4 text-note text-ink-5" role="status">
           Eingereicht. Sie steht jetzt in der Warteschlange und geht raus, sobald jemand anderes aus
           der Administration sie freigibt.
         </p>
@@ -346,13 +405,28 @@ function audienceOf(groups: string[]): string {
               {{ formatActivityTime(entry.writtenAt) }}
             </p>
 
+            <!--
+              Zwei Zustände in einer Liste, und der Unterschied ist die Arbeit: Was wartet, wartet
+              auf einen Menschen; was freigegeben ist, nur noch auf die Uhr. Beides steht hier,
+              weil eine Rundmail, die an alle geht und nirgends zu sehen ist, das Falsche ist —
+              siehe `listWaiting`.
+            -->
+            <p v-if="entry.scheduledFor" class="mt-1 text-[12px] text-ink-4">
+              <template v-if="entry.status === 'approved'">
+                Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }} · geht am
+                {{ formatBerlin(entry.scheduledFor) }} von selbst raus
+              </template>
+              <template v-else>Termin: {{ formatBerlin(entry.scheduledFor) }}</template>
+            </p>
+
             <div class="mt-3 flex flex-wrap gap-2">
               <Button
+                v-if="entry.status === 'awaiting_approval'"
                 size="sm"
                 :disabled="isApproving || isDiscarding"
                 @click="approve(entry.publicationId)"
               >
-                Freigeben und senden
+                {{ entry.scheduledFor ? 'Freigeben' : 'Freigeben und senden' }}
               </Button>
               <Button
                 variant="ghost"

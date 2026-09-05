@@ -1,3 +1,4 @@
+import { sql } from "kysely";
 import { db } from "@/src/database/client.ts";
 import type { PublicationStatus } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
@@ -29,8 +30,10 @@ import {
  * gleichermaßen. Sonst lässt man Harmloses absegnen und tauscht danach den Empfängerkreis, was
  * dasselbe ist wie einen anderen Text zu senden.
  *
- * Schritt 1 kennt keine Zeitsteuerung: Freigeben heißt hier sofort senden. `approved` und
- * `released` bleiben trotzdem zwei Zustände, weil der Termin als Nächstes dazwischenrückt.
+ * **Freigabe und Versand sind zwei Dinge.** Ohne Termin fallen sie zusammen: freigeben heißt
+ * senden. Mit Termin ist die Freigabe erteilt und die Uhr eine zweite Bedingung — `releaseDue`
+ * sammelt ein, was beides erfüllt. Der Termin allein sendet nie: Was niemand freigegeben hat,
+ * geht auch dann nicht raus, wenn der Zeitpunkt verstreicht.
  */
 
 export type BroadcastInput = {
@@ -40,6 +43,16 @@ export type BroadcastInput = {
   includeUnverified: boolean;
   /** Null heißt: unter dem Ur-Admin-Konto, das dauerhaft zur Verfügung steht. */
   sendAsUserId: string | null;
+  /**
+   * Wann sie frühestens rausgeht, oder null für „sobald freigegeben".
+   *
+   * In UTC wie alles hier. Dass die Oberfläche nach Europe/Berlin rechnet, ist ihre Sache — „morgen
+   * um 20 Uhr" ist das, was jemand meint, der es eintippt, und nicht das, was in der Spalte steht.
+   *
+   * **Der Termin allein sendet nichts.** Er ist ein Frühestens, kein Auslöser: Was nicht
+   * freigegeben ist, geht auch dann nicht raus, wenn der Zeitpunkt verstreicht.
+   */
+  scheduledFor: string | null;
 };
 
 export type QueuedBroadcast = BroadcastInput & {
@@ -79,6 +92,7 @@ function rows() {
       "publication.id as publicationId",
       "publication.status",
       "publication.sendAsUserId",
+      "publication.scheduledFor",
       "sender.username as sendAsUsername",
       "author.username as writtenByUsername",
       "publication.writtenAt",
@@ -98,6 +112,7 @@ function toQueued(row: {
   publicationId: string;
   status: PublicationStatus;
   sendAsUserId: string | null;
+  scheduledFor: string | null;
   sendAsUsername: string | null;
   writtenByUsername: string | null;
   writtenAt: string;
@@ -138,6 +153,7 @@ async function submit(
         kind: "broadcast",
         status: givesOwnApproval ? "approved" : "awaiting_approval",
         sendAsUserId: input.sendAsUserId,
+        scheduledFor: input.scheduledFor,
         writtenBy: author.id,
         writtenAt: now,
         approvedBy: givesOwnApproval ? author.id : null,
@@ -160,7 +176,9 @@ async function submit(
     return publication.id;
   });
 
-  if (givesOwnApproval) {
+  // Freigegeben und ohne Termin heißt: jetzt. Mit Termin wartet sie auf den Taktgeber, auch beim
+  // Ur-Admin — die Freigabe ist erteilt, die Uhr ist eine zweite Bedingung.
+  if (givesOwnApproval && input.scheduledFor === null) {
     await release(publicationId, input);
   }
 
@@ -170,32 +188,85 @@ async function submit(
 /**
  * Verschickt und hält fest, an wie viele.
  *
- * Die Zahl wird beim Versand festgehalten und nicht später gezählt: Wer die Liste hinterher neu
- * abfragt, zählt die Mitglieder von heute und nicht die, die sie bekommen haben.
+ * **Erst den Zustand nehmen, dann senden** — nicht umgekehrt. Seit der Taktgeber danebensteht,
+ * können zwei Wege gleichzeitig dieselbe Rundmail freigeben wollen: die Freigabe von Hand und der
+ * Lauf, der Fälliges einsammelt. Das `WHERE status = 'approved'` ist die Stelle, an der genau einer
+ * gewinnt; wer keine Zeile trifft, sendet nicht. Andersherum — senden und dann buchen — hätten
+ * beide gesendet und beide gebucht, und Hunderte Leute hätten die Mail zweimal.
+ *
+ * Der Preis ist der andere Fehlerfall: Bricht der Versand nach dem Buchen ab, steht `released` da,
+ * ohne dass alles draußen ist. Das ist die bessere Hälfte des Tauschs — eine Mail, die einmal zu
+ * wenig ankommt, ist ein Ärgernis; eine, die zweimal ankommt, ist ein Vertrauensschaden.
+ *
+ * Die Empfängerzahl wird beim Versand festgehalten und nicht später gezählt: Wer die Liste
+ * hinterher neu abfragt, zählt die Mitglieder von heute und nicht die, die sie bekommen haben.
  */
 async function release(
   publicationId: string,
   input: BroadcastInput,
-): Promise<void> {
+): Promise<boolean> {
+  const claimed = await db
+    .updateTable("publication")
+    .set({ status: "released", releasedAt: new Date().toISOString() })
+    .where("id", "=", publicationId)
+    .where("status", "=", "approved")
+    .returning("id")
+    .executeTakeFirst();
+
+  if (claimed === undefined) {
+    return false;
+  }
+
   const result = await BroadcastService.send(
     audienceOf(input),
     input.subject,
     input.body,
   );
 
-  await db.transaction().execute(async (transaction) => {
-    await transaction
-      .updateTable("publication")
-      .set({ status: "released", releasedAt: new Date().toISOString() })
-      .where("id", "=", publicationId)
-      .execute();
+  await db
+    .updateTable("broadcast")
+    .set({ recipientCount: result.recipients })
+    .where("publicationId", "=", publicationId)
+    .execute();
 
-    await transaction
-      .updateTable("broadcast")
-      .set({ recipientCount: result.recipients })
-      .where("publicationId", "=", publicationId)
-      .execute();
-  });
+  return true;
+}
+
+/**
+ * Was fällig ist, geht raus. Der Taktgeber ruft das jede Minute.
+ *
+ * Freigegeben **und** Termin erreicht — oder freigegeben ohne Termin, was „sobald freigegeben"
+ * heißt. Der zweite Fall geht normalerweise schon bei der Freigabe selbst raus; er steht hier als
+ * Netz darunter, für den Fall, dass jener Weg abgebrochen ist. Zweimal senden kann das nicht,
+ * dafür sorgt `release`.
+ *
+ * Nach der Uhr der Datenbank, nicht nach der dieses Prozesses: Bei zwei Servern wäre sonst der
+ * Termin zweierlei, und `scheduled_for` steht ohnehin in derselben Datenbank.
+ */
+async function releaseDue(): Promise<number> {
+  const due = await rows()
+    .where("publication.status", "=", "approved")
+    .where((eb) =>
+      eb.or([
+        eb("publication.scheduledFor", "is", null),
+        eb("publication.scheduledFor", "<=", sql<string>`now()`),
+      ])
+    )
+    .orderBy("publication.scheduledFor", "asc")
+    .execute();
+
+  let sent = 0;
+
+  // Nacheinander mit Absicht: Jede Rundmail ist Hunderte Zustellungen, und alle Fälligen
+  // gleichzeitig loszuschicken hieße, den Mailserver mit dem ersten Takt der Stunde zu überfahren.
+  for (const row of due) {
+    // deno-lint-ignore no-await-in-loop -- siehe darüber
+    if (await release(row.publicationId, toQueued(row))) {
+      sent++;
+    }
+  }
+
+  return sent;
 }
 
 export type ApprovalRefusal =
@@ -244,7 +315,11 @@ async function approve(
     .where("status", "=", "awaiting_approval")
     .execute();
 
-  await release(publicationId, waiting);
+  // Ohne Termin geht sie sofort raus; mit Termin ist die Freigabe erteilt und der Taktgeber holt
+  // sie ab, sobald die Uhr so weit ist. Deshalb heißt der Knopf auch nicht mehr nur „senden".
+  if (waiting.scheduledFor === null) {
+    await release(publicationId, waiting);
+  }
 
   return undefined;
 }
@@ -279,6 +354,7 @@ async function edit(
         approvedBy: null,
         approvedAt: null,
         sendAsUserId: input.sendAsUserId,
+        scheduledFor: input.scheduledFor,
       })
       .where("id", "=", publicationId)
       .execute();
@@ -346,10 +422,21 @@ async function selectOneOrThrow(
   return one;
 }
 
-/** Die Warteschlange: die ältesten zuerst, damit nichts unten liegen bleibt. */
+/**
+ * Was noch nicht draußen ist: was auf eine Freigabe wartet, **und was auf die Uhr wartet**.
+ *
+ * Die zweite Hälfte kam dazu, als der Termin dazukam. Ohne sie wäre eine freigegebene, terminierte
+ * Rundmail bis zum Versand in keiner Liste zu sehen — nicht hier, weil sie freigegeben ist, und
+ * nicht unter „Gesendete", weil sie noch nicht raus ist. Etwas, das an alle geht und nirgends
+ * steht, ist genau das, was man vor dem Absenden noch einmal sehen können will.
+ *
+ * Die rote Zahl zählt trotzdem nur die wartenden: Was freigegeben ist, wartet auf niemanden.
+ *
+ * Die ältesten zuerst, damit nichts unten liegen bleibt.
+ */
 async function listWaiting(): Promise<QueuedBroadcast[]> {
   const found = await rows()
-    .where("publication.status", "=", "awaiting_approval")
+    .where("publication.status", "in", ["awaiting_approval", "approved"])
     .orderBy("publication.writtenAt", "asc")
     .execute();
 
@@ -369,6 +456,7 @@ async function listReleased(): Promise<QueuedBroadcast[]> {
 export const BroadcastQueueService = {
   submit,
   approve,
+  releaseDue,
   edit,
   discard,
   selectOne,

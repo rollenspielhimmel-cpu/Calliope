@@ -122,11 +122,32 @@ describe('Warteschlange der Rundmails', () => {
   })
 
   it('zeigt, wie viele warten, sobald etwas wartet', () => {
-    broadcastQueue.value = { status: 200, data: [{}, {}] }
+    broadcastQueue.value = {
+      status: 200,
+      data: [{ status: 'awaiting_approval' }, { status: 'awaiting_approval' }],
+    }
 
     const view = moderationView()
 
     expect(view.text()).toContain('2 offen')
+  })
+
+  /**
+   * Die Liste enthält auch, was freigegeben ist und nur noch auf seinen Termin wartet — damit eine
+   * terminierte Rundmail nicht bis zum Versand unsichtbar ist. Gezählt wird sie trotzdem nicht:
+   * Sie wartet auf die Uhr, nicht auf einen Menschen, und eine rote Zahl, die niemandes Aufgabe
+   * meint, ist genau die Sorte Zahl, die man nach einer Woche nicht mehr liest.
+   */
+  it('zählt Freigegebenes nicht mit, obwohl es in derselben Liste steht', () => {
+    broadcastQueue.value = {
+      status: 200,
+      data: [{ status: 'awaiting_approval' }, { status: 'approved' }, { status: 'approved' }],
+    }
+
+    const view = moderationView()
+
+    expect(view.text()).toContain('1 offen')
+    expect(view.text()).not.toContain('3 offen')
   })
 
   /**

@@ -83,7 +83,11 @@ const openReportCount = computed<number>(() =>
 const { data: queue } = useListBroadcastQueue()
 
 const waitingBroadcasts = computed<number>(() =>
-  queue.value?.status === 200 ? queue.value.data.length : 0,
+  queue.value?.status === 200
+    ? // Nur die, die auf jemanden warten. Was freigegeben ist und auf die Uhr wartet, steht in
+      // derselben Liste, ist aber niemandes Aufgabe mehr.
+      queue.value.data.filter((entry) => entry.status === 'awaiting_approval').length
+    : 0,
 )
 
 const isAdministrator = computed<boolean>(

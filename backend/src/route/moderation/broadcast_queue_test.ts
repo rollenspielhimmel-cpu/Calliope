@@ -11,6 +11,7 @@ import {
   borrowPrimordialSeat,
   returnPrimordialSeat,
 } from "@/src/test/primordial_seat.ts";
+import { BroadcastQueueService } from "@/src/service/broadcast_queue_service.ts";
 
 /**
  * Die Warteschlange der Rundmails.
@@ -37,6 +38,7 @@ const BROADCAST = {
   audienceGroups: ["administrator"],
   includeUnverified: false,
   sendAsUserId: null,
+  scheduledFor: null,
 } as const;
 
 async function setRole(
@@ -112,8 +114,23 @@ type Row = {
   audienceGroups: string[];
 };
 
+/**
+ * Nur die Einträge dieser Datei.
+ *
+ * Die Endpunkte geben alles zurück, was es gibt — und `only` verlangt genau einen. Ohne diesen
+ * Filter zerbricht jeder Test an einer Rundmail, die irgendwer nebenher angelegt hat: einmal
+ * durchgeklickt und nicht aufgeräumt, und die Datei ist rot.
+ */
+function ours(all: Row[]): Row[] {
+  return all.filter((row) => row.subject === SUBJECT);
+}
+
 async function waiting(cookie: string): Promise<Row[]> {
-  return await (await queue(cookie)).json() as Row[];
+  return ours(await (await queue(cookie)).json() as Row[]);
+}
+
+async function wentOut(cookie: string): Promise<Row[]> {
+  return ours(await (await released(cookie)).json() as Row[]);
 }
 
 /** Genau eine — und sagt es, wenn es nicht so ist, statt am Feldzugriff zu scheitern. */
@@ -170,7 +187,7 @@ Deno.test("a second administrator approves, and that sends it", async () => {
     "raus aus der Schlange",
   );
 
-  const sent = await (await released(cookies.second)).json() as Row[];
+  const sent = await wentOut(cookies.second);
   assertEquals(only(sent).status, "released");
 
   // Nach außen der gewählte Absender, intern beide echten Namen — der Sinn der ganzen Spur.
@@ -194,7 +211,7 @@ Deno.test("the first administrator needs no approval and it goes out at once", a
     "wartet gar nicht erst",
   );
 
-  const sent = await (await released(cookies.second)).json() as Row[];
+  const sent = await wentOut(cookies.second);
 
   // Auch hier steht, wer es verantwortet: kein Sonderfall mit leeren Feldern.
   assertEquals(only(sent).writtenByUsername, ROOT);
@@ -278,7 +295,7 @@ Deno.test("approving twice sends once", async () => {
   );
 
   assertEquals(
-    (await (await released(cookies.second)).json() as Row[]).length,
+    (await wentOut(cookies.second)).length,
     1,
   );
 });
@@ -299,7 +316,7 @@ Deno.test("a discarded broadcast leaves the queue and is never sent", async () =
 
   assertEquals((await waiting(cookies.second)).length, 0);
   assertEquals(
-    (await (await released(cookies.second)).json() as Row[]).length,
+    (await wentOut(cookies.second)).length,
     0,
   );
 
@@ -311,4 +328,157 @@ Deno.test("a discarded broadcast leaves the queue and is never sent", async () =
     .executeTakeFirstOrThrow();
 
   assertEquals(row.status, "discarded");
+});
+
+// ── Zeitsteuerung ──────────────────────────────────────────────────────────────────────────────
+
+const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const anHourAgo = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+/**
+ * **Freigabe und Termin sind zwei Bedingungen, nicht eine.** Das ist die Regel, an der ein
+ * Missverständnis teuer wäre: Ein Termin, der von selbst sendet, würde Ungeprüftes rausschicken;
+ * eine Freigabe, die den Termin übergeht, würde die Ankündigung verfrühen.
+ */
+Deno.test("an approval with a date does not send yet", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: inAnHour(),
+  })).json() as Row;
+
+  assertEquals(
+    (await approve(cookies.second, created.publicationId)).status,
+    STATUS_CODE.OK,
+  );
+
+  // Freigegeben, aber nicht raus — und deshalb weiterhin sichtbar, mit dem Zustand daneben. Eine
+  // Rundmail, die an alle geht und in keiner Liste steht, wäre das Falsche.
+  assertEquals(only(await waiting(cookies.second)).status, "approved");
+  assertEquals(
+    (await wentOut(cookies.second)).length,
+    0,
+  );
+
+  const row = await db
+    .selectFrom("publication")
+    .select(["status", "approvedBy"])
+    .where("id", "=", created.publicationId)
+    .executeTakeFirstOrThrow();
+
+  assertEquals(row.status, "approved");
+  assert(row.approvedBy !== null, "die Freigabe steht");
+});
+
+Deno.test("the ticker sends what is approved and due", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: anHourAgo(),
+  })).json() as Row;
+
+  await approve(cookies.second, created.publicationId);
+  assertEquals(
+    (await wentOut(cookies.second)).length,
+    0,
+  );
+
+  assertEquals(await BroadcastQueueService.releaseDue(), 1);
+
+  const sent = await wentOut(cookies.second);
+  assertEquals(only(sent).status, "released");
+  assertEquals(only(sent).approvedByUsername, SECOND);
+});
+
+/** Der Termin allein sendet nichts. Was niemand freigegeben hat, bleibt liegen. */
+Deno.test("the ticker leaves an unapproved broadcast alone, however overdue", async () => {
+  const cookies = await fixture();
+
+  await submit(cookies.author, { scheduledFor: anHourAgo() });
+
+  assertEquals(await BroadcastQueueService.releaseDue(), 0);
+  assertEquals((await waiting(cookies.second)).length, 1, "wartet weiter");
+});
+
+Deno.test("the ticker leaves an approved broadcast alone until its time", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: inAnHour(),
+  })).json() as Row;
+
+  await approve(cookies.second, created.publicationId);
+
+  assertEquals(await BroadcastQueueService.releaseDue(), 0);
+  assertEquals(
+    (await wentOut(cookies.second)).length,
+    0,
+  );
+});
+
+/**
+ * Die Stelle, an der ein doppelter Versand entstünde: Freigabe von Hand und Taktgeber greifen
+ * beide nach derselben Zeile. `release` nimmt den Zustand, bevor es sendet — wer keine Zeile
+ * trifft, sendet nicht.
+ */
+Deno.test("two runs of the ticker send once", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: anHourAgo(),
+  })).json() as Row;
+
+  await approve(cookies.second, created.publicationId);
+
+  assertEquals(await BroadcastQueueService.releaseDue(), 1);
+  assertEquals(
+    await BroadcastQueueService.releaseDue(),
+    0,
+    "beim zweiten Lauf nichts mehr",
+  );
+
+  assertEquals(
+    (await wentOut(cookies.second)).length,
+    1,
+  );
+});
+
+/** Auch der Ur-Admin wartet auf die Uhr: Seine Freigabe ist erteilt, der Termin steht daneben. */
+Deno.test("even the first administrator waits for the clock", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.root, {
+    scheduledFor: inAnHour(),
+  })).json() as Row;
+
+  assertEquals(created.status, "approved", "freigegeben, aber nicht raus");
+  assertEquals(
+    (await wentOut(cookies.second)).length,
+    0,
+  );
+});
+
+/** Eine Bearbeitung nimmt auch die Freigabe einer terminierten Rundmail zurück. */
+Deno.test("editing a scheduled broadcast takes its approval back", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: inAnHour(),
+  })).json() as Row;
+
+  await approve(cookies.second, created.publicationId);
+
+  assertEquals(
+    (await request(
+      "PUT",
+      `/api/moderation/broadcast/queue/${created.publicationId}`,
+      cookies.author,
+      { ...BROADCAST, scheduledFor: anHourAgo() },
+    )).status,
+    STATUS_CODE.OK,
+  );
+
+  // Fällig, aber nicht mehr freigegeben — also bleibt sie liegen.
+  assertEquals(await BroadcastQueueService.releaseDue(), 0);
+  assertEquals(only(await waiting(cookies.second)).status, "awaiting_approval");
 });
