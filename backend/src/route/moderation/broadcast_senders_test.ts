@@ -60,7 +60,7 @@ async function fixture() {
 Deno.test.afterEach(async () => {
   // The seat first: the CHECK constraint refuses a row that keeps the flag without the role, and
   // handing it back before deleting anything is simpler than reasoning about the order.
-  await returnPrimordialSeat();
+  await returnPrimordialSeat(PRIMORDIAL);
 
   await db.deleteFrom("user").where("username", "in", USERNAMES).execute();
 });

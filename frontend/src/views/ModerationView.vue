@@ -18,6 +18,7 @@ import { computed } from 'vue'
 import type { Component } from 'vue'
 import { useGetCurrentUser } from '@/api/auth/auth'
 import { useListReports } from '@/api/reports/reports'
+import { useListBroadcastQueue } from '@/api/moderation/moderation'
 import { GetCurrentUser200PlatformRole } from '@/api/models'
 import type { ListReportsBody } from '@/api/models'
 import { formatCount } from '@/lib/format/formatNumber'
@@ -29,7 +30,6 @@ import {
   ListChecks,
   MailX,
   Megaphone,
-  Send,
   Shuffle,
   UserPlus,
   Users,
@@ -44,6 +44,16 @@ type Tile = {
   to: RouteLocationRaw
   /** Administrator-only tiles are left out for a moderator rather than shown as refused. */
   administratorOnly?: boolean
+  /**
+   * How many things behind this tile are waiting for somebody. Absent — not zero — where there is
+   * nothing that waits: a count that is always there stops being read, and the design rules keep
+   * numbers for what is still to be done.
+   *
+   * Only the reports and the broadcast queue have one, and both are seen only by the people who
+   * can act on them: the queue's endpoint is administrator-only, so a moderator's request answers
+   * nothing and the number never appears.
+   */
+  waiting?: Readonly<{ value: number }>
 }
 
 type Section = { title: string; tiles: Tile[] }
@@ -61,6 +71,19 @@ const { data: openReports } = useListReports(OPEN_REPORTS_BODY)
 
 const openReportCount = computed<number>(() =>
   openReports.value?.status === 200 ? openReports.value.data.totalResults : 0,
+)
+
+/**
+ * Wie viele Rundmails auf eine Freigabe warten.
+ *
+ * Aus der Warteschlange selbst, damit die Zahl nicht von dem abweichen kann, was die Seite dahinter
+ * zeigt — dieselbe Regel wie bei den Missbrauchsmeldungen. Die Abfrage ist der Administration
+ * vorbehalten; für die Moderation antwortet sie nicht, und die Zahl erscheint gar nicht erst.
+ */
+const { data: queue } = useListBroadcastQueue()
+
+const waitingBroadcasts = computed<number>(() =>
+  queue.value?.status === 200 ? queue.value.data.length : 0,
 )
 
 const isAdministrator = computed<boolean>(
@@ -134,14 +157,11 @@ const SECTIONS: Section[] = [
         icon: Megaphone,
         to: { name: 'moderationBroadcast' },
         administratorOnly: true,
+        waiting: waitingBroadcasts,
       },
-      {
-        title: 'Erinnerungen an unbestätigte Adressen',
-        description:
-          'Wer sich angemeldet, die E-Mail-Adresse aber nie bestätigt hat — mit Erinnerungsmail.',
-        icon: Send,
-        to: { name: 'moderationInvitations' },
-      },
+      // Hier stand „Erinnerungen an unbestätigte Adressen", das auf dieselbe Seite führte wie der
+      // Bereich „Einladungen" darunter. Zwei Wege auf eine Seite sind einer zu viel, und das
+      // Erinnern ist ein Vorgang auf dieser Seite, kein Bereich neben ihr.
     ],
   },
   {
@@ -256,7 +276,17 @@ const sections = computed<Section[]>(() =>
             >
               <component :is="tile.icon" :size="16" :stroke-width="1.5" aria-hidden="true" />
             </span>
-            <p class="mt-2 text-row font-medium text-ink-2">{{ tile.title }}</p>
+            <p class="mt-2 flex items-baseline gap-2 text-row font-medium text-ink-2">
+              {{ tile.title }}
+              <!-- Nur wenn wirklich etwas wartet. Bei null ist die Kachel eine gewöhnliche: Ein
+                   Zeichen, das immer da ist, wird nicht mehr gelesen. -->
+              <span
+                v-if="tile.waiting !== undefined && tile.waiting.value > 0"
+                class="rounded-full bg-surface-alert px-1.5 py-px text-[11px] font-normal text-destructive"
+              >
+                {{ formatCount(tile.waiting.value) }} offen
+              </span>
+            </p>
             <p class="mt-1 text-[12px] leading-[1.45] text-ink-5">{{ tile.description }}</p>
           </RouterLink>
         </div>

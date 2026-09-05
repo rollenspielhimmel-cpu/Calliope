@@ -10,6 +10,10 @@ import {
   registerUser,
   request,
 } from "@/src/test/support.ts";
+import {
+  borrowPrimordialSeat,
+  returnPrimordialSeat,
+} from "@/src/test/primordial_seat.ts";
 
 /**
  * Who may reach the Blind-Date desk.
@@ -57,6 +61,8 @@ const DESK: ReadonlyArray<[string, string]> = [
 Deno.test.beforeEach(clearRateLimits);
 
 Deno.test.afterEach(async () => {
+  await returnPrimordialSeat(root);
+
   const ids = db.selectFrom("user").select("id").where("username", "in", USERS);
 
   const groupIds = (await db
@@ -309,36 +315,21 @@ Deno.test("withdrawing gives the desk back too", async () => {
 });
 
 /**
- * Whoever holds the primordial seat right now, waiting briefly if nobody does.
- *
- * There is exactly one such account, and `operators_test.ts` borrows the seat for the length of its
- * fixture — releasing it, registering users, then taking it. So „the account called Admin" is not a
- * stable thing to point at while the suite runs in parallel, and neither is „somebody holds it".
- *
- * Read rather than written, deliberately: taking the seat here would make the *other* file fail
- * instead, and trading one flake for another is not a fix. Waiting costs a few milliseconds and
- * disturbs nobody.
+ * Dieser Test las den Platz früher nur, statt ihn zu nehmen — mit der Begründung, ihn zu nehmen
+ * würde die andere Datei zum Scheitern bringen. Das stimmte, solange es keine echte Sperre gab.
+ * Seit es `borrowPrimordialSeat` gibt, ist Lesen das Gefährlichere: Der Test prüfte dann ein
+ * fremdes Testkonto, das gerade eine andere Datei hält, und schlug an dessen Zustand fehl.
  */
-async function whoeverIsPrimordial(): Promise<string> {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const holder = await db
-      .selectFrom("user")
-      .select("id")
-      .where("isPrimordialAdmin", "=", true)
-      .executeTakeFirst();
-
-    if (holder !== undefined) {
-      return holder.id;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  throw new Error("no account held the primordial seat for two seconds");
-}
-
 Deno.test("whoever holds the administration account cannot apply", async () => {
-  const primordial = await whoeverIsPrimordial();
+  await registerUser(root);
+  await db
+    .updateTable("user")
+    .set({ platformRole: "administrator" })
+    .where("username", "=", root)
+    .execute();
+
+  await borrowPrimordialSeat(root);
+  const primordial = await getUserId(root);
 
   const eligibility = await BlindDateService.eligibilityFor(primordial);
   assertEquals(eligibility.reason, "administration_account");

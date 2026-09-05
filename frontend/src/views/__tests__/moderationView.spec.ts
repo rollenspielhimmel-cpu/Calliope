@@ -14,9 +14,19 @@ import ModerationView from '@/views/ModerationView.vue'
 const reports = { value: { status: 200, data: { totalResults: 0 } } }
 const currentUser = { value: { status: 200, data: { platformRole: 'administrator' } } }
 
+/** Die zweite Zahl auf dieser Seite: Rundmails, die auf eine Freigabe warten. */
+const broadcastQueue: { value: { status: number; data: unknown[] } } = {
+  value: { status: 200, data: [] },
+}
+
 vi.mock('@/api/reports/reports', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListReports: () => ({ data: reports }),
+}))
+
+vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useListBroadcastQueue: () => ({ data: broadcastQueue }),
 }))
 
 // Spread rather than replaced: `lib/api/queryClient.ts` imports `getGetCurrentUserQueryKey` from
@@ -41,6 +51,7 @@ function moderationView() {
 beforeEach(() => {
   reports.value = { status: 200, data: { totalResults: 0 } }
   currentUser.value = { status: 200, data: { platformRole: 'administrator' } }
+  broadcastQueue.value = { status: 200, data: [] }
 })
 
 describe('ModerationView', () => {
@@ -96,5 +107,38 @@ describe('ModerationView', () => {
 
     expect(text).toContain('IP-Adressen und Sperren')
     expect(text).not.toContain('Gesperrte E-Mail-Domains')
+  })
+})
+
+/**
+ * Die zweite Zahl auf dieser Seite — und sie folgt derselben Regel wie die erste: Sie erscheint
+ * nur, wenn wirklich etwas wartet. Ein Zeichen, das immer da ist, wird nicht mehr gelesen.
+ */
+describe('Warteschlange der Rundmails', () => {
+  it('sagt nichts, solange nichts auf eine Freigabe wartet', () => {
+    const view = moderationView()
+
+    expect(view.text()).not.toContain('offen')
+  })
+
+  it('zeigt, wie viele warten, sobald etwas wartet', () => {
+    broadcastQueue.value = { status: 200, data: [{}, {}] }
+
+    const view = moderationView()
+
+    expect(view.text()).toContain('2 offen')
+  })
+
+  /**
+   * Für die Moderation antwortet die Abfrage nicht — die Route ist der Administration vorbehalten.
+   * Eine nicht geladene Warteschlange heißt „nichts zu tun", nicht „unbekannt": Die Kachel ist für
+   * sie ohnehin nicht da, und eine Zahl aus einer fehlgeschlagenen Abfrage wäre schlimmer als keine.
+   */
+  it('liest eine Warteschlange, die sie nicht laden konnte, als nichts', () => {
+    broadcastQueue.value = { status: 403, data: [] }
+
+    const view = moderationView()
+
+    expect(view.text()).not.toContain('offen')
   })
 })

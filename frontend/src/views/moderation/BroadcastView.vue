@@ -9,8 +9,25 @@
  * platform sends is, so a toolbar would offer marks that the send would silently discard.
  */
 import { computed, ref } from 'vue'
-import { useCountBroadcastRecipients, useSendBroadcast } from '@/api/moderation/moderation'
-import type { SendBroadcastBodyAudienceGroupsItem } from '@/api/models'
+import {
+  getListBroadcastQueueQueryKey,
+  getListReleasedBroadcastsQueryKey,
+  useApproveBroadcast,
+  useCountBroadcastRecipients,
+  useDiscardBroadcast,
+  useListBroadcastQueue,
+  useListReleasedBroadcasts,
+  useSubmitBroadcast,
+} from '@/api/moderation/moderation'
+import type {
+  ListBroadcastQueue200Item,
+  ListReleasedBroadcasts200Item,
+  SubmitBroadcastBodyAudienceGroupsItem,
+} from '@/api/models'
+import { queryClient } from '@/lib/api/queryClient'
+import { ApiError } from '@/lib/api/apiFetch'
+import { failureMessage } from '@/lib/format/failure'
+import { formatActivityTime } from '@/lib/format/formatTime'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { pluralize } from '@/lib/format/formatText'
 import ModerationPage from '@/components/moderation/ModerationPage.vue'
@@ -30,11 +47,13 @@ const tab = ref<string>('compose')
  * rules keep counts for things still waiting to be done.
  */
 const TABS: ModerationTab[] = [
-  { value: 'compose', label: 'Verschicken' },
+  { value: 'compose', label: 'Schreiben' },
+  { value: 'queue', label: 'Warteschlange' },
+  { value: 'released', label: 'Gesendete' },
   { value: 'senders', label: 'Absender' },
 ]
 
-type Group = SendBroadcastBodyAudienceGroupsItem
+type Group = SubmitBroadcastBodyAudienceGroupsItem
 
 /** Ordered as somebody reads them: the team first, then everybody else. */
 const GROUPS: ReadonlyArray<{ value: Group; label: string }> = [
@@ -49,6 +68,7 @@ const subject = ref<string>('')
 const body = ref<string>('')
 const confirming = ref<boolean>(false)
 const sentTo = ref<number | undefined>(undefined)
+const waited = ref<boolean>(false)
 const error = ref<string | undefined>(undefined)
 
 function toggleGroup(group: Group, on: boolean) {
@@ -68,33 +88,115 @@ const recipients = computed<number | undefined>(() =>
   data.value?.status === 200 ? data.value.data.recipients : undefined,
 )
 
-const { mutateAsync: sendBroadcast, isPending } = useSendBroadcast()
+const { mutateAsync: submitBroadcast, isPending } = useSubmitBroadcast()
 
 const isComplete = computed<boolean>(
   () => chosen.value.length > 0 && subject.value.trim().length > 0 && body.value.trim().length > 0,
 )
 
-async function send() {
+/**
+ * Eingereicht heißt nicht verschickt — außer beim Ur-Admin, der mit dem Schreiben freigibt.
+ *
+ * Was gerade geschehen ist, sagt deshalb die Antwort und nicht dieses Formular: `released` ging
+ * raus, alles andere wartet. Eine Oberfläche, die das aus der eigenen Rolle erriete, läge an dem
+ * Tag falsch, an dem sich die Regel ändert.
+ */
+async function submit() {
   error.value = undefined
   sentTo.value = undefined
+  waited.value = false
 
   try {
-    const answer = await sendBroadcast({
+    const answer = await submitBroadcast({
       data: {
-        audience: { groups: chosen.value, includeUnverified: includeUnverified.value },
         subject: subject.value.trim(),
         body: body.value.trim(),
+        audienceGroups: chosen.value,
+        includeUnverified: includeUnverified.value,
+        sendAsUserId: null,
       },
     })
-    sentTo.value = answer.status === 200 ? answer.data.recipients : undefined
-  } catch {
-    error.value = 'Das ist gerade nicht möglich. Versuche es später noch einmal.'
+
+    if (answer.status === 201) {
+      if (answer.data.status === 'released') {
+        sentTo.value = answer.data.recipientCount ?? undefined
+      } else {
+        waited.value = true
+      }
+    }
+  } catch (failure) {
+    error.value = failureMessage(failure, 'Das ging nicht. Versuch es noch einmal.')
     return
   }
 
   confirming.value = false
   subject.value = ''
   body.value = ''
+
+  await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
+}
+
+// ── Die Warteschlange ────────────────────────────────────────────────────────────────────────
+
+const { data: queueData } = useListBroadcastQueue()
+const { data: releasedData } = useListReleasedBroadcasts()
+
+const waitingBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
+  queueData.value?.status === 200 ? queueData.value.data : [],
+)
+
+const releasedBroadcasts = computed<ListReleasedBroadcasts200Item[]>(() =>
+  releasedData.value?.status === 200 ? releasedData.value.data : [],
+)
+
+const { mutateAsync: approveBroadcast, isPending: isApproving } = useApproveBroadcast()
+const { mutateAsync: discardBroadcast, isPending: isDiscarding } = useDiscardBroadcast()
+
+const queueError = ref<string | undefined>(undefined)
+
+async function refreshBoth() {
+  await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
+  await queryClient.invalidateQueries({ queryKey: getListReleasedBroadcastsQueryKey() })
+}
+
+async function approve(publicationId: string) {
+  queueError.value = undefined
+
+  try {
+    await approveBroadcast({ publicationId })
+  } catch (failure) {
+    // Die eigene Einreichung ist der Fall, den jemand wirklich erlebt — der bekommt seinen Satz.
+    queueError.value =
+      failure instanceof ApiError && failure.status === 403
+        ? 'Deine eigene Einreichung muss jemand anderes aus der Administration freigeben.'
+        : failureMessage(failure, 'Die Freigabe ging nicht durch.')
+    return
+  }
+
+  await refreshBoth()
+}
+
+async function discard(publicationId: string) {
+  queueError.value = undefined
+
+  try {
+    await discardBroadcast({ publicationId })
+  } catch (failure) {
+    queueError.value = failureMessage(failure, 'Das Verwerfen ging nicht durch.')
+    return
+  }
+
+  await refreshBoth()
+}
+
+const AUDIENCE_LABELS: Record<string, string> = {
+  administrator: 'Administration',
+  moderator: 'Moderation',
+  member: 'Mitglieder ohne Rolle',
+}
+
+function audienceOf(groups: string[]): string {
+  return groups.map((group) => AUDIENCE_LABELS[group] ?? group).join(', ')
 }
 </script>
 
@@ -152,7 +254,7 @@ async function send() {
                 id="broadcastSubject"
                 v-model="subject"
                 name="broadcastSubject"
-                :maxlength="TEXT_LIMIT.sendBroadcast.subject.maxLength"
+                :maxlength="TEXT_LIMIT.submitBroadcast.subject.maxLength"
                 autocomplete="off"
               />
             </Field>
@@ -166,7 +268,7 @@ async function send() {
                 id="broadcastBody"
                 v-model="body"
                 name="broadcastBody"
-                :maxlength="TEXT_LIMIT.sendBroadcast.body.maxLength"
+                :maxlength="TEXT_LIMIT.submitBroadcast.body.maxLength"
                 rows="14"
                 class="prose-post w-full resize-y rounded-lg border border-line-4 bg-paper-1 px-4 py-3 caret-oak outline-none focus-visible:border-line-5"
               ></textarea>
@@ -192,12 +294,13 @@ async function send() {
             Diese Nachricht geht an {{ pluralize(recipients ?? 0, 'Person', 'Personen') }}.
           </p>
           <p class="mt-1 text-[12.5px] text-ink-5">
-            Verschickte Mails lassen sich nicht zurückholen.
+            Sie geht erst raus, wenn jemand aus der Administration sie freigibt — verschickte Mails
+            lassen sich nicht zurückholen.
           </p>
           <div class="mt-3 flex flex-wrap gap-2">
-            <Button :disabled="isPending" @click="send">
+            <Button :disabled="isPending" @click="submit">
               <Spinner v-if="isPending" />
-              Jetzt senden
+              Zur Freigabe einreichen
             </Button>
             <Button variant="outline" :disabled="isPending" @click="confirming = false">
               Abbrechen
@@ -205,11 +308,101 @@ async function send() {
           </div>
         </div>
 
+        <!-- Was geschehen ist, sagt die Antwort: Der Ur-Admin gibt mit dem Schreiben frei, alle
+             anderen warten. Siehe `submit`. -->
         <p v-if="sentTo !== undefined" class="mt-4 text-note text-ink-5" role="status">
           Die Nachricht ist an {{ pluralize(sentTo, 'Person', 'Personen') }} unterwegs.
         </p>
 
+        <p v-else-if="waited" class="mt-4 text-note text-ink-5" role="status">
+          Eingereicht. Sie steht jetzt in der Warteschlange und geht raus, sobald jemand anderes aus
+          der Administration sie freigibt.
+        </p>
+
         <p v-if="error" class="mt-4 text-[12.5px] text-destructive" role="alert">{{ error }}</p>
+      </template>
+
+      <!-- ── Warteschlange ─────────────────────────────────────────────────────────────────── -->
+      <template v-else-if="tab === 'queue'">
+        <p v-if="waitingBroadcasts.length === 0" class="max-w-[70ch] text-note text-ink-5">
+          Nichts wartet auf eine Freigabe.
+        </p>
+
+        <ul v-else class="flex flex-col">
+          <li
+            v-for="entry in waitingBroadcasts"
+            :key="entry.publicationId"
+            class="border-b border-line-2 py-4"
+          >
+            <p class="text-row text-ink-2">{{ entry.subject }}</p>
+            <p class="mt-1 max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-4">
+              {{ entry.body }}
+            </p>
+            <p class="mt-2 text-[12px] text-ink-6">
+              An {{ audienceOf(entry.audienceGroups)
+              }}<template v-if="entry.includeUnverified">, auch an unbestätigte Adressen</template>
+              · Als {{ entry.sendAsUsername ?? 'Admin' }} · Von
+              {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }},
+              {{ formatActivityTime(entry.writtenAt) }}
+            </p>
+
+            <div class="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                :disabled="isApproving || isDiscarding"
+                @click="approve(entry.publicationId)"
+              >
+                Freigeben und senden
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="isApproving || isDiscarding"
+                @click="discard(entry.publicationId)"
+              >
+                Verwerfen
+              </Button>
+            </div>
+          </li>
+        </ul>
+
+        <p v-if="queueError" class="mt-3 text-[12.5px] text-destructive" role="alert">
+          {{ queueError }}
+        </p>
+      </template>
+
+      <!-- ── Gesendete ─────────────────────────────────────────────────────────────────────── -->
+      <template v-else-if="tab === 'released'">
+        <p v-if="releasedBroadcasts.length === 0" class="max-w-[70ch] text-note text-ink-5">
+          Es ist noch keine Rundmail rausgegangen.
+        </p>
+
+        <ul v-else class="flex flex-col">
+          <li
+            v-for="entry in releasedBroadcasts"
+            :key="entry.publicationId"
+            class="border-b border-line-2 py-4"
+          >
+            <p class="text-row text-ink-2">{{ entry.subject }}</p>
+            <p class="mt-1 max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-4">
+              {{ entry.body }}
+            </p>
+
+            <!-- Nach außen der Absender, hier beide echten Namen: Das ist der Sinn der Spur, und
+                 diese Liste sieht ohnehin nur die Administration. -->
+            <p class="mt-2 text-[12px] text-ink-6">
+              Als {{ entry.sendAsUsername ?? 'Admin' }} an
+              {{ pluralize(entry.recipientCount ?? 0, 'Person', 'Personen') }},
+              {{
+                entry.releasedAt === null ? 'ohne Zeitangabe' : formatActivityTime(entry.releasedAt)
+              }}
+            </p>
+            <p class="mt-0.5 text-[12px] text-ink-6">
+              Geschrieben von {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }} ·
+              Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
+            </p>
+          </li>
+        </ul>
       </template>
 
       <BroadcastSendersPanel v-else />
