@@ -5,10 +5,12 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import app from "@/src/app.ts";
-import { db } from "@/src/database/client.ts";
+import { sql } from "kysely";
+import { db, type Transaction } from "@/src/database/client.ts";
 import { redis } from "@/src/redis/client.ts";
 import { RATE_LIMIT_KEY_PREFIX } from "@/src/middleware/rate_limit.ts";
 import "@/src/test/breach_check.ts";
+import { returnPrimordialSeat } from "@/src/test/primordial_seat.ts";
 import { plainTextToDocument } from "@/src/document/document_text.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 
@@ -115,28 +117,53 @@ export async function addMember(
 const DEADLOCK = "40P01";
 
 /**
- * Führt ein Aufräumen aus und wiederholt es, wenn PostgreSQL es als Verklemmung abgeräumt hat.
+ * Der Schlüssel, unter dem sich jedes Aufräumen dieser Suite hintereinanderstellt.
  *
- * **Zwei Dateien, die gleichzeitig aufräumen, können sich verklemmen.** Die eine löscht eine
- * Rundmail, die andere ihre Konten; über die Fremdschlüssel landen beide in
- * `user_in_chat_group` und räumen dessen Zeilen in entgegengesetzter Reihenfolge ab. PostgreSQL
- * bemerkt den Kreis und wirft eine der beiden hinaus — welche, ist Zufall.
+ * Frei gewählt; er muss nur überall derselbe sein. `pg_advisory_xact_lock` hängt an der
+ * Transaktion, wird also mit ihr freigegeben — auch dann, wenn sie an einem Fehler zerbricht oder
+ * der Prozess stirbt. Genau deshalb diese Form und keine sitzungsweite: Die Verbindungen kommen aus
+ * einem Vorrat, und eine Sperre, die dort hängen bleibt, hielte den nächsten Lauf auf.
+ */
+const CLEAN_UP_LOCK = 8_142_001;
+
+/**
+ * Räumt Testdaten auf: eine Transaktion, hintereinander mit allen anderen, wiederholt bei einer
+ * Verklemmung.
  *
- * Der Preis dafür war ein ganzer Lauf: Das abgebrochene Aufräumen ließ neun Konten stehen, eines
- * davon mit dem Ur-Admin-Platz daran, und der nächste Lauf starb daran vollständig. Eine
- * Verklemmung ist genau der Fall, für den PostgreSQL selbst zum Wiederholen rät — sie sagt nichts
- * darüber, dass die Anweisung falsch wäre, nur dass zwei zur selben Zeit liefen.
+ * **Das Muster hat uns dreimal einen Lauf gekostet, in drei verschiedenen Dateien.** Immer
+ * dasselbe: Zwei Dateien räumen gleichzeitig auf, die eine löscht eine Rundmail, die andere ihre
+ * Konten; über die Fremdschlüssel landen beide in `user_in_chat_group` und räumen dessen Zeilen in
+ * entgegengesetzter Reihenfolge ab. PostgreSQL bemerkt den Kreis und wirft eine der beiden hinaus.
+ * Die lässt ihre Konten stehen, eines davon mit dem Ur-Admin-Platz daran — und der nächste Lauf
+ * stirbt daran vollständig.
+ *
+ * **Zwei Sicherungen, und sie tun Verschiedenes.**
+ *
+ * Die Sperre *verhindert*: Solange alle Aufräumarbeiten durch dieselbe Klammer gehen, können zwei
+ * von ihnen sich nicht mehr begegnen, und der ganze Fall entfällt. Das ist billig — Aufräumen ist
+ * Millisekunden, und es passiert zwischen Tests, nicht in ihnen.
+ *
+ * Die Wiederholung *heilt*: Eine Verklemmung ist nicht nur zwischen zwei Aufräumarbeiten möglich,
+ * sondern auch zwischen einer und einem laufenden Test, der nebenher schreibt. Dagegen hilft die
+ * Sperre nicht, denn der Test kennt sie nicht. Eine Verklemmung sagt auch nichts darüber, dass die
+ * Anweisung falsch wäre, nur dass zwei zur selben Zeit liefen — PostgreSQL rät selbst zum
+ * Wiederholen.
  *
  * Kein Warten zwischen den Versuchen: Der Verlierer wird erst zurückgerollt, wenn der Gewinner
  * fertig ist, also ist der Weg beim zweiten Versuch schon frei.
  */
-export async function cleanUpRetryingOnDeadlock(
-  clean: () => Promise<void>,
+export async function cleanUpTestData(
+  remove: (transaction: Transaction) => Promise<void>,
 ): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       // deno-lint-ignore no-await-in-loop -- ein Versuch nach dem anderen, das ist der Sinn
-      await clean();
+      await db.transaction().execute(async (transaction) => {
+        await sql`select pg_advisory_xact_lock(${CLEAN_UP_LOCK})`.execute(
+          transaction,
+        );
+        await remove(transaction);
+      });
       return;
     } catch (error) {
       const deadlocked = typeof error === "object" && error !== null &&
@@ -152,18 +179,84 @@ export async function cleanUpRetryingOnDeadlock(
 /**
  * Sessions and memberships cascade with the user, but groups do not — `created_by` is
  * nullable and set to null instead — so their groups have to go first.
+ *
+ * **Hier steckt die Sicherung für die Datei, die es noch nicht gibt.** Jede Testdatei, die Konten
+ * anlegt, löscht sie hier wieder — das ist die eine Stelle, durch die alle gehen. Wer nächsten
+ * Monat eine neue schreibt, bekommt Sperre und Wiederholung mit, ohne davon zu wissen.
  */
 export function deleteUsers(usernames: Array<string>): Promise<void> {
-  return cleanUpRetryingOnDeadlock(async () => {
-    const userIds = db
-      .selectFrom("user")
-      .select("id")
-      .where("username", "in", usernames);
+  return cleanUpTestData((transaction) =>
+    deleteUsersWithin(transaction, usernames)
+  );
+}
 
-    await db.deleteFrom("writingGroup").where("createdBy", "in", userIds)
-      .execute();
-    await db.deleteFrom("user").where("username", "in", usernames).execute();
-  });
+/** Dasselbe innerhalb einer schon geöffneten Aufräum-Transaktion. */
+async function deleteUsersWithin(
+  transaction: Transaction,
+  usernames: Array<string>,
+): Promise<void> {
+  const userIds = transaction
+    .selectFrom("user")
+    .select("id")
+    .where("username", "in", usernames);
+
+  await transaction.deleteFrom("writingGroup").where("createdBy", "in", userIds)
+    .execute();
+  await transaction.deleteFrom("user").where("username", "in", usernames)
+    .execute();
+}
+
+/**
+ * Die Testdaten einer Datei: einmal beschrieben, überall gleich aufgeräumt.
+ *
+ * **Warum das eine eigene Hilfe ist und nicht in jeder Datei steht.** Dieselbe Reparatur fünfmal
+ * einzeln zu bauen heißt, dass die sechste Datei sie wieder nicht hat. Dreimal ist genau das
+ * passiert. Hier steht das Aufräumen einmal, in der richtigen Reihenfolge, mit Sperre und
+ * Wiederholung — und `freshly` sorgt dafür, dass es **auch vor** dem Aufbau läuft, denn das ist der
+ * Handgriff, den man vergisst: Bricht ein Lauf mittendrin ab, bleiben die Konten stehen, und der
+ * nächste kommt nicht einmal bis zum ersten Test, weil `registerUser` an den vergebenen Namen
+ * scheitert.
+ *
+ * Das Leihen des Ur-Admin-Platzes bleibt draußen: Nicht jeder Aufbau einer Datei braucht ihn, und
+ * ihn unnötig zu halten lässt alle anderen Dateien warten.
+ */
+export type ScopedTestData = {
+  /** Aufräumen — ans Ende jedes Tests, auch wenn er gescheitert ist. */
+  cleanUp(): Promise<void>;
+  /** Baut auf und räumt vorher auf, ohne dass die Datei daran denken muss. */
+  freshly<T>(build: () => Promise<T>): Promise<T>;
+};
+
+export function scopedTestData(options: {
+  /** Die Konten dieser Datei. */
+  users: Array<string>;
+  /** Wer sich den Ur-Admin-Platz leiht, falls jemand. Nur zum Zurückgeben. */
+  seat?: string;
+  /** Was diese Datei sonst noch anlegt — Rundmails, Beiträge, was auch immer. */
+  remove?: (transaction: Transaction) => Promise<void>;
+}): ScopedTestData {
+  async function cleanUp() {
+    // **Zuerst der Platz, dann das Konto.** Andersherum gäbe ihn ein Konto zurück, das es nicht
+    // mehr gibt, und er bliebe für den Rest des Laufs verwaist.
+    if (options.seat !== undefined) {
+      await returnPrimordialSeat(options.seat);
+    }
+
+    await cleanUpTestData(async (transaction) => {
+      await options.remove?.(transaction);
+      await deleteUsersWithin(transaction, options.users);
+    });
+
+    await clearRateLimits();
+  }
+
+  return {
+    cleanUp,
+    async freshly(build) {
+      await cleanUp();
+      return await build();
+    },
+  };
 }
 
 /**

@@ -290,7 +290,32 @@ export async function withVacantPrimordialSeat<T>(
   restore: () => Promise<void>,
   body: () => Promise<T>,
 ): Promise<T> {
+  // **Auch das Leeren muss ein Vergleichen-und-Tauschen sein, nicht nur das Ausleihen.**
+  //
+  // Hier stand `async () => { await vacate(); return true; }` — der Rumpf des Aufrufers, blind
+  // ausgeführt. `waitForSeat` hat vorher gelesen, dass `Admin` den Platz hält; zwischen diesem
+  // Lesen und dem Schreiben kann eine andere Datei ihn sich aber geholt haben. Ihr `claim` ist ein
+  // Vergleichen-und-Tauschen und gelingt; `vacate` benennt danach ein `Admin` weg, das den Platz
+  // längst nicht mehr hat. Ergebnis: Der Platz ist **nicht** leer, sondern bei der fremden Datei,
+  // und `Admin` gibt es nicht mehr. Das Hochfahren findet dann einen Ur-Admin vor und legt keinen
+  // an — „no administrator was created", ein roter Test, dessen eigener Code stimmt.
+  //
+  // Also erst den Platz an niemanden vergeben, in einer Anweisung mit Bedingung, und den Rumpf des
+  // Aufrufers nur ausführen, wenn das gelungen ist.
   await waitForSeat(async () => {
+    const emptied = await db
+      .updateTable("user")
+      .set({ isPrimordialAdmin: false })
+      .where("username", "=", ROOT_ADMIN_USERNAME)
+      .where("isPrimordialAdmin", "=", true)
+      .returning("id")
+      .executeTakeFirst()
+      .catch(() => undefined);
+
+    if (emptied === undefined) {
+      return false;
+    }
+
     await vacate();
     return true;
   }, "emptying it for the bootstrap tests");

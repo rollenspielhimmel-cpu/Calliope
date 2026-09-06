@@ -4,16 +4,12 @@ import { db } from "@/src/database/client.ts";
 import { BlindDateService } from "@/src/service/blind_date_service.ts";
 import { BlindDateAccessService } from "@/src/service/blind_date_access_service.ts";
 import {
-  clearRateLimits,
-  deleteUsers,
   getUserId,
   registerUser,
   request,
+  scopedTestData,
 } from "@/src/test/support.ts";
-import {
-  borrowPrimordialSeat,
-  returnPrimordialSeat,
-} from "@/src/test/primordial_seat.ts";
+import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
  * Who may reach the Blind-Date desk.
@@ -58,44 +54,70 @@ const DESK: ReadonlyArray<[string, string]> = [
   ["QUERY", "/api/moderation/blind-date/participation"],
 ];
 
-Deno.test.beforeEach(clearRateLimits);
+const data = scopedTestData({
+  users: USERS,
+  seat: root,
+  remove: async (transaction) => {
+    const ids = transaction
+      .selectFrom("user")
+      .select("id")
+      .where("username", "in", USERS);
 
-Deno.test.afterEach(async () => {
-  await returnPrimordialSeat(root);
+    const groupIds = (await transaction
+      .selectFrom("blindDatePair")
+      .innerJoin(
+        "blindDatePartner",
+        "blindDatePartner.pairId",
+        "blindDatePair.id",
+      )
+      .select("blindDatePair.writingGroupId")
+      .where("blindDatePartner.userId", "in", ids)
+      .execute()).map((row) => row.writingGroupId);
 
-  const ids = db.selectFrom("user").select("id").where("username", "in", USERS);
-
-  const groupIds = (await db
-    .selectFrom("blindDatePair")
-    .innerJoin(
-      "blindDatePartner",
-      "blindDatePartner.pairId",
-      "blindDatePair.id",
-    )
-    .select("blindDatePair.writingGroupId")
-    .where("blindDatePartner.userId", "in", ids)
-    .execute()).map((row) => row.writingGroupId);
-
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
-  await db.deleteFrom("blindDateApplication").where("userId", "in", ids)
-    .execute();
-  await db.deleteFrom("notification").where("recipientId", "in", ids).execute();
-
-  if (groupIds.length > 0) {
-    await db.deleteFrom("blindDatePair").where("writingGroupId", "in", groupIds)
+    await transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
       .execute();
-    await db.deleteFrom("writingThread").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("userInWritingGroup").where(
-      "writingGroupId",
+    await transaction.deleteFrom("blindDateApplication").where(
+      "userId",
       "in",
-      groupIds,
+      ids,
+    )
+      .execute();
+    await transaction.deleteFrom("notification").where(
+      "recipientId",
+      "in",
+      ids,
     ).execute();
-    await db.deleteFrom("writingGroup").where("id", "in", groupIds).execute();
-  }
 
-  await deleteUsers(USERS);
+    if (groupIds.length > 0) {
+      await transaction.deleteFrom("blindDatePair").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute();
+      await transaction.deleteFrom("writingThread").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute();
+      await transaction.deleteFrom("userInWritingGroup").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      ).execute();
+      await transaction.deleteFrom("writingGroup").where("id", "in", groupIds)
+        .execute();
+    }
+  },
 });
+
+// **Auch davor, nicht nur danach.** Diese Datei hat keine gemeinsame Vorrichtung, in die ein
+// `freshly` passte — also läuft dasselbe Aufräumen vor jedem Test. Es kostet Millisekunden und
+// nimmt dem nächsten Lauf ab, an den Konten eines abgebrochenen zu scheitern.
+Deno.test.beforeEach(data.cleanUp);
+
+Deno.test.afterEach(data.cleanUp);
 
 /**
  * A session for the **real** root administrator, rather than a borrowed seat.

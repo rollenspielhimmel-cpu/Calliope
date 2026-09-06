@@ -1,11 +1,13 @@
 import { assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
-import { getUserId, registerUser, request } from "@/src/test/support.ts";
 import {
-  borrowPrimordialSeat,
-  returnPrimordialSeat,
-} from "@/src/test/primordial_seat.ts";
+  getUserId,
+  registerUser,
+  request,
+  scopedTestData,
+} from "@/src/test/support.ts";
+import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
  * Which accounts a broadcast may be sent as.
@@ -35,35 +37,36 @@ async function setRole(
     .execute();
 }
 
-async function fixture() {
-  const cookies = {
-    primordial: await registerUser(PRIMORDIAL),
-    administrator: await registerUser(ADMINISTRATOR),
-    moderator: await registerUser(MODERATOR),
-  };
+// Räumt auf — vorher wie nachher, mit Sperre und Wiederholung. Die Reihenfolge (erst der Platz,
+// dann die Konten) steckt darin: Die CHECK-Bedingung weist eine Zeile ab, die das Merkmal ohne die
+// Rolle behält.
+const data = scopedTestData({ users: USERNAMES, seat: PRIMORDIAL });
 
-  // The persona is a plain account and stays one: nobody signs in as it, and it holds no role.
-  // That it can become a sender anyway is the difference from the Blind-Date desk next door.
-  await registerUser(PERSONA);
+function fixture() {
+  return data.freshly(async () => {
+    const cookies = {
+      primordial: await registerUser(PRIMORDIAL),
+      administrator: await registerUser(ADMINISTRATOR),
+      moderator: await registerUser(MODERATOR),
+    };
 
-  await setRole(PRIMORDIAL, "administrator");
-  await setRole(ADMINISTRATOR, "administrator");
-  await setRole(MODERATOR, "moderator");
+    // The persona is a plain account and stays one: nobody signs in as it, and it holds no role.
+    // That it can become a sender anyway is the difference from the Blind-Date desk next door.
+    await registerUser(PERSONA);
 
-  // Last, and only once the account exists to hold it: every other file that wants the seat waits
-  // for it while this test runs, so it is held for as little of the fixture as possible.
-  await borrowPrimordialSeat(PRIMORDIAL);
+    await setRole(PRIMORDIAL, "administrator");
+    await setRole(ADMINISTRATOR, "administrator");
+    await setRole(MODERATOR, "moderator");
 
-  return cookies;
+    // Last, and only once the account exists to hold it: every other file that wants the seat
+    // waits for it while this test runs, so it is held for as little of the fixture as possible.
+    await borrowPrimordialSeat(PRIMORDIAL);
+
+    return cookies;
+  });
 }
 
-Deno.test.afterEach(async () => {
-  // The seat first: the CHECK constraint refuses a row that keeps the flag without the role, and
-  // handing it back before deleting anything is simpler than reasoning about the order.
-  await returnPrimordialSeat(PRIMORDIAL);
-
-  await db.deleteFrom("user").where("username", "in", USERNAMES).execute();
-});
+Deno.test.afterEach(data.cleanUp);
 
 Deno.test("the first administrator may release an account that is on no team", async () => {
   const cookies = await fixture();

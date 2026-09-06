@@ -1191,6 +1191,41 @@ they cannot be mistaken for production code. `database/test/support.ts` does the
 Prefer assertions that would fail for the right reason: check that a *different* user still
 sees the group, not just that the status code is 200.
 
+### Aufgeräumt wird über `scopedTestData`, nicht von Hand
+
+Jede Datei, die Konten anlegt, beschreibt sie einmal — und bekommt das Aufräumen fertig:
+
+```ts
+const data = scopedTestData({
+  users: USERS,
+  seat: ROOT,                      // nur, wenn die Datei den Ur-Admin-Platz leiht
+  remove: async (transaction) => { /* was diese Datei sonst anlegt */ },
+});
+
+function fixture() {
+  return data.freshly(async () => { /* Konten anlegen, Rollen setzen, Platz leihen */ });
+}
+
+Deno.test.afterEach(data.cleanUp);
+```
+
+Zwei Dinge, die man sonst vergisst, stecken darin.
+
+**Aufgeräumt wird auch *vor* dem Aufbau**, dafür ist `freshly` da. Bricht ein Lauf mittendrin ab,
+bleiben die Konten stehen, und der nächste kommt nicht bis zum ersten Test, weil `registerUser` am
+vergebenen Namen scheitert. Hält eines davon den Ur-Admin-Platz, stirbt der ganze Lauf — einmal
+waren es 53 rote Tests in Dateien, die mit der Sache nichts zu tun hatten. Eine Datei ohne
+gemeinsame Vorrichtung nimmt stattdessen `Deno.test.beforeEach(data.cleanUp)`.
+
+**Alle Aufräumarbeiten gehen durch dieselbe Klammer**: eine Transaktion mit
+`pg_advisory_xact_lock`, wiederholt bei einer Verklemmung. Unter `--parallel` räumen zwei Dateien
+gleichzeitig auf, treffen sich über die Fremdschlüssel in derselben Tabelle und räumen deren Zeilen
+in entgegengesetzter Reihenfolge ab; PostgreSQL wirft eine hinaus, und die lässt ihre Konten
+stehen. Das hat drei Läufe gekostet, in drei verschiedenen Dateien, bevor es an eine Stelle wanderte.
+
+`deleteUsers` geht selbst durch diese Klammer. Eine neue Datei, die nur Konten anlegt und wieder
+löscht, bekommt beides also mit, ohne davon zu wissen.
+
 ### A failure names itself in `test-failures.log`
 
 Both runners append every failure to `test-failures.log` at the repository root, and write nothing

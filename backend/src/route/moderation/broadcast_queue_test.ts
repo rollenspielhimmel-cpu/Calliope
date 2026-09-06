@@ -2,16 +2,12 @@ import { assert, assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
 import {
-  clearRateLimits,
-  deleteUsers,
   getUserId,
   registerUser,
   request,
+  scopedTestData,
 } from "@/src/test/support.ts";
-import {
-  borrowPrimordialSeat,
-  returnPrimordialSeat,
-} from "@/src/test/primordial_seat.ts";
+import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 import { BroadcastQueueService } from "@/src/service/broadcast_queue_service.ts";
 
 /**
@@ -59,20 +55,36 @@ async function setRole(
     .execute();
 }
 
-async function fixture() {
-  const cookies = {
-    root: await registerUser(ROOT),
-    author: await registerUser(AUTHOR),
-    second: await registerUser(SECOND),
-    moderator: await registerUser(MODERATOR),
-  };
+const data = scopedTestData({
+  users: USERS,
+  seat: ROOT,
+  remove: async (transaction) => {
+    const ids = transaction
+      .selectFrom("user")
+      .select("id")
+      .where("username", "in", USERS);
 
-  await setRole(ROOT, "administrator");
-  await setRole(AUTHOR, "administrator");
-  await setRole(SECOND, "administrator");
-  await setRole(MODERATOR, "moderator");
+    await transaction.deleteFrom("publication").where("writtenBy", "in", ids)
+      .execute();
+  },
+});
 
-  return cookies;
+function fixture() {
+  return data.freshly(async () => {
+    const cookies = {
+      root: await registerUser(ROOT),
+      author: await registerUser(AUTHOR),
+      second: await registerUser(SECOND),
+      moderator: await registerUser(MODERATOR),
+    };
+
+    await setRole(ROOT, "administrator");
+    await setRole(AUTHOR, "administrator");
+    await setRole(SECOND, "administrator");
+    await setRole(MODERATOR, "moderator");
+
+    return cookies;
+  });
 }
 
 /**
@@ -91,17 +103,7 @@ async function fixtureAsRoot() {
   return cookies;
 }
 
-Deno.test.beforeEach(clearRateLimits);
-
-Deno.test.afterEach(async () => {
-  await returnPrimordialSeat(ROOT);
-
-  const ids = db.selectFrom("user").select("id").where("username", "in", USERS);
-
-  await db.deleteFrom("publication").where("writtenBy", "in", ids).execute();
-
-  await deleteUsers(USERS);
-});
+Deno.test.afterEach(data.cleanUp);
 
 const submit = (cookie: string, body: Record<string, unknown> = {}) =>
   request("POST", "/api/moderation/broadcast/queue", cookie, {

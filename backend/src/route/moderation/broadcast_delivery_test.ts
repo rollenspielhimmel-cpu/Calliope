@@ -5,17 +5,8 @@ import {
   type ChatEvent,
   subscribeToChatEvents,
 } from "@/src/event/chat_events.ts";
-import {
-  cleanUpRetryingOnDeadlock,
-  clearRateLimits,
-  deleteUsers,
-  registerUser,
-  request,
-} from "@/src/test/support.ts";
-import {
-  borrowPrimordialSeat,
-  returnPrimordialSeat,
-} from "@/src/test/primordial_seat.ts";
+import { registerUser, request, scopedTestData } from "@/src/test/support.ts";
+import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
  * Wohin eine Rundmail geht.
@@ -65,6 +56,44 @@ async function setRole(
 }
 
 /**
+ * **Die Rundmails müssen mit weg, nicht nur die Konten.**
+ *
+ * `publication.written_by` wird beim Löschen eines Kontos auf leer gesetzt statt mitgelöscht — die
+ * Rundmail überlebt ihren Verfasser mit Absicht, damit „was ging raus" eine Frage bleibt, die man
+ * beantworten kann. Für diese Datei heißt das: Ohne dieses Aufräumen findet der zweite Test zwei
+ * Rundmails mit demselben Betreff und geht rot, ohne dass etwas kaputt wäre.
+ *
+ * Der Archiv-Faden dagegen bleibt stehen: Es gibt genau einen, er gehört der Plattform und nicht
+ * diesem Lauf. Weg müssen nur die Beiträge, die diese Datei hineingelegt hat — sonst wächst das
+ * Archiv bei jedem Lauf um eine Test-Ankündigung.
+ */
+const data = scopedTestData({
+  users: USERS,
+  seat: ROOT,
+  remove: async (transaction) => {
+    await transaction
+      .deleteFrom("writingPost")
+      .where("text", "like", `${SUBJECT}%`)
+      .execute();
+
+    await transaction
+      .deleteFrom("publication")
+      .where(
+        "id",
+        "in",
+        transaction.selectFrom("broadcast").select("publicationId").where(
+          "subject",
+          "=",
+          SUBJECT,
+        ),
+      )
+      .execute();
+  },
+});
+
+const cleanUp = data.cleanUp;
+
+/**
  * Drei Administratoren und ein gewöhnliches Mitglied, jedes mit einer Aufgabe.
  *
  * - **ROOT** hält den Ur-Admin-Platz, gibt also mit dem Schreiben frei und schickt im selben Zug.
@@ -82,78 +111,31 @@ async function setRole(
  * Geprüft wird deshalb, was unabhängig davon gilt — unsere vier Konten, und die Zahlen gegen sich
  * selbst.
  */
-async function fixture() {
-  // **Aufgeräumt wird auch vorher, nicht nur nachher.**
-  //
-  // Bricht ein Lauf mittendrin ab, bleiben diese vier Konten stehen — und der nächste Lauf kommt
-  // dann nicht einmal bis zum ersten Test, weil `registerUser` an den vergebenen Namen scheitert.
-  // Eines der Konten hielt dabei den Ur-Admin-Platz, und damit fiel der ganze Lauf: 53 rote Tests
-  // in Dateien, die mit Rundmails nichts zu tun haben. Ein Aufräumen davor kostet in einem gesunden
-  // Lauf nichts — da ist nichts zu löschen — und macht den kaputten Zustand selbstheilend.
-  await cleanUp();
+function fixture() {
+  return data.freshly(async () => {
+    const cookies = {
+      root: await registerUser(ROOT),
+      member: await registerUser(MEMBER),
+      second: await registerUser(SECOND),
+      unverified: await registerUser(UNVERIFIED),
+    };
 
-  const cookies = {
-    root: await registerUser(ROOT),
-    member: await registerUser(MEMBER),
-    second: await registerUser(SECOND),
-    unverified: await registerUser(UNVERIFIED),
-  };
-
-  await setRole(ROOT, "administrator");
-  await setRole(MEMBER, null);
-  await setRole(SECOND, "administrator");
-  await setRole(UNVERIFIED, "administrator");
-
-  await db
-    .updateTable("user")
-    .set({ emailAddressVerifiedAt: null })
-    .where("username", "=", UNVERIFIED)
-    .execute();
-
-  // Der Ur-Admin gibt mit dem Schreiben frei, und nur so geht die Rundmail im selben Zug raus.
-  await borrowPrimordialSeat(ROOT);
-
-  return cookies;
-}
-
-/**
- * **Die Rundmails müssen mit weg, nicht nur die Konten.**
- *
- * `publication.written_by` wird beim Löschen eines Kontos auf leer gesetzt statt mitgelöscht — die
- * Rundmail überlebt ihren Verfasser mit Absicht, damit „was ging raus" eine Frage bleibt, die man
- * beantworten kann. Für diese Datei heißt das: Ohne dieses Aufräumen findet der zweite Test zwei
- * Rundmails mit demselben Betreff und geht rot, ohne dass etwas kaputt wäre.
- *
- * Der Archiv-Faden dagegen bleibt stehen: Es gibt genau einen, er gehört der Plattform und nicht
- * diesem Lauf. Weg müssen nur die Beiträge, die diese Datei hineingelegt hat — sonst wächst das
- * Archiv bei jedem Lauf um eine Test-Ankündigung.
- */
-async function cleanUp() {
-  // Wiederholt, weil dieses Löschen über die Gespräche in `user_in_chat_group` landet und sich
-  // dort mit dem `deleteUsers` einer anderen Datei verklemmen kann — siehe die Erklärung dort.
-  await cleanUpRetryingOnDeadlock(async () => {
-    await db
-      .deleteFrom("writingPost")
-      .where("text", "like", `${SUBJECT}%`)
-      .execute();
+    await setRole(ROOT, "administrator");
+    await setRole(MEMBER, null);
+    await setRole(SECOND, "administrator");
+    await setRole(UNVERIFIED, "administrator");
 
     await db
-      .deleteFrom("publication")
-      .where(
-        "id",
-        "in",
-        db.selectFrom("broadcast").select("publicationId").where(
-          "subject",
-          "=",
-          SUBJECT,
-        ),
-      )
+      .updateTable("user")
+      .set({ emailAddressVerifiedAt: null })
+      .where("username", "=", UNVERIFIED)
       .execute();
+
+    // Der Ur-Admin gibt mit dem Schreiben frei, und nur so geht die Rundmail im selben Zug raus.
+    await borrowPrimordialSeat(ROOT);
+
+    return cookies;
   });
-
-  await returnPrimordialSeat(ROOT);
-  await deleteUsers(USERS);
-  await clearRateLimits();
 }
 
 /** Nur die Rundmails dieser Datei — andere Läufe legen ihre eigenen an. */

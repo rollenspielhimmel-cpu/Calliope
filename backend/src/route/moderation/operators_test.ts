@@ -1,11 +1,13 @@
 import { assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
-import { getUserId, registerUser, request } from "@/src/test/support.ts";
 import {
-  borrowPrimordialSeat,
-  returnPrimordialSeat,
-} from "@/src/test/primordial_seat.ts";
+  getUserId,
+  registerUser,
+  request,
+  scopedTestData,
+} from "@/src/test/support.ts";
+import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
  * The level above the roles. Three rules, and the third is the one that makes the other two mean
@@ -31,32 +33,33 @@ async function setRole(
     .execute();
 }
 
-async function fixture() {
-  const cookies = {
-    primordial: await registerUser(PRIMORDIAL),
-    administrator: await registerUser(ADMINISTRATOR),
-    moderator: await registerUser(MODERATOR),
-    member: await registerUser(MEMBER),
-  };
+// Räumt auf — vorher wie nachher, mit Sperre und Wiederholung. Die Reihenfolge (erst der Platz,
+// dann die Konten) steckt darin: Die CHECK-Bedingung weist eine Zeile ab, die das Merkmal ohne die
+// Rolle behält.
+const data = scopedTestData({ users: USERNAMES, seat: PRIMORDIAL });
 
-  await setRole(PRIMORDIAL, "administrator");
-  await setRole(ADMINISTRATOR, "administrator");
-  await setRole(MODERATOR, "moderator");
+function fixture() {
+  return data.freshly(async () => {
+    const cookies = {
+      primordial: await registerUser(PRIMORDIAL),
+      administrator: await registerUser(ADMINISTRATOR),
+      moderator: await registerUser(MODERATOR),
+      member: await registerUser(MEMBER),
+    };
 
-  // Waits for whoever else is using the one seat rather than taking it from them, which is what
-  // this file used to do — and what broke every other file the moment a third one wanted it.
-  await borrowPrimordialSeat(PRIMORDIAL);
+    await setRole(PRIMORDIAL, "administrator");
+    await setRole(ADMINISTRATOR, "administrator");
+    await setRole(MODERATOR, "moderator");
 
-  return cookies;
+    // Waits for whoever else is using the one seat rather than taking it from them, which is what
+    // this file used to do — and what broke every other file the moment a third one wanted it.
+    await borrowPrimordialSeat(PRIMORDIAL);
+
+    return cookies;
+  });
 }
 
-Deno.test.afterEach(async () => {
-  // The seat first: the CHECK constraint refuses a row that keeps the flag without the role, and
-  // handing it back before deleting anything is simpler than reasoning about the order.
-  await returnPrimordialSeat(PRIMORDIAL);
-
-  await db.deleteFrom("user").where("username", "in", USERNAMES).execute();
-});
+Deno.test.afterEach(data.cleanUp);
 
 Deno.test("the first administrator may grant the administrator role", async () => {
   const cookies = await fixture();
