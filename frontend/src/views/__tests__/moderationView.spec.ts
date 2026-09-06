@@ -19,6 +19,11 @@ const broadcastQueue: { value: { status: number; data: unknown[] } } = {
   value: { status: 200, data: [] },
 }
 
+/** Und die dritte: Gespräche im Postfach, auf die noch niemand geantwortet hat. */
+const adminInbox: { value: { status: number; data: { results: unknown[] } } } = {
+  value: { status: 200, data: { results: [] } },
+}
+
 vi.mock('@/api/reports/reports', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListReports: () => ({ data: reports }),
@@ -27,6 +32,7 @@ vi.mock('@/api/reports/reports', async (importOriginal) => ({
 vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListBroadcastQueue: () => ({ data: broadcastQueue }),
+  useListAdminInbox: () => ({ data: adminInbox }),
 }))
 
 // Spread rather than replaced: `lib/api/queryClient.ts` imports `getGetCurrentUserQueryKey` from
@@ -52,6 +58,7 @@ beforeEach(() => {
   reports.value = { status: 200, data: { totalResults: 0 } }
   currentUser.value = { status: 200, data: { platformRole: 'administrator' } }
   broadcastQueue.value = { status: 200, data: [] }
+  adminInbox.value = { status: 200, data: { results: [] } }
 })
 
 describe('ModerationView', () => {
@@ -157,6 +164,44 @@ describe('Warteschlange der Rundmails', () => {
    */
   it('liest eine Warteschlange, die sie nicht laden konnte, als nichts', () => {
     broadcastQueue.value = { status: 403, data: [] }
+
+    const view = moderationView()
+
+    expect(view.text()).not.toContain('offen')
+  })
+})
+
+describe('Postfach der Administration', () => {
+  it('sagt nichts, solange nichts offen ist', () => {
+    adminInbox.value = {
+      status: 200,
+      data: { results: [{ awaitingReply: false }, { awaitingReply: false }] },
+    }
+
+    const view = moderationView()
+
+    // Zwei Gespräche, beide beantwortet: Die Kachel hat nichts zu melden. Eine Marke, die immer
+    // leuchtet, liest nach einer Woche niemand mehr.
+    expect(view.text()).not.toContain('offen')
+  })
+
+  it('zählt nur, worauf noch niemand geantwortet hat', () => {
+    adminInbox.value = {
+      status: 200,
+      data: {
+        results: [{ awaitingReply: true }, { awaitingReply: false }, { awaitingReply: true }],
+      },
+    }
+
+    const view = moderationView()
+
+    expect(view.text()).toContain('2 offen')
+  })
+
+  it('liest ein Postfach, das sie nicht laden konnte, als nichts', () => {
+    // Für eine Moderatorin antwortet die Abfrage gar nicht — dann darf die Kachel keine Zahl
+    // erfinden. Dieselbe Regel wie bei der Warteschlange.
+    adminInbox.value = { status: 403, data: { results: [] } }
 
     const view = moderationView()
 

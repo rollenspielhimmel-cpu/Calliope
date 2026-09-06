@@ -204,6 +204,12 @@ export const routes: Array<RouteRecordRaw> = [
     meta: { access: 'administrator' },
   },
   {
+    path: '/moderation/inbox',
+    name: 'moderationInbox',
+    component: () => import('../views/moderation/AdminInboxView.vue'),
+    meta: { access: 'administrator' },
+  },
+  {
     path: '/moderation/pages',
     name: 'moderationPages',
     component: () => import('../views/moderation/PagesView.vue'),

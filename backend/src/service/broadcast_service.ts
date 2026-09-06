@@ -351,6 +351,10 @@ async function deliverToInbox(
         title: subject,
         createdBy: sender?.id ?? null,
         broadcastId,
+        // **Was hier zurückkommt, geht an die Administration.** Die Marke wird beim Entstehen
+        // gesetzt und nicht später abgeleitet: Die Plattformseite sitzt mit Absicht nicht im
+        // Gespräch, und „wer sitzt drin" änderte sich ohnehin, sobald jemand austritt.
+        addressedToAdministration: true,
       })))
       .execute();
 

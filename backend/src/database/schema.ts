@@ -435,6 +435,7 @@ export interface BroadcastTemplate {
 }
 
 export interface ChatGroup {
+  addressedToAdministration: Generated<boolean>;
   broadcastId: string | null;
   createdAt: Generated<string>;
   createdBy: string | null;
@@ -1328,6 +1329,7 @@ export const CHAT_GROUP_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
   broadcastId: z.uuidv7().nullable(),
+  addressedToAdministration: z.boolean(),
 });
 
 export const CHAT_MESSAGE_SCHEMA = z.object({

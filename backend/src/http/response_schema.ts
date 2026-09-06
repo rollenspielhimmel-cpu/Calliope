@@ -445,7 +445,16 @@ export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA
   // Als Ja/Nein statt als Kennung: Die Oberfläche muss eine Rundmail im Postfach erkennen können,
   // um sie hervorzuheben — mehr braucht sie nicht. Die Kennung wäre ein Griff auf etwas, das dem
   // Team gehört, und Mitglieder könnten damit ohnehin nichts anfangen.
-  .omit({ broadcastId: true })
+  //
+  // **Und `addressedToAdministration` gehört aus demselben Grund nicht hinein.** Die Marke sagt,
+  // dass ein Gespräch im Postfach der Administration auftaucht — eine Auskunft über die Arbeit des
+  // Teams, nicht über das Gespräch, wie das Mitglied es führt. Für das Mitglied ist es eine
+  // gewöhnliche Unterhaltung, und genau das ist der Entwurf.
+  //
+  // Sie wäre hier von selbst gelandet, weil dieses Schema aus der Tabelle erzeugt wird: Eine neue
+  // Spalte steht ohne Zutun in der Antwort an jedes Mitglied. Der Typprüfer hat es gemeldet, weil
+  // der Dienst sie nicht mitliefert — sonst wäre es niemandem aufgefallen.
+  .omit({ broadcastId: true, addressedToAdministration: true })
   .extend({
     ...OWN_FAVOURITE,
     /** The reader's own standing in it, so the interface knows whether to show a conversation. */

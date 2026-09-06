@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import BroadcastReplies from '@/components/moderation/BroadcastReplies.vue'
 
 /**
@@ -80,6 +80,7 @@ function conversationToggle(wrapper: ReturnType<typeof mount>) {
 async function openConversation() {
   const wrapper = mount(BroadcastReplies, {
     props: { broadcastId: '01900000-0000-7000-8000-0000000000ff' },
+    global: { stubs: { RouterLink: RouterLinkStub } },
   })
 
   await wrapper.findAll('button')[0]?.trigger('click')

@@ -18,7 +18,7 @@ import { computed } from 'vue'
 import type { Component } from 'vue'
 import { useGetCurrentUser } from '@/api/auth/auth'
 import { useListReports } from '@/api/reports/reports'
-import { useListBroadcastQueue } from '@/api/moderation/moderation'
+import { useListAdminInbox, useListBroadcastQueue } from '@/api/moderation/moderation'
 import { GetCurrentUser200PlatformRole } from '@/api/models'
 import type { ListReportsBody } from '@/api/models'
 import { formatCount } from '@/lib/format/formatNumber'
@@ -28,6 +28,7 @@ import {
   Flag,
   Globe,
   ListChecks,
+  Inbox,
   MailX,
   Megaphone,
   Shuffle,
@@ -87,6 +88,22 @@ const waitingBroadcasts = computed<number>(() =>
     ? // Nur die, die auf jemanden warten. Was freigegeben ist und auf die Uhr wartet, steht in
       // derselben Liste, ist aber niemandes Aufgabe mehr.
       queue.value.data.filter((entry) => entry.status === 'awaiting_approval').length
+    : 0,
+)
+
+/**
+ * Wie viele Gespräche im Postfach auf eine Antwort warten.
+ *
+ * Aus derselben Liste, die die Seite dahinter zeigt — dieselbe Regel wie bei den Rundmails und den
+ * Missbrauchsmeldungen: Eine Zahl, die woanders herkommt, kann von dem abweichen, was man dann
+ * vorfindet. „Offen" heißt: Die letzte Nachricht ist noch vom Mitglied; das entscheidet der Server
+ * aus dem Verlauf und nicht aus einem Merker, den jemand pflegen müsste.
+ */
+const { data: inbox } = useListAdminInbox()
+
+const waitingConversations = computed<number>(() =>
+  inbox.value?.status === 200
+    ? inbox.value.data.results.filter((entry) => entry.awaitingReply).length
     : 0,
 )
 
@@ -155,6 +172,14 @@ const SECTIONS: Section[] = [
   {
     title: 'Kommunikation',
     tiles: [
+      {
+        title: 'Postfach',
+        description: 'Was an die Administration geschrieben wurde, an einem Ort.',
+        icon: Inbox,
+        to: { name: 'moderationInbox' },
+        administratorOnly: true,
+        waiting: waitingConversations,
+      },
       {
         title: 'Rundmail',
         description: 'Eine Nachricht an alle Mitglieder oder an eine Teilmenge von ihnen.',

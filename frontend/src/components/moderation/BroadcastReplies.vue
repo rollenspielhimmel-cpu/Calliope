@@ -26,6 +26,7 @@ import { formatActivityTime } from '@/lib/format/formatTime'
 import { failureMessage } from '@/lib/format/failure'
 import { queryClient } from '@/lib/api/queryClient'
 import { TEXT_LIMIT } from '@/api/textLimit'
+import TeamConversation from '@/components/moderation/TeamConversation.vue'
 import Textarea from '@/components/ui/textarea/Textarea.vue'
 import Button from '@/components/ui/button/Button.vue'
 
@@ -133,24 +134,19 @@ async function submitReply(chatGroupId: string) {
             <span class="mt-0.5 max-w-[70ch] text-[12px] text-ink-5">{{ reply.excerpt }}</span>
           </button>
 
+          <!-- **Der Weg zum Arbeiten.** Gelesen wird an beiden Orten, gearbeitet nur im Postfach —
+               ohne diesen Verweis wäre „ich will darauf antworten" hier eine Sackgasse. -->
+          <RouterLink
+            :to="{ name: 'moderationInbox', query: { conversation: reply.chatGroupId } }"
+            class="mt-1 inline-flex min-h-11 items-center text-[12px] text-ink-5 hover:text-oak-deep md:min-h-0"
+          >
+            Im Postfach öffnen
+          </RouterLink>
+
           <template v-if="openConversation === reply.chatGroupId && conversation">
-            <ul class="mt-2 flex flex-col gap-2 border-l-2 border-line-4 pl-3">
-              <li v-for="message in conversation.messages" :key="message.id">
-                <!-- Der Verfasser steht nur bei den Antworten der Administration: Bei der Rundmail
-                     selbst ist er leer, weil er auf der Veröffentlichung steht und oben unter
-                     „Gesendete" gezeigt wird. -->
-                <p class="text-[12px] text-ink-6">
-                  {{ message.fromTeam ? 'Team' : (message.username ?? 'Gelöschtes Konto') }} ·
-                  {{ formatActivityTime(message.createdAt) }}
-                  <template v-if="message.writtenByUsername">
-                    · geschrieben von {{ message.writtenByUsername }}
-                  </template>
-                </p>
-                <p class="max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-3">
-                  {{ message.text }}
-                </p>
-              </li>
-            </ul>
+            <!-- Dasselbe Bauteil wie im Postfach der Administration: Zwei Fassungen desselben
+                 Verlaufs driften auseinander, sobald jemand nur eine anfasst. -->
+            <TeamConversation class="mt-2" :messages="conversation.messages" />
 
             <form
               class="mt-2 flex max-w-[70ch] flex-col gap-2 border-l-2 border-line-4 pl-3"
