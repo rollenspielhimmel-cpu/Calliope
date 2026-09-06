@@ -37,6 +37,7 @@ import ModerationPage from '@/components/moderation/ModerationPage.vue'
 import ModerationTabs from '@/components/moderation/ModerationTabs.vue'
 import type { ModerationTab } from '@/components/moderation/ModerationTabs.vue'
 import BroadcastSendersPanel from '@/components/moderation/BroadcastSendersPanel.vue'
+import BroadcastReplies from '@/components/moderation/BroadcastReplies.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -248,6 +249,27 @@ async function submit() {
   body.value = ''
 
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
+}
+
+/**
+ * Was aus einer gesendeten Rundmail geworden ist, in Worten statt in einer Zahl.
+ *
+ * **Eine Zahl reicht nicht mehr, seit es zwei Wege gibt.** `recipientCount ?? 0` stand hier und
+ * meldete „an 0 Personen", sobald eine Rundmail nur per E-Mail hinausging — die Null hieß „dieser
+ * Weg war nicht gewählt" und las sich wie „hat niemanden erreicht".
+ */
+function reachOf(entry: ListReleasedBroadcasts200Item): string {
+  const ways: string[] = []
+
+  if (entry.recipientCount !== null) {
+    ways.push(`${pluralize(entry.recipientCount, 'Person', 'Personen')} im Postfach`)
+  }
+  if (entry.emailRecipientCount !== null) {
+    ways.push(`${pluralize(entry.emailRecipientCount, 'Person', 'Personen')} per E-Mail`)
+  }
+
+  // Nur ins Archiv gelegt: Dann ist „an niemanden" die Wahrheit und keine Auslassung.
+  return ways.length === 0 ? 'nur ins Archiv' : `an ${ways.join(' und ')}`
 }
 
 // ── Die Warteschlange ────────────────────────────────────────────────────────────────────────
@@ -615,8 +637,7 @@ function audienceOf(groups: string[]): string {
             <!-- Nach außen der Absender, hier beide echten Namen: Das ist der Sinn der Spur, und
                  diese Liste sieht ohnehin nur die Administration. -->
             <p class="mt-2 text-[12px] text-ink-6">
-              Als {{ entry.sendAsUsername ?? 'Admin' }} an
-              {{ pluralize(entry.recipientCount ?? 0, 'Person', 'Personen') }},
+              Als {{ entry.sendAsUsername ?? 'Admin' }} {{ reachOf(entry) }},
               {{
                 entry.releasedAt === null ? 'ohne Zeitangabe' : formatActivityTime(entry.releasedAt)
               }}
@@ -625,6 +646,8 @@ function audienceOf(groups: string[]): string {
               Geschrieben von {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }} ·
               Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
             </p>
+
+            <BroadcastReplies :broadcast-id="entry.broadcastId" />
           </li>
         </ul>
       </template>

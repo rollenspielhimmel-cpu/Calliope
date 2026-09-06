@@ -268,21 +268,42 @@ async function deliverToInbox(
   body: string,
   sendAsUserId: string | null,
   recipientIds: string[],
-): Promise<void> {
+): Promise<number> {
   const sender = await resolveSender(sendAsUserId);
-
-  // **Die Kennungen entstehen hier, nicht in der Datenbank.** Mitgliedschaft und Nachricht hängen
-  // an ihnen, und sie aus einem `RETURNING` zurückzulesen hieße, sich auf eine Reihenfolge zu
-  // verlassen, die PostgreSQL nirgends zusagt. Version 7, wie die Vorgabewerte der Tabellen: Die
-  // Kennung trägt ihre Entstehungszeit, und darauf beruht die Sortierung der Nachrichten.
-  const chats = recipientIds.map((recipientId) => ({
-    id: generateUuidV7(),
-    recipientId,
-  }));
-
   const now = new Date().toISOString();
 
-  await db.transaction().execute(async (transaction) => {
+  return await db.transaction().execute(async (transaction) => {
+    // **Die Empfänger werden hier noch einmal gelesen.**
+    //
+    // Zwischen dem Ermitteln des Empfängerkreises und dem Anlegen der Gespräche kann ein Konto
+    // verschwinden — jemand löscht sich, oder die Moderation entfernt es. Die Mitgliedschaftszeile
+    // liefe dann in ihren Fremdschlüssel, der ganze Versand bräche ab, und zwar **nachdem** die
+    // Rundmail bereits als „raus" gebucht ist: Sie wäre für alle verloren, nicht nur für den einen.
+    //
+    // **Ohne `FOR SHARE`, obwohl das die dichtere Lösung wäre.** Die Sperre hielte jede Zeile bis
+    // zum Ende der Transaktion und ließe jeden warten, der gerade ein Konto löscht — bei einer
+    // Rundmail an alle sind das alle Konten der Plattform. Der Testlauf, der nebenher ständig
+    // Konten anlegt und löscht, verklemmte sich daran prompt. Das Fenster ist stattdessen so klein
+    // wie möglich gemacht, und `sendToInbox` wiederholt einmal, falls es doch jemanden erwischt.
+    const present = await transaction
+      .selectFrom("user")
+      .select("id")
+      .where("id", "in", recipientIds)
+      .execute();
+
+    // **Die Kennungen entstehen hier, nicht in der Datenbank.** Mitgliedschaft und Nachricht hängen
+    // an ihnen, und sie aus einem `RETURNING` zurückzulesen hieße, sich auf eine Reihenfolge zu
+    // verlassen, die PostgreSQL nirgends zusagt. Version 7, wie die Vorgabewerte der Tabellen: Die
+    // Kennung trägt ihre Entstehungszeit, und darauf beruht die Sortierung der Nachrichten.
+    const chats = present.map((recipient) => ({
+      id: generateUuidV7(),
+      recipientId: recipient.id,
+    }));
+
+    if (chats.length === 0) {
+      return 0;
+    }
+
     await transaction
       .insertInto("chatGroup")
       .values(chats.map((chat) => ({
@@ -316,7 +337,48 @@ async function deliverToInbox(
         writtenBy: null,
       })))
       .execute();
+
+    // Zurückgegeben wird, was wirklich zugestellt wurde — nicht, was vorher gezählt worden war.
+    return chats.length;
   });
+}
+
+/**
+ * Stellt zu, und wenn dabei jemand verschwindet, noch einmal.
+ *
+ * **Ein zweiter Versuch statt einer Sperre.** Der einzige Grund, warum das Einfügen scheitern kann,
+ * ist ein Konto, das zwischen Lesen und Schreiben gelöscht wurde — und beim zweiten Versuch ist es
+ * schon beim Lesen weg. Ein dritter brächte deshalb nichts, was der zweite nicht gebracht hätte.
+ *
+ * Scheitert auch der, fliegt der Fehler weiter: Dann stimmt etwas anderes nicht, und eine Rundmail,
+ * die stillschweigend bei niemandem ankommt, wäre das Schlechteste von allem.
+ */
+async function sendToInbox(
+  broadcastId: string,
+  subject: string,
+  body: string,
+  sendAsUserId: string | null,
+  recipientIds: string[],
+): Promise<number> {
+  try {
+    return await deliverToInbox(
+      broadcastId,
+      subject,
+      body,
+      sendAsUserId,
+      recipientIds,
+    );
+  } catch (failure) {
+    console.warn("Retrying the inbox delivery of a broadcast", failure);
+
+    return await deliverToInbox(
+      broadcastId,
+      subject,
+      body,
+      sendAsUserId,
+      recipientIds,
+    );
+  }
 }
 
 /**
@@ -345,15 +407,15 @@ async function send(
     mayReceiveEmail(recipient, audience)
   );
 
-  if (delivery.toInbox && recipients.length > 0) {
-    await deliverToInbox(
+  const delivered = delivery.toInbox && recipients.length > 0
+    ? await sendToInbox(
       broadcastId,
       subject,
       body,
       sendAsUserId,
       recipients.map((recipient) => recipient.id),
-    );
-  }
+    )
+    : 0;
 
   if (delivery.byEmail) {
     runInBackground(
@@ -375,7 +437,9 @@ async function send(
   }
 
   return {
-    inbox: delivery.toInbox ? recipients.length : 0,
+    // Was zugestellt wurde, nicht was gezählt worden war: Wer sich zwischen beidem löscht, ist
+    // kein Empfänger mehr, und die festgehaltene Zahl soll die Wirklichkeit beschreiben.
+    inbox: delivered,
     email: delivery.byEmail ? byEmail.length : 0,
   };
 }

@@ -14,6 +14,7 @@ import listBlindDateParticipation from "./moderation/list_blind_date_participati
 import blindDateManagers from "./moderation/blind_date_managers.ts";
 import broadcastSenders from "./moderation/broadcast_senders.ts";
 import broadcastQueue from "./moderation/broadcast_queue.ts";
+import broadcastReplies from "./moderation/broadcast_replies.ts";
 
 /**
  * The operators' own tools. Guarded as moderator except for the blocked email domains, the
@@ -38,6 +39,9 @@ export default new OpenAPIHono()
   .route("/", operators)
   .route("/", broadcastSenders)
   .route("/", broadcastQueue)
+  // Lesbar für die ganze Moderation, anders als der Rest des Rundmail-Bereichs — die Route sagt es
+  // selbst über ihre Middleware.
+  .route("/", broadcastReplies)
   .route("/", broadcast)
   .route("/", invitations)
   .route("/", strikes)

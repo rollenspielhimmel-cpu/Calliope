@@ -52,6 +52,8 @@ const BROADCAST_BODY = z.object({
 
 const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   publicationId: z.uuidv7(),
+  /** Die Rundmail selbst — daran hängen die Antworten, die das Team liest. */
+  broadcastId: z.uuidv7(),
   status: z.enum([
     "draft",
     "awaiting_approval",

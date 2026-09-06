@@ -70,6 +70,8 @@ export type BroadcastInput = {
 
 export type QueuedBroadcast = BroadcastInput & {
   publicationId: string;
+  /** Die Rundmail selbst, an der die Antworten hängen. */
+  broadcastId: string;
   status: PublicationStatus;
   /** Nach außen: unter welchem Namen sie erscheint. */
   sendAsUsername: string | null;
