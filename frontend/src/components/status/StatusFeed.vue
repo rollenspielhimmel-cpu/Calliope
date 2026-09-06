@@ -30,6 +30,19 @@ type FeedItem = ListStatusUpdates200ResultsItem & {
   comments?: ListStatusUpdateComments200ResultsItem[]
   loadingComments?: boolean
   showAllComments?: boolean
+  /**
+   * Was gerade im Kommentarfeld dieses Eintrags steht.
+   *
+   * **Der Entwurf gehört in den Zustand, nicht ins DOM.** Vorher wurde das Feld nach dem Absenden
+   * über `input.value = ''` geleert — aber `Input` merkt sich seinen Wert selbst, bekommt von einem
+   * Griff ans DOM nichts mit, und schreibt ihn beim nächsten Zeichnen zurück. Und gezeichnet wird
+   * sofort, weil die Kommentarliste sich gerade geändert hat. Der Text blieb also nicht stehen,
+   * er kam zurück.
+   *
+   * Je Eintrag einer, weil mehrere Statusmeldungen gleichzeitig offen sein können und ein
+   * gemeinsames Feld den Entwurf beim Wechsel mitnähme.
+   */
+  draft?: string
 }
 
 /** Wie viele Kommentare vor dem Aufklappen sichtbar sind, und wie viele danach ungekürzt bleiben. */
@@ -99,8 +112,8 @@ async function toggleComments(update: FeedItem) {
   }
 }
 
-async function submitComment(update: FeedItem, input: HTMLInputElement) {
-  const body = input.value.trim()
+async function submitComment(update: FeedItem) {
+  const body = (update.draft ?? '').trim()
   if (!body) {
     return
   }
@@ -112,11 +125,9 @@ async function submitComment(update: FeedItem, input: HTMLInputElement) {
 
   update.comments = [...(update.comments ?? []), created.data]
   update.commentCount += 1
-  input.value = ''
-}
-
-function submitCommentOnEnter(update: FeedItem, event: KeyboardEvent) {
-  void submitComment(update, event.target as HTMLInputElement)
+  // Erst nach der Zusage geleert: Schlägt das Absenden fehl, steht der Text noch da und ist nicht
+  // verloren.
+  update.draft = ''
 }
 
 onMounted(loadFeed)
@@ -241,12 +252,15 @@ onMounted(loadFeed)
             </div>
           </template>
 
+          <!-- `v-model` statt eines Griffs ans DOM: Das Feld merkt sich seinen Wert selbst, und
+               ein direkt geleertes `input.value` schrieb es beim nächsten Zeichnen zurück. -->
           <Input
+            v-model="update.draft"
             type="text"
             placeholder="Kommentieren …"
             class="mt-1 h-7 text-xs"
             :maxlength="TEXT_LIMIT.createStatusUpdateComment.body.maxLength"
-            @keydown.enter="submitCommentOnEnter(update, $event)"
+            @keydown.enter="submitComment(update)"
           />
         </div>
       </div>
