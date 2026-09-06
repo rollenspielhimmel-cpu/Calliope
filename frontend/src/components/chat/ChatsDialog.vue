@@ -255,26 +255,31 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
           </p>
 
           <!--
-            **Die Kante in der einen Akzentfarbe, wenn es eine Rundmail ist.**
+            **Zwei Aussagen, zwei Kanäle: die Fläche sagt „ausgewählt", die Kante sagt „Rundmail".**
 
-            Kein farbiger Hintergrund: `paper-3` heißt in dieser Oberfläche schon „aktive Zeile",
-            eine gefüllte Zeile läse sich also als ausgewählt. Und nichts aus der Warnfarbe — die
-            ist laut Designsystem nie für Mitglieder gedacht, und eine Ankündigung ist keine
-            Warnung.
+            Vorher trugen beide die Kante, nur in zwei Stärken derselben Farbe — beim Überfliegen
+            nicht zu unterscheiden. Und die Frage, die das gar nicht erst stellte: Eine ausgewählte
+            Rundmail hätte die volle Akzentfarbe bekommen und damit genau das verloren, was die
+            Kante markieren sollte.
 
-            Bleibt auch, nachdem geantwortet wurde: Die Kante sagt „das kam vom Team", nicht
-            „ungelesen", und das bleibt wahr.
+            Auswahl über die Fläche ist ohnehin das, was diese Oberfläche sonst tut — `paper-3`
+            trägt im Farbtoken den Vermerk „quiet button fill, active rail row". So kollidieren die
+            beiden nie, und eine ausgewählte Rundmail hat beides.
+
+            Nichts aus der Warnfarbe: Die ist laut Designsystem nie für Mitglieder gedacht, und eine
+            Ankündigung ist keine Warnung. Und die Kante bleibt, nachdem geantwortet wurde — sie
+            sagt „das kam vom Team", nicht „ungelesen".
           -->
           <button
             v-for="chat in chats"
             :key="chat.id"
             type="button"
-            class="flex min-h-[44px] flex-col items-start border-l-2 py-[7px] pl-[11px] text-left md:min-h-[38px]"
+            class="flex min-h-[44px] flex-col items-start rounded-r border-l-2 py-[7px] pr-2 pl-[11px] text-left md:min-h-[38px]"
             :class="[
               chat.id === selectedId
-                ? 'border-oak font-medium text-ink-1'
-                : 'border-line-4 text-ink-4 hover:border-line-5 hover:text-ink-1',
-              chat.isBroadcast && chat.id !== selectedId ? 'border-oak/70' : '',
+                ? 'bg-paper-3 font-medium text-ink-1'
+                : 'text-ink-4 hover:bg-paper-2 hover:text-ink-1',
+              chat.isBroadcast ? 'border-oak' : 'border-line-4',
             ]"
             @click="selectedId = chat.id"
           >
@@ -287,10 +292,14 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
                 {{ chat.unreadMessages }} neu
               </span>
             </span>
-            <!-- Das Wort neben der Farbe, damit die Farbe die Bedeutung nicht allein tragen muss —
-                 wer Farben schlecht unterscheidet, liest es trotzdem. -->
+            <!-- **Das Wort trägt die Aussage, nicht die Farbe.** In derselben blassen Zeile wie die
+                 Uhrzeit ging es unter; wer den Farbunterschied nicht sieht, hatte dann gar nichts.
+                 Halbfett und eine Stufe dunkler reicht — mehr wäre eine Marke, und Marken kommen
+                 hier nicht vor. -->
             <span class="text-[11px] text-ink-6">
-              <template v-if="chat.isBroadcast">Rundmail · </template>
+              <template v-if="chat.isBroadcast">
+                <span class="font-medium text-ink-4">Rundmail</span> ·
+              </template>
               {{ formatActivityTime(chat.lastActivityAt) }}
             </span>
           </button>

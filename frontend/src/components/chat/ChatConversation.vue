@@ -371,7 +371,7 @@ async function submit() {
                der Administration. Dieselbe Farbe wie im Postfach, damit es dieselbe Aussage ist:
                „das kam vom Team". -->
           <div
-            :class="row.message.id === broadcastMessageId ? 'border-l-2 border-oak/70 pl-2.5' : ''"
+            :class="row.message.id === broadcastMessageId ? 'border-l-2 border-oak pl-2.5' : ''"
           >
             <MessageText :text="row.message.text" />
           </div>
