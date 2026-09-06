@@ -1221,3 +1221,39 @@ saying so. Silence in this file has to mean "nothing failed", or it is not worth
 `parseFailures` is regex over generated XML, which is fine for one writer's output and is held to
 it by `run_tests_test.ts` against a recorded report: a name with an umlaut and escaped brackets, a
 failing step and its parent, and an `<error>` rather than a `<failure>` each broke a naive version.
+
+### Ein Lauf, der plötzlich ewig braucht, hängt am Ur-Admin-Platz
+
+**Sieh zuerst nach, wer `is_primordial_admin` hält.** Nicht nach dem Test, der als erster rot
+wurde — der ist fast immer nur ein Opfer.
+
+```bash
+docker exec calliope-main-db-1 psql -U calliope -d calliope -t \
+  -c "SELECT coalesce((SELECT username FROM \"user\" WHERE is_primordial_admin), 'NIEMAND')"
+```
+
+Es gibt genau einen Ur-Admin, erzwungen durch `user_one_primordial_admin_idx`, und fünf Testdateien
+teilen ihn sich über die Sperre in `src/test/primordial_seat.ts`. Wer ihn braucht, wartet, bis
+`Admin` ihn hält, und nimmt ihn dann — bis zu einer Minute lang, weil vierzig Tests
+nacheinander drankommen wollen.
+
+Bricht ein Lauf mittendrin ab — `Strg+C`, ein Absturz, ein Zeitlimit —, läuft kein `finally`, und
+**der Platz bleibt bei einem Testkonto stehen, das es gar nicht mehr gibt**. Alle folgenden Läufe
+warten dann ihre volle Minute und werden reihenweise rot, ohne dass am Code etwas falsch wäre. Das
+Bild ist unverwechselbar: statt zwei Minuten braucht der Lauf sechzehn, und die Fehler stehen quer
+über Dateien, die miteinander nichts zu tun haben — dazu ein Schwung `could not register …`, weil
+die Konten des abgebrochenen Laufs noch da sind.
+
+Das Aufräumen: den Platz zurückgeben und die Reste löschen.
+
+```bash
+docker exec calliope-main-db-1 psql -U calliope -d calliope -c \
+  "UPDATE \"user\" SET is_primordial_admin = true WHERE username = 'Admin'"
+```
+
+**Die Selbstheilung greift hier nicht, und das ist Absicht.** `borrowPrimordialSeat` besetzt einen
+Platz neu, der zehn Sekunden lang *leer* war; einen, den jemand anderes hält, rührt es nicht an.
+Ihn einem Halter wegzunehmen wäre genau der Diebstahl, gegen den die Sperre existiert — dieselbe
+Bewegung, die drei grüne Dateien zu fünf roten gemacht hat, als eine dritte den Platz wollte. Eine
+tote Hand von einer lebenden zu unterscheiden, kann die Datenbank nicht; ein Mensch kann es in fünf
+Sekunden.
