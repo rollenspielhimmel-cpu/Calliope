@@ -103,6 +103,46 @@ router.beforeEach(async (to) => {
   }
 })
 
+/**
+ * Löst eine Sperre, die nach einem Seitenwechsel am Seitenkörper hängen geblieben ist.
+ *
+ * **Warum es das gibt.** Menüs und Dialoge sperren, solange sie offen sind, die Zeigereignisse
+ * dahinter — `document.body` bekommt `pointer-events: none`, und beim Schließen nehmen sie es
+ * wieder weg. Wird währenddessen die Seite gewechselt, kommt dieses Aufräumen durcheinander: Der
+ * Eintrag im Avatar-Menü, der zur Moderation führt, navigiert in demselben Durchgang, in dem sich
+ * das Menü schließt. Zurück bleibt eine Sperre, die niemandem mehr gehört — **die Oberfläche sieht
+ * normal aus und reagiert auf gar nichts mehr**, bis jemand neu lädt. Genau so gemeldet: „ich
+ * klicke die ganze Zeit, nichts passiert", bei Moderation und beim Impressum.
+ *
+ * **Warum hier und nicht an den Aufrufstellen.** Die Reihenfolge an einer einzelnen Stelle zu
+ * entzerren hilft nur dieser Stelle; die nächste Menü-Zeile, die jemand hinzufügt, hat das
+ * Problem wieder. Der Seitenwechsel ist die eine Stelle, durch die alle diese Wege gehen.
+ *
+ * **Warum es sicher ist.** Aufgeräumt wird nur, wenn wirklich nichts mehr offen ist — steht noch
+ * ein Dialog oder ein Menü, gehört die Sperre ihm und bleibt. Und nur die Sperre selbst wird
+ * gelöst, nichts anderes am Seitenkörper.
+ *
+ * Das ist eine Behandlung des Symptoms, und sie steht hier als solche. Die Ursache liegt in der
+ * Dialogbibliothek; sie zu umgehen ist billiger, als jede Aufrufstelle zu bewachen — und die
+ * Alternative wäre gewesen, dass die Seite gelegentlich einfriert.
+ */
+router.afterEach(() => {
+  // Nach dem Zeichnen, sonst räumt man weg, was gerade erst gesetzt wurde.
+  globalThis.requestAnimationFrame(() => {
+    if (document.body.style.pointerEvents !== 'none') {
+      return
+    }
+
+    const stillOpen = document.querySelector(
+      '[data-state="open"][role="dialog"], [data-state="open"][role="menu"], [data-state="open"][role="alertdialog"]',
+    )
+
+    if (stillOpen === null) {
+      document.body.style.removeProperty('pointer-events')
+    }
+  })
+})
+
 // A session that ends mid-visit returns the reader to the sign-in page, carrying where they
 // were so it resumes afterwards. Which requests may legitimately answer 401 is decided in
 // the query client, not here.

@@ -104,15 +104,32 @@ const DIALOG_FADE_MS = 200
  */
 let dialogSwap: ReturnType<typeof globalThis.setTimeout> | undefined
 
-function openChat(chatGroupId: string) {
-  showingNotifications.value = false
-
+/**
+ * Öffnet einen Dialog, nachdem die Schicht davor wirklich verschwunden ist.
+ *
+ * **Das gilt für jeden Weg hierher, nicht nur für den aus den Mitteilungen.** Auch das Avatar-Menü
+ * ist eine solche Schicht: Seine Einträge öffneten Mitteilungen, Chats und Einstellungen in
+ * demselben Durchgang, in dem das Menü sich schloss. Genau die Überlappung, die den Schleier
+ * erzeugt hat — nur an einer Stelle, die bei jedem Weg benutzt wird, und deshalb der Grund, warum
+ * die Oberfläche gelegentlich auf gar nichts mehr reagierte, ganz ohne Rundmail im Spiel.
+ *
+ * Ein Zeitgeber für alle: Zwei gleichzeitig gäbe es nur, wenn jemand in zweihundert Millisekunden
+ * zwei Einträge trifft, und dann soll der zweite gewinnen.
+ */
+function openAfterLayer(open: () => void) {
   globalThis.clearTimeout(dialogSwap)
   dialogSwap = globalThis.setTimeout(() => {
     dialogSwap = undefined
+    open()
+  }, DIALOG_FADE_MS)
+}
+
+function openChat(chatGroupId: string) {
+  showingNotifications.value = false
+  openAfterLayer(() => {
     startChatAt.value = chatGroupId
     showingChats.value = true
-  }, DIALOG_FADE_MS)
+  })
 }
 
 // Verlässt die Leiste die Seite, darf nichts mehr nachkommen.
@@ -248,15 +265,19 @@ async function signOut() {
                   Mein Profil
                 </RouterLink>
               </DropdownMenuItem>
-              <DropdownMenuItem @select="showingNotifications = true">
+              <DropdownMenuItem @select="openAfterLayer(() => (showingNotifications = true))">
                 Mitteilungen
                 <!-- A number always gets a noun: a bare badge was tested and misread. -->
                 <span v-if="unread > 0" class="ml-auto text-[11.5px] text-oak-deep">
                   {{ unread }} neu
                 </span>
               </DropdownMenuItem>
-              <DropdownMenuItem @select="showingChats = true">Chats</DropdownMenuItem>
-              <DropdownMenuItem @select="showingSettings = true">Einstellungen</DropdownMenuItem>
+              <DropdownMenuItem @select="openAfterLayer(() => (showingChats = true))"
+                >Chats</DropdownMenuItem
+              >
+              <DropdownMenuItem @select="openAfterLayer(() => (showingSettings = true))"
+                >Einstellungen</DropdownMenuItem
+              >
             </DropdownMenuGroup>
 
             <!-- Only for operators, and in a group of its own: it belongs to this member the
