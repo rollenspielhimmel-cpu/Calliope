@@ -46,12 +46,8 @@ async function setRole(
     .execute();
 }
 
-// **Beide Betreffs, nicht nur einer.**
-//
-// Bleibt eine Veröffentlichung stehen, scheitert danach das Löschen ihres Freigebers: `approved_by`
-// ist `ON DELETE SET NULL`, und die Bedingung `publication_approval_is_whole` verlangt beide
-// Spalten oder keine. Der Fehler kommt dann als Verletzung einer Bedingung an, die mit dem Test
-// nichts zu tun hat — siehe die Notiz dazu in `AGENTS.md`.
+// **Beide Betreffs, nicht nur einer.** Sonst bleibt eine Veröffentlichung stehen und wächst dem
+// nächsten Lauf als zweite Rundmail mit demselben Betreff zu.
 const data = scopedTestData({
   users: USERS,
   seat: ROOT,

@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
 import {
+  deleteUsers,
   getUserId,
   registerUser,
   request,
@@ -616,4 +617,30 @@ Deno.test("was niemand bearbeitet hat, nennt keinen Bearbeiter", async () => {
   // hinterher etwas geändert hat.
   assertEquals(untouched.editedBy, null);
   assertEquals(untouched.editedAt, null);
+});
+
+Deno.test("wer freigegeben hat, kann sein Konto trotzdem löschen", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+  assertEquals(
+    (await approve(cookies.second, created.publicationId)).status,
+    STATUS_CODE.OK,
+  );
+
+  // **Die Freigabe überlebt ihren Freigeber, so wie die Rundmail ihren Verfasser.**
+  //
+  // `approved_by` ist `ON DELETE SET NULL`, und die Bedingung daneben verlangte einmal beide
+  // Spalten oder keine — dieselbe Gleichheit, die das Löschen dann in die eigene Bedingung laufen
+  // ließ. Getroffen hätte es jede Kontolöschung eines Administrators, der je etwas freigegeben hat.
+  await deleteUsers([SECOND]);
+
+  const publication = await db
+    .selectFrom("publication")
+    .select(["approvedBy", "approvedAt"])
+    .where("id", "=", created.publicationId)
+    .executeTakeFirstOrThrow();
+
+  assertEquals(publication.approvedBy, null, "der Name ist weg");
+  assert(publication.approvedAt !== null, "die Tatsache bleibt");
 });
