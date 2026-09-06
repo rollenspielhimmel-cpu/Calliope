@@ -5,7 +5,7 @@
  * und nicht unterschiedlich lang neben ihnen enden soll — dasselbe Argument wie bei den alten
  * Yooco-Boxen mit fester Höhe.
  */
-import { ref, onMounted } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   createStatusUpdate,
@@ -19,6 +19,7 @@ import type {
 } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
+import { cutAtWord, ELLIPSIS } from '@/lib/blindDate/truncate'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -110,6 +111,55 @@ async function toggleComments(update: FeedItem) {
   } finally {
     update.loadingComments = false
   }
+}
+
+/**
+ * Wie viel von einem zitierten Kommentar mitkommt.
+ *
+ * Ein Kommentar steht hier auf einer Zeile, und das Zitat gehört mit auf diese Zeile — genug, um zu
+ * erkennen, worauf sich jemand bezieht, und kurz genug, dass die eigene Antwort noch der Hauptteil
+ * bleibt. Wer den ganzen Kommentar wiederholen will, steht ohnehin direkt darüber.
+ */
+const QUOTE_LENGTH = 60
+
+/** Die Kommentarfelder, damit der Blinkstrich nach dem Zitieren dort steht, wo man weiterschreibt. */
+const commentFields = ref<Record<string, HTMLInputElement | undefined>>({})
+
+/**
+ * `Input` ist eine Komponente, keine Eingabezeile — ein Vorlagenverweis darauf liefert die Instanz.
+ * Ihr Wurzelelement *ist* die Eingabezeile, also wird hier beides angenommen und das Verwertbare
+ * behalten.
+ */
+function setCommentField(id: string, element: unknown) {
+  const node =
+    element instanceof HTMLInputElement ? element : (element as { $el?: unknown } | null)?.$el
+
+  commentFields.value[id] = node instanceof HTMLInputElement ? node : undefined
+}
+
+/**
+ * Setzt einen Bezug auf einen Kommentar in das Feld.
+ *
+ * **Als Text, nicht als Verweis** — so entschieden: Der Kommentar bleibt eine Zeile, die Darstellung
+ * bleibt, wie sie ist, und es braucht keine Spalte in der Datenbank. Der Preis steht dazu: Ändert
+ * jemand seinen Kommentar nachträglich, ändert sich das Zitat nicht mit.
+ *
+ * Vorangestellt statt angehängt: Wer schon etwas getippt hat, meint meistens die Antwort, und die
+ * gehört hinter das Zitat.
+ */
+function quoteComment(update: FeedItem, comment: ListStatusUpdateComments200ResultsItem) {
+  const shortened = cutAtWord(comment.body, QUOTE_LENGTH)
+  const quoted = shortened === comment.body ? shortened : shortened + ELLIPSIS
+
+  update.draft =
+    `@${comment.createdByUsername}: „${quoted}" ${(update.draft ?? '').trim()}`.trimEnd() + ' '
+
+  void nextTick(() => {
+    const field = commentFields.value[update.id]
+    field?.focus()
+    // Ans Ende, nicht an den Anfang: Dort schreibt man weiter.
+    field?.setSelectionRange(field.value.length, field.value.length)
+  })
 }
 
 async function submitComment(update: FeedItem) {
@@ -247,6 +297,16 @@ onMounted(loadFeed)
                   </RouterLink>
                   {{ comment.body }}
                   <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }}</span>
+                  <!-- In derselben zurückgenommenen Zeile wie die Uhrzeit: eine Handlung, kein
+                       Angebot, das sich vordrängt. Ein roher Knopf, weil diese Zeile Text ist und
+                       keine Knopfleiste. -->
+                  <button
+                    type="button"
+                    class="text-ink-4 hover:text-oak-deep"
+                    @click="quoteComment(update, comment)"
+                  >
+                    · Zitieren
+                  </button>
                 </p>
               </div>
             </div>
@@ -255,6 +315,7 @@ onMounted(loadFeed)
           <!-- `v-model` statt eines Griffs ans DOM: Das Feld merkt sich seinen Wert selbst, und
                ein direkt geleertes `input.value` schrieb es beim nächsten Zeichnen zurück. -->
           <Input
+            :ref="(element) => setCommentField(update.id, element)"
             v-model="update.draft"
             type="text"
             placeholder="Kommentieren …"

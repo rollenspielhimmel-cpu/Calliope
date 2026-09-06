@@ -19,7 +19,16 @@ const update = {
   createdAt: '2026-09-06T10:00:00.000Z',
   createdBy: 'u1',
   createdByUsername: 'federkiel',
-  commentCount: 0,
+  commentCount: 1,
+}
+
+const existingComment = {
+  id: 'c0',
+  statusUpdateId: 's1',
+  body: 'Das ist ein ziemlich langer Kommentar, der beim Zitieren gekuerzt werden muss, damit die Zeile eine Zeile bleibt.',
+  createdAt: '2026-09-06T10:02:00.000Z',
+  createdBy: 'u3',
+  createdByUsername: 'randnotiz',
 }
 
 const createdComment = {
@@ -37,7 +46,7 @@ vi.mock('@/api/status-updates/status-updates', () => ({
   listStatusUpdates: () =>
     Promise.resolve({ status: 200, data: { totalResults: 1, results: [update] } }),
   listStatusUpdateComments: () =>
-    Promise.resolve({ status: 200, data: { totalResults: 0, results: [] } }),
+    Promise.resolve({ status: 200, data: { totalResults: 1, results: [existingComment] } }),
   createStatusUpdateComment: (...args: unknown[]) => createComment(...args),
 }))
 
@@ -49,7 +58,7 @@ async function feedWithCommentsOpen() {
 
   // Die Kommentare hängen hinter dem Aufklapper; ohne ihn gibt es kein Feld.
   const toggles = wrapper.findAll('button')
-  const comments = toggles.find((button) => button.text().includes('0'))
+  const comments = toggles.find((button) => button.text().includes('1'))
   await comments?.trigger('click')
   await flushPromises()
 
@@ -84,5 +93,50 @@ describe('StatusFeed', () => {
     await flushPromises()
 
     expect((field.element as HTMLInputElement).value).toBe('Immerhin eine.')
+  })
+})
+
+describe('Zitieren', () => {
+  it('setzt den Bezug ins Feld und kürzt einen langen Kommentar', async () => {
+    createComment.mockResolvedValue({ status: 201, data: createdComment })
+
+    const wrapper = await feedWithCommentsOpen()
+
+    const quote = wrapper.findAll('button').find((button) => button.text() === '· Zitieren')
+    expect(quote?.exists()).toBe(true)
+
+    await quote?.trigger('click')
+
+    const field = wrapper.find('input[type="text"]')
+    const value = (field.element as HTMLInputElement).value
+
+    // Der Name gehört dazu, sonst weiß niemand, worauf sich das Zitat bezieht.
+    expect(value).toContain('@randnotiz')
+    expect(value).toContain('Das ist ein ziemlich langer Kommentar')
+
+    // Gekürzt: Ein Kommentar steht hier auf einer Zeile, und das Zitat gehört mit darauf.
+    expect(value).toContain('…')
+    expect(value).not.toContain('eine Zeile bleibt')
+
+    // Und der Blinkstrich steht dahinter, damit man einfach weiterschreibt.
+    expect(value.endsWith(' ')).toBe(true)
+  })
+
+  it('stellt das Zitat vor das, was schon getippt war', async () => {
+    createComment.mockResolvedValue({ status: 201, data: createdComment })
+
+    const wrapper = await feedWithCommentsOpen()
+    const field = wrapper.find('input[type="text"]')
+
+    await field.setValue('Sehe ich anders.')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '· Zitieren')
+      ?.trigger('click')
+
+    const value = (field.element as HTMLInputElement).value
+
+    // Wer schon etwas getippt hat, meint die Antwort — und die gehört hinter das Zitat.
+    expect(value.indexOf('@randnotiz')).toBeLessThan(value.indexOf('Sehe ich anders.'))
   })
 })
