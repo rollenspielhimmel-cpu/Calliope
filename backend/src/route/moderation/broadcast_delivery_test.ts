@@ -763,3 +763,35 @@ Deno.test("zu einer Rundmail lässt sich niemand einladen", async () => {
     await cleanUp();
   }
 });
+
+Deno.test("der Archiv-Beitrag ist ein Dokument, keine Zeichenkette", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root, { publishInArchive: true });
+
+    const broadcast = await theBroadcast();
+    assertExists(broadcast.archivePostId);
+
+    const post = await db
+      .selectFrom("writingPost")
+      .select((eb) => [
+        "text",
+        eb.fn<string>("jsonb_typeof", ["document"]).as("kind"),
+      ])
+      .where("id", "=", broadcast.archivePostId)
+      .executeTakeFirstOrThrow();
+
+    // **`JSON.stringify` legt in einer jsonb-Spalte eine JSON-*Zeichenkette* ab.** Der Editor
+    // bekommt dann Text, wo er einen Baum erwartet, und zeichnet nichts: Der Beitrag steht da und
+    // ist leer. Genau so sind die ersten Archiv-Beiträge entstanden, und auffallen kann das nur
+    // hier — die Zeile sieht in jedem Diff richtig aus.
+    assertEquals(post.kind, "object");
+
+    // Und der Volltext kommt aus dem Dokument, kann ihm also nicht widersprechen.
+    assert(post.text.startsWith(SUBJECT));
+    assert(post.text.includes(BODY.split("\n\n")[0] ?? ""));
+  } finally {
+    await cleanUp();
+  }
+});

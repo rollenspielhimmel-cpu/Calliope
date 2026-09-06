@@ -4,6 +4,11 @@ import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
 import { generate as generateUuidV7 } from "@std/uuid/v7";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
+import type { PostDocument } from "@/src/document/document_schema.ts";
+import {
+  documentToPlainText,
+  plainTextToDocument,
+} from "@/src/document/document_text.ts";
 
 /**
  * One message to many members. The only thing here that is not obvious is who is left out, and
@@ -150,11 +155,12 @@ async function countRecipients(
  * Zeilen trennen Absätze, einzelne Umbrüche bleiben Umbrüche — wer den Text so getippt hat, wie er
  * aussehen soll, findet ihn im Forum wieder.
  */
-function documentOf(subject: string, body: string) {
-  const paragraphs = body
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter((paragraph) => paragraph.length > 0);
+function documentOf(subject: string, body: string): PostDocument {
+  // **Auf `plainTextToDocument` aufgebaut statt selbst gebaut.** Mein Eigenbau hat zwei Regeln des
+  // Schemas übersehen, die dort schon bedacht sind: Ein `doc` darf nicht leer sein, und ein
+  // Textknoten auch nicht — eine Rundmail, deren Text nach dem Trimmen nichts übrig lässt, hätte
+  // ein Dokument ergeben, das die Prüfung nicht besteht.
+  const { content } = plainTextToDocument(body);
 
   return {
     type: "doc",
@@ -164,16 +170,12 @@ function documentOf(subject: string, body: string) {
       // die nächste beginnt. Ebene 3, weil der Editor nur 2 und 3 zulässt und 2 der Fadentitel ist.
       {
         type: "heading",
-        attrs: { level: 3 },
+        // `textAlign` gehört dazu: Das Schema ist streng, und ein Knoten ohne dieses Feld fällt
+        // bei der Prüfung durch — was beim direkten Einfügen niemand merkt.
+        attrs: { level: 3, textAlign: null },
         content: [{ type: "text", text: subject }],
       },
-      ...paragraphs.map((paragraph) => ({
-        type: "paragraph",
-        content: paragraph.split("\n").flatMap((line, index) => [
-          ...(index > 0 ? [{ type: "hardBreak" }] : []),
-          { type: "text", text: line },
-        ]),
-      })),
+      ...content,
     ],
   };
 }
@@ -215,15 +217,22 @@ async function publishInArchive(
   // Aufgelöst wie im Postfach: Ein Beitrag ohne Verfasser sähe im Forum aus, als hätte ihn niemand
   // geschrieben, während dieselbe Rundmail in der Nachricht den Absender trägt.
   const sender = await resolveSender(sendAsUserId);
+  const document = documentOf(subject, body);
 
   const post = await db
     .insertInto("writingPost")
     .values({
       writingThreadId: thread.id,
-      document: JSON.stringify(documentOf(subject, body)),
-      // Der Betreff gehört mit in den Volltext: Er steht im Dokument als Überschrift, und wer im
-      // Forum nach einer alten Ankündigung sucht, sucht meistens genau danach.
-      text: `${subject}\n\n${body}`,
+      // **Ein Objekt, keine Zeichenkette.** `JSON.stringify` legt in einer jsonb-Spalte eine
+      // JSON-*Zeichenkette* ab statt eines Dokuments; der Editor bekommt dann Text, wo er einen
+      // Baum erwartet, und zeichnet nichts. Genau so standen die ersten Archiv-Beiträge da — sie
+      // waren vorhanden und leer. Dieselbe Warnung steht seit je in `writing_post_service.ts`,
+      // zwei Dateien weiter.
+      document,
+      // Abgeleitet statt zusammengesetzt, damit Volltext und Dokument nicht auseinanderlaufen
+      // können — dieselbe Regel wie beim gewöhnlichen Beitrag. Der Betreff steht darin, weil er
+      // im Dokument die Überschrift ist.
+      text: documentToPlainText(document),
       isDraft: false,
       createdBy: sender?.id ?? null,
     })

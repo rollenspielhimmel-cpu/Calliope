@@ -309,11 +309,16 @@ async function signOut() {
                  often wanted. Signed out they are in the footer, which has no room here. -->
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem as-child>
-                <RouterLink :to="{ name: 'imprint' }">Impressum</RouterLink>
+              <!-- **`@select` statt eines eingehängten Verweises**, wie bei der Moderation
+                   darüber. Ein Menüeintrag behandelt den Klick selbst und schließt sich dabei; der
+                   `RouterLink` darunter kam nicht mehr zum Zug, und beide Einträge führten
+                   nirgendwohin. Dass sie als Einzige anders gebaut waren, ist der Grund, warum es
+                   nur diese beiden traf. -->
+              <DropdownMenuItem @select="router.push({ name: 'imprint' })">
+                Impressum
               </DropdownMenuItem>
-              <DropdownMenuItem as-child>
-                <RouterLink :to="{ name: 'privacyPolicy' }">Datenschutzerklärung</RouterLink>
+              <DropdownMenuItem @select="router.push({ name: 'privacyPolicy' })">
+                Datenschutzerklärung
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
