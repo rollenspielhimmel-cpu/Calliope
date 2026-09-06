@@ -146,28 +146,21 @@ async function waitForSeat(
     return;
   }
 
-  // **Ein Halter, der sich die ganze Wartezeit nicht rührt, ist keiner mehr.**
+  // **Hier stand einmal eine Reparatur, und sie war falsch.**
   //
-  // Bis hierher galt nur ein *leerer* Platz als verwaist. Ein abgebrochener Lauf hinterlässt aber
-  // den anderen Fall: Seine Vorrichtung hat sich den Platz geholt und starb, bevor sie ihn
-  // zurückgab — das Konto steht noch da, mit dem Platz daran. Der ist dann nicht leer, wird also
-  // nie repariert, und **jeder spätere Lauf stirbt vollständig**: Die Datei, der das Konto gehört,
-  // kann sich nicht einmal mehr anmelden, weil es ihren Namen schon gibt, und alle anderen warten
-  // ihre Minute ab und werden rot. So sind zwei Läufe hintereinander entstanden, 48 rote Tests und
-  // dann 53, aus einem einzigen Aufräumen, das in eine Verklemmung lief.
+  // Der Gedanke: Ein Halter, der sich die volle Minute nicht rührt, ist tot — also nimm ihm den
+  // Platz ab. Die Begründung dazu lautete, ein fremder Halter über eine Minute komme in einem
+  // gesunden Lauf nicht vor, weil geliehen wird für einen Test und der in einer Sekunde durch ist.
   //
-  // **Erst nach der vollen Wartezeit, und nur bei ein und demselben Namen.** Wer den Platz mitten
-  // aus einer laufenden Datei zieht, baut genau den Fehler, für den es diese Datei gibt. Eine
-  // Minute lang ununterbrochen derselbe fremde Halter kommt in einem gesunden Lauf nicht vor:
-  // Geliehen wird für einen Test, und der ist in etwa einer Sekunde durch.
-  if (wedged !== undefined) {
-    await claim(wedged, ROOT_ADMIN_USERNAME);
-
-    if (await onePass(take) === TAKEN) {
-      return;
-    }
-  }
-
+  // Das stimmt nicht. Unter Last hat ein Lauf sieben Minuten statt zwei gebraucht, und `bd-root`
+  // saß tatsächlich über eine Minute auf dem Platz — lebendig. Die Reparatur zog ihn mitten aus
+  // der laufenden Datei heraus und riss vier Tests in zwei anderen Dateien mit.
+  //
+  // **Zeit unterscheidet nicht zwischen tot und langsam.** Wer das trotzdem versucht, tauscht
+  // einen seltenen Schaden gegen einen zufälligen. Ein verwaister Platz wird deshalb dort geheilt,
+  // wo man ihn erkennen kann: in der Vorrichtung, der das Konto gehört, die vor ihrem Aufbau
+  // aufräumt — siehe `broadcast_delivery_test.ts`. Was hier bleibt, ist der Name im Fehler, damit
+  // die Suche danach nicht wieder eine Stunde dauert.
   throw new Error(
     `the primordial seat did not come free within ${
       (ATTEMPTS * PAUSE_MILLISECONDS) / 1000
@@ -305,6 +298,25 @@ export async function withVacantPrimordialSeat<T>(
   try {
     return await body();
   } finally {
+    // **Erst den Platz freiräumen, dann zurückgeben.**
+    //
+    // Während dieser Rumpf läuft, ist der Platz mit Absicht leer — und für jeden, der nebenher
+    // wartet, sieht das aus wie ein verwaister Platz. Dauert der Rumpf länger als
+    // `VACANT_UNTIL_ORPHANED`, repariert einer von ihnen ihn auf das hochgefahrene Konto, und
+    // `restore` läuft danach gegen `user_one_primordial_admin_idx`. Der Fehler fliegt aus dem
+    // `finally` heraus, das Konto bleibt unter seinem Ersatznamen stehen — und weil das
+    // hochgefahrene Konto dann nicht existiert, kann keine andere Datei ihren Platz zurückgeben.
+    // Vier rote Tests in zwei Dateien, deren eigener Code in Ordnung war.
+    //
+    // Wer hier steht, steht durch eine Reparatur da und nicht durch ein Ausleihen: Die Sperre oben
+    // hält, solange dieser Rumpf läuft. Ihn wegzuräumen nimmt also niemandem etwas weg.
+    await db
+      .updateTable("user")
+      .set({ isPrimordialAdmin: false })
+      .where("isPrimordialAdmin", "=", true)
+      .execute()
+      .catch(() => {});
+
     await restore();
   }
 }
