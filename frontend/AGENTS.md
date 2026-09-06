@@ -915,3 +915,21 @@ instead, and the draft is left untouched. Typing that stops dead mid-word with n
 the opposite of what the research asked for, and a live "97.500 / 100.000" is worse still — word
 counters were rejected outright as pressure. Say what the limit is once, at the moment it
 matters. Interpolate limits through `formatCount()` so they read as German (100.000, not 100000).
+
+## Geprüft wird mit `npm run type-check`, nicht mit einer einzelnen Konfiguration
+
+`vue-tsc --build` — das ist es, was der Bau ausführt, und es deckt **alle** tsconfig-Projekte ab.
+Ein `vue-tsc --noEmit -p tsconfig.app.json` sieht nur eines davon und meldet grün, während der
+Deploy danach abbricht.
+
+Der Fall, an dem das auffiel: `let timer: number` für ein `setTimeout`. Unter `tsconfig.app.json`
+gilt die DOM-Fassung, die eine Zahl zurückgibt; ein anderes Projekt zieht die Node-Typen herein,
+und dort heißt der Rückgabewert `Timeout`. Lokal grün, auf dem Server rot — nach dem Bau, also
+erst nachdem die Beta schon halb umgestellt war.
+
+Für Zeitgeber deshalb `ReturnType<typeof globalThis.setTimeout>` statt `number`; das stimmt in
+beiden Welten.
+
+`npm run build` läuft lokal nur mit gesetztem `VITE_ENVIRONMENT` — ohne das bricht `build-only`
+mit einer Meldung darüber ab, was kein Codefehler ist. `type-check` allein braucht es nicht und
+ist das, worauf es hier ankommt.

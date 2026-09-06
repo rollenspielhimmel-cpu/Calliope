@@ -102,7 +102,7 @@ const DIALOG_FADE_MS = 200
  * Chat-Dialog hinterhergeworfen — über der Seite, auf der er inzwischen steht, und ohne ihn
  * angefordert zu haben. Ein Modal, das von selbst aufgeht, sperrt alles dahinter.
  */
-let dialogSwap: number | undefined
+let dialogSwap: ReturnType<typeof globalThis.setTimeout> | undefined
 
 function openChat(chatGroupId: string) {
   showingNotifications.value = false
