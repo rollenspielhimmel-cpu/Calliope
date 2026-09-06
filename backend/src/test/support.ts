@@ -111,19 +111,59 @@ export async function addMember(
   return cookie;
 }
 
+/** PostgreSQLs Code für „deadlock detected". */
+const DEADLOCK = "40P01";
+
+/**
+ * Führt ein Aufräumen aus und wiederholt es, wenn PostgreSQL es als Verklemmung abgeräumt hat.
+ *
+ * **Zwei Dateien, die gleichzeitig aufräumen, können sich verklemmen.** Die eine löscht eine
+ * Rundmail, die andere ihre Konten; über die Fremdschlüssel landen beide in
+ * `user_in_chat_group` und räumen dessen Zeilen in entgegengesetzter Reihenfolge ab. PostgreSQL
+ * bemerkt den Kreis und wirft eine der beiden hinaus — welche, ist Zufall.
+ *
+ * Der Preis dafür war ein ganzer Lauf: Das abgebrochene Aufräumen ließ neun Konten stehen, eines
+ * davon mit dem Ur-Admin-Platz daran, und der nächste Lauf starb daran vollständig. Eine
+ * Verklemmung ist genau der Fall, für den PostgreSQL selbst zum Wiederholen rät — sie sagt nichts
+ * darüber, dass die Anweisung falsch wäre, nur dass zwei zur selben Zeit liefen.
+ *
+ * Kein Warten zwischen den Versuchen: Der Verlierer wird erst zurückgerollt, wenn der Gewinner
+ * fertig ist, also ist der Weg beim zweiten Versuch schon frei.
+ */
+export async function cleanUpRetryingOnDeadlock(
+  clean: () => Promise<void>,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // deno-lint-ignore no-await-in-loop -- ein Versuch nach dem anderen, das ist der Sinn
+      await clean();
+      return;
+    } catch (error) {
+      const deadlocked = typeof error === "object" && error !== null &&
+        "code" in error && error.code === DEADLOCK;
+
+      if (!deadlocked || attempt === 2) {
+        throw error;
+      }
+    }
+  }
+}
+
 /**
  * Sessions and memberships cascade with the user, but groups do not — `created_by` is
  * nullable and set to null instead — so their groups have to go first.
  */
-export async function deleteUsers(usernames: Array<string>): Promise<void> {
-  const userIds = db
-    .selectFrom("user")
-    .select("id")
-    .where("username", "in", usernames);
+export function deleteUsers(usernames: Array<string>): Promise<void> {
+  return cleanUpRetryingOnDeadlock(async () => {
+    const userIds = db
+      .selectFrom("user")
+      .select("id")
+      .where("username", "in", usernames);
 
-  await db.deleteFrom("writingGroup").where("createdBy", "in", userIds)
-    .execute();
-  await db.deleteFrom("user").where("username", "in", usernames).execute();
+    await db.deleteFrom("writingGroup").where("createdBy", "in", userIds)
+      .execute();
+    await db.deleteFrom("user").where("username", "in", usernames).execute();
+  });
 }
 
 /**

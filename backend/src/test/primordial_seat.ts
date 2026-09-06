@@ -140,7 +140,59 @@ async function waitForSeat(
   take: () => Promise<boolean>,
   purpose: string,
 ): Promise<void> {
+  const wedged = await onePass(take);
+
+  if (wedged === TAKEN) {
+    return;
+  }
+
+  // **Ein Halter, der sich die ganze Wartezeit nicht rührt, ist keiner mehr.**
+  //
+  // Bis hierher galt nur ein *leerer* Platz als verwaist. Ein abgebrochener Lauf hinterlässt aber
+  // den anderen Fall: Seine Vorrichtung hat sich den Platz geholt und starb, bevor sie ihn
+  // zurückgab — das Konto steht noch da, mit dem Platz daran. Der ist dann nicht leer, wird also
+  // nie repariert, und **jeder spätere Lauf stirbt vollständig**: Die Datei, der das Konto gehört,
+  // kann sich nicht einmal mehr anmelden, weil es ihren Namen schon gibt, und alle anderen warten
+  // ihre Minute ab und werden rot. So sind zwei Läufe hintereinander entstanden, 48 rote Tests und
+  // dann 53, aus einem einzigen Aufräumen, das in eine Verklemmung lief.
+  //
+  // **Erst nach der vollen Wartezeit, und nur bei ein und demselben Namen.** Wer den Platz mitten
+  // aus einer laufenden Datei zieht, baut genau den Fehler, für den es diese Datei gibt. Eine
+  // Minute lang ununterbrochen derselbe fremde Halter kommt in einem gesunden Lauf nicht vor:
+  // Geliehen wird für einen Test, und der ist in etwa einer Sekunde durch.
+  if (wedged !== undefined) {
+    await claim(wedged, ROOT_ADMIN_USERNAME);
+
+    if (await onePass(take) === TAKEN) {
+      return;
+    }
+  }
+
+  throw new Error(
+    `the primordial seat did not come free within ${
+      (ATTEMPTS * PAUSE_MILLISECONDS) / 1000
+    } seconds (${purpose}${
+      wedged === undefined ? "" : `, ${wedged} sat on it the whole time`
+    })`,
+  );
+}
+
+/** Sagt in `onePass`, dass der Platz genommen wurde — also kein Halter und kein Name. */
+const TAKEN = Symbol("taken");
+
+/**
+ * Eine volle Wartezeit lang versuchen.
+ *
+ * Zurück kommt `TAKEN`, wenn es geklappt hat; sonst der Name, der die ganze Zeit unverändert
+ * daraufsaß, und `undefined`, wenn der Platz zwischendurch den Halter gewechselt hat — dann war es
+ * gewöhnliches Gedränge, und da ist niemandem etwas wegzunehmen.
+ */
+async function onePass(
+  take: () => Promise<boolean>,
+): Promise<string | undefined | typeof TAKEN> {
   let vacant = 0;
+  let seen: string | undefined;
+  let sameThroughout = true;
 
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     // deno-lint-ignore no-await-in-loop -- sequential is the point: this waits for a lock
@@ -148,12 +200,19 @@ async function waitForSeat(
 
     if (who === undefined) {
       vacant++;
+      sameThroughout = false;
     } else {
       vacant = 0;
 
+      if (seen === undefined) {
+        seen = who;
+      } else if (seen !== who) {
+        sameThroughout = false;
+      }
+
       // deno-lint-ignore no-await-in-loop -- ein Versuch nach dem anderen, das ist die Warteschleife
       if (who === ROOT_ADMIN_USERNAME && await take()) {
-        return;
+        return TAKEN;
       }
     }
 
@@ -167,11 +226,9 @@ async function waitForSeat(
     await new Promise((resolve) => setTimeout(resolve, PAUSE_MILLISECONDS));
   }
 
-  throw new Error(
-    `the primordial seat did not come free within ${
-      (ATTEMPTS * PAUSE_MILLISECONDS) / 1000
-    } seconds (${purpose})`,
-  );
+  // Das hochgefahrene Konto ist nie festgefahren: Auf ihm steht der Platz zwischen zwei Dateien.
+  // Kam `take` trotzdem nicht zum Zug, liegt der Grund woanders, und ein Eingriff hier verdeckt ihn.
+  return sameThroughout && seen !== ROOT_ADMIN_USERNAME ? seen : undefined;
 }
 
 /**
