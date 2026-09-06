@@ -59,8 +59,14 @@ const selected = computed<ListChats200ResultsItem | undefined>(() =>
  * A selection has to name something in the list. Leaving a chat, declining an invitation or
  * being removed from one takes it away underneath the pane, which would otherwise sit blank:
  * nothing to render, and not empty enough to offer the prompt.
+ *
+ * **`selectedId` gehört mit in die beobachteten Quellen**, und dass es fehlte, war der Grund,
+ * warum die Notbremse nie griff: Wird eine Auswahl auf ein Gespräch gesetzt, das die Liste nicht
+ * kennt — genau das tut eine Benachrichtigung —, ändert sich weder `chats` noch `selected`, das
+ * war ja vorher schon `undefined` und ist es danach immer noch. Der Wächter feuerte nicht, die
+ * Auswahl blieb hängen, und der rechte Bereich zeichnete nichts.
  */
-watch([chats, selected], () => {
+watch([chats, selected, selectedId], () => {
   if (
     data.value?.status === 200 &&
     selectedId.value !== undefined &&
@@ -96,10 +102,27 @@ watch(
   (chatGroupId) => {
     if (chatGroupId !== undefined) {
       selectedId.value = chatGroupId
+      // **Und die Liste nachladen.** Wer hierher geschickt wird, kommt von einer Benachrichtigung
+      // über ein Gespräch, das es beim letzten Abruf noch nicht gab — die zwischengespeicherte
+      // Liste kennt es also nicht, und ohne diesen Nachschlag zeigte die Auswahl auf nichts.
+      void refetch()
     }
   },
   { immediate: true },
 )
+
+/**
+ * Beim Öffnen nachladen.
+ *
+ * Der Strom sagt Bescheid, solange er steht — aber er ist nicht die einzige Art, wie ein Chat
+ * entsteht, und eine Liste, die jemand aufschlägt, soll aktuell sein. Billig genug: ein Abruf,
+ * wenn jemand das Postfach ansieht.
+ */
+watch(open, (isOpen) => {
+  if (isOpen) {
+    void refetch()
+  }
+})
 
 const creating = ref<boolean>(false)
 const createError = ref<string | undefined>(undefined)
@@ -231,16 +254,28 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
             Noch keine Chats.
           </p>
 
+          <!--
+            **Die Kante in der einen Akzentfarbe, wenn es eine Rundmail ist.**
+
+            Kein farbiger Hintergrund: `paper-3` heißt in dieser Oberfläche schon „aktive Zeile",
+            eine gefüllte Zeile läse sich also als ausgewählt. Und nichts aus der Warnfarbe — die
+            ist laut Designsystem nie für Mitglieder gedacht, und eine Ankündigung ist keine
+            Warnung.
+
+            Bleibt auch, nachdem geantwortet wurde: Die Kante sagt „das kam vom Team", nicht
+            „ungelesen", und das bleibt wahr.
+          -->
           <button
             v-for="chat in chats"
             :key="chat.id"
             type="button"
             class="flex min-h-[44px] flex-col items-start border-l-2 py-[7px] pl-[11px] text-left md:min-h-[38px]"
-            :class="
+            :class="[
               chat.id === selectedId
                 ? 'border-oak font-medium text-ink-1'
-                : 'border-line-4 text-ink-4 hover:border-line-5 hover:text-ink-1'
-            "
+                : 'border-line-4 text-ink-4 hover:border-line-5 hover:text-ink-1',
+              chat.isBroadcast && chat.id !== selectedId ? 'border-oak/70' : '',
+            ]"
             @click="selectedId = chat.id"
           >
             <span class="flex w-full items-baseline gap-2 text-[13px]">
@@ -252,7 +287,10 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
                 {{ chat.unreadMessages }} neu
               </span>
             </span>
+            <!-- Das Wort neben der Farbe, damit die Farbe die Bedeutung nicht allein tragen muss —
+                 wer Farben schlecht unterscheidet, liest es trotzdem. -->
             <span class="text-[11px] text-ink-6">
+              <template v-if="chat.isBroadcast">Rundmail · </template>
               {{ formatActivityTime(chat.lastActivityAt) }}
             </span>
           </button>

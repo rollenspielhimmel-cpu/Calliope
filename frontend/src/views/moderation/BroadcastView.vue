@@ -15,6 +15,7 @@ import {
   useApproveBroadcast,
   useCountBroadcastRecipients,
   useDiscardBroadcast,
+  useEditBroadcast,
   useListBroadcastQueue,
   useListBroadcastSenders,
   useListReleasedBroadcasts,
@@ -30,7 +31,7 @@ import { queryClient } from '@/lib/api/queryClient'
 import { ApiError } from '@/lib/api/apiFetch'
 import { failureMessage } from '@/lib/format/failure'
 import { formatActivityTime } from '@/lib/format/formatTime'
-import { berlinToUtc, formatBerlin } from '@/lib/format/berlinTime'
+import { berlinToUtc, formatBerlin, utcToBerlin } from '@/lib/format/berlinTime'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { pluralize } from '@/lib/format/formatText'
 import ModerationPage from '@/components/moderation/ModerationPage.vue'
@@ -136,7 +137,7 @@ const sentTo = ref<number | undefined>(undefined)
 const scheduledAt = ref<string | undefined>(undefined)
 
 /** Was beim Einreichen herauskam. Undefined, solange nichts eingereicht wurde. */
-const outcome = ref<'sent' | 'scheduled' | 'waiting' | undefined>(undefined)
+const outcome = ref<'sent' | 'scheduled' | 'waiting' | 'edited' | undefined>(undefined)
 const error = ref<string | undefined>(undefined)
 
 function toggleGroup(group: Group, on: boolean) {
@@ -194,6 +195,7 @@ const reachSentence = computed<string | undefined>(() => {
 })
 
 const { mutateAsync: submitBroadcast, isPending } = useSubmitBroadcast()
+const { mutateAsync: editBroadcast, isPending: isSavingEdit } = useEditBroadcast()
 
 const isComplete = computed<boolean>(
   () =>
@@ -212,11 +214,76 @@ const isComplete = computed<boolean>(
  * raus, alles andere wartet. Eine Oberfläche, die das aus der eigenen Rolle erriete, läge an dem
  * Tag falsch, an dem sich die Regel ändert.
  */
+/**
+ * Welche Rundmail gerade bearbeitet wird, oder keine.
+ *
+ * Dasselbe Formular für beides: Ein zweites, das dieselben Felder noch einmal aufführt, wäre zwei
+ * Stellen, an denen man einen neuen Haken vergisst.
+ */
+const editing = ref<string | undefined>(undefined)
+
+/**
+ * Ist der Termin schon vorbei?
+ *
+ * **Dann schickt das Freigeben sofort**, statt zu warten — „frühestens" heißt frühestens. Richtig,
+ * aber überraschend, wenn im Eintrag ein Zeitpunkt von gestern steht und der Knopf „Freigeben"
+ * heißt. Deshalb sagt die Oberfläche es in dem Moment, in dem jemand drückt.
+ */
+function isOverdue(entry: ListBroadcastQueue200Item): boolean {
+  return entry.scheduledFor !== null && Date.parse(entry.scheduledFor) <= Date.now()
+}
+
+/**
+ * Holt eine Rundmail ins Formular.
+ *
+ * **Was hier hineingeht, ist der gespeicherte Stand** und nicht das, was gerade im Formular stand —
+ * wer bearbeiten will, will das ändern, was dasteht.
+ */
+function startEditing(entry: ListBroadcastQueue200Item) {
+  editing.value = entry.publicationId
+  subject.value = entry.subject
+  body.value = entry.body
+  chosen.value = [...entry.audienceGroups]
+  includeUnverified.value = entry.includeUnverified
+  deliverToInbox.value = entry.deliverToInbox
+  deliverByEmail.value = entry.deliverByEmail
+  publishInArchive.value = entry.publishInArchive
+  sendAs.value = entry.sendAsUserId ?? ''
+  scheduledFor.value = entry.scheduledFor === null ? '' : utcToBerlin(entry.scheduledFor)
+  outcome.value = undefined
+  error.value = undefined
+  confirming.value = false
+  tab.value = 'compose'
+}
+
+function cancelEditing() {
+  editing.value = undefined
+  resetForm()
+}
+
+function resetForm() {
+  confirming.value = false
+  subject.value = ''
+  scheduledFor.value = ''
+  sendAs.value = ''
+  body.value = ''
+  chosen.value = []
+  includeUnverified.value = false
+  deliverToInbox.value = true
+  deliverByEmail.value = false
+  publishInArchive.value = false
+}
+
 async function submit() {
   error.value = undefined
   outcome.value = undefined
   sentTo.value = undefined
   scheduledAt.value = undefined
+
+  if (editing.value !== undefined) {
+    await saveEdit(editing.value)
+    return
+  }
 
   try {
     const answer = await submitBroadcast({
@@ -251,11 +318,43 @@ async function submit() {
     return
   }
 
-  confirming.value = false
-  subject.value = ''
-  scheduledFor.value = ''
-  sendAs.value = ''
-  body.value = ''
+  resetForm()
+
+  await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
+}
+
+/**
+ * Speichert eine Bearbeitung.
+ *
+ * **Jede Bearbeitung setzt die Freigabe zurück** — das entscheidet der Server, nicht diese Datei.
+ * Für die Warteschlange ändert das nichts, dort ist ohnehin nichts freigegeben; ein Geplantes
+ * wandert dadurch zurück nach oben und braucht wieder ein zweites Augenpaar. Genau das ist der
+ * Sinn: Sonst ließe man Harmloses absegnen und tauschte danach den Text.
+ */
+async function saveEdit(publicationId: string) {
+  try {
+    await editBroadcast({
+      publicationId,
+      data: {
+        subject: subject.value.trim(),
+        body: body.value.trim(),
+        audienceGroups: chosen.value,
+        includeUnverified: includeUnverified.value,
+        deliverToInbox: deliverToInbox.value,
+        deliverByEmail: deliverByEmail.value,
+        publishInArchive: publishInArchive.value,
+        sendAsUserId: sendAs.value === '' ? null : sendAs.value,
+        scheduledFor: scheduledForUtc.value,
+      },
+    })
+  } catch (failure) {
+    error.value = failureMessage(failure, 'Das ging nicht. Versuch es noch einmal.')
+    return
+  }
+
+  outcome.value = 'edited'
+  editing.value = undefined
+  resetForm()
 
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
 }
@@ -370,6 +469,22 @@ function audienceOf(groups: string[]): string {
 
     <div class="mt-5">
       <template v-if="tab === 'compose'">
+        <!-- Dasselbe Formular für Neues und für Bearbeitetes. Ein zweites mit denselben Feldern
+             wären zwei Stellen, an denen man einen neuen Haken vergisst. -->
+        <div
+          v-if="editing !== undefined"
+          class="mb-5 flex max-w-[684px] flex-wrap items-baseline gap-x-3 gap-y-1"
+        >
+          <p class="text-row text-ink-2">Du bearbeitest eine eingereichte Rundmail.</p>
+          <button
+            type="button"
+            class="min-h-11 text-[12.5px] text-ink-5 hover:text-oak-deep md:min-h-0"
+            @click="cancelEditing"
+          >
+            Abbrechen
+          </button>
+        </div>
+
         <form class="flex max-w-[684px] flex-col gap-5" @submit.prevent="confirming = true">
           <FieldGroup>
             <Field>
@@ -567,11 +682,15 @@ function audienceOf(groups: string[]): string {
             </template>
           </p>
           <div class="mt-3 flex flex-wrap gap-2">
-            <Button :disabled="isPending" @click="submit">
-              <Spinner v-if="isPending" />
-              Zur Freigabe einreichen
+            <Button :disabled="isPending || isSavingEdit" @click="submit">
+              <Spinner v-if="isPending || isSavingEdit" />
+              {{ editing === undefined ? 'Zur Freigabe einreichen' : 'Änderung speichern' }}
             </Button>
-            <Button variant="outline" :disabled="isPending" @click="confirming = false">
+            <Button
+              variant="outline"
+              :disabled="isPending || isSavingEdit"
+              @click="confirming = false"
+            >
               Abbrechen
             </Button>
           </div>
@@ -591,6 +710,13 @@ function audienceOf(groups: string[]): string {
         <p v-else-if="outcome === 'waiting'" class="mt-4 text-note text-ink-5" role="status">
           Eingereicht. Sie steht jetzt in der Warteschlange und geht raus, sobald jemand anderes aus
           der Administration sie freigibt.
+        </p>
+
+        <!-- Ein Satz für beide Fälle, weil das Ergebnis dasselbe ist: Nach einer Bearbeitung steht
+             sie in der Warteschlange, gleich woher sie kam. Ob eine Freigabe zurückgenommen wurde,
+             wusste nur, wer sie vorher hatte — und dem sagt es der Hinweis unter „Geplant". -->
+        <p v-else-if="outcome === 'edited'" class="mt-4 text-note text-ink-5" role="status">
+          Gespeichert. Sie steht wieder in der Warteschlange und braucht eine Freigabe.
         </p>
 
         <p v-if="error" class="mt-4 text-[12.5px] text-destructive" role="alert">{{ error }}</p>
@@ -629,13 +755,25 @@ function audienceOf(groups: string[]): string {
               Termin: {{ formatBerlin(entry.scheduledFor) }}
             </p>
 
+            <p v-if="isOverdue(entry)" class="mt-1 text-[12px] text-ink-3">
+              Der Termin ist verstrichen — Freigeben schickt sie sofort.
+            </p>
+
             <div class="mt-3 flex flex-wrap gap-2">
               <Button
                 size="sm"
                 :disabled="isApproving || isDiscarding"
                 @click="approve(entry.publicationId)"
               >
-                {{ entry.scheduledFor ? 'Freigeben' : 'Freigeben und senden' }}
+                {{ entry.scheduledFor && !isOverdue(entry) ? 'Freigeben' : 'Freigeben und senden' }}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="isApproving || isDiscarding"
+                @click="startEditing(entry)"
+              >
+                Bearbeiten
               </Button>
               <Button
                 variant="ghost"
@@ -679,6 +817,17 @@ function audienceOf(groups: string[]): string {
               </p>
 
               <div class="mt-3 flex flex-wrap gap-2">
+                <!-- Bearbeiten nimmt die Freigabe zurück, und deshalb steht der Satz daneben: Wer
+                     hier tippt, holt die Rundmail zurück in die Warteschlange und braucht wieder
+                     ein zweites Augenpaar. Das soll niemand erst hinterher merken. -->
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="isApproving || isDiscarding"
+                  @click="startEditing(entry)"
+                >
+                  Bearbeiten
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -688,6 +837,9 @@ function audienceOf(groups: string[]): string {
                   Verwerfen
                 </Button>
               </div>
+              <p class="mt-1.5 text-[12px] text-ink-6">
+                Bearbeiten nimmt die Freigabe zurück — sie wandert dann wieder in die Warteschlange.
+              </p>
             </li>
           </ul>
         </section>
@@ -722,9 +874,20 @@ function audienceOf(groups: string[]): string {
                 entry.releasedAt === null ? 'ohne Zeitangabe' : formatActivityTime(entry.releasedAt)
               }}
             </p>
+            <!-- Der Bearbeiter steht nur da, wenn er ein anderer ist. Wer seinen eigenen Entwurf
+                 nachbessert, hat nichts erklärt bekommen müssen; zwei gleiche Namen nebeneinander
+                 wären Rauschen. -->
             <p class="mt-0.5 text-[12px] text-ink-6">
-              Geschrieben von {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }} ·
-              Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
+              Geschrieben von {{ entry.writtenByUsername ?? 'einem gelöschten Konto'
+              }}<template
+                v-if="
+                  entry.editedByUsername !== null &&
+                  entry.editedByUsername !== entry.writtenByUsername
+                "
+              >
+                · Bearbeitet von {{ entry.editedByUsername }}</template
+              >
+              · Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
             </p>
 
             <BroadcastReplies :broadcast-id="entry.broadcastId" />

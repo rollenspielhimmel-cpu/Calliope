@@ -72,6 +72,12 @@ const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   writtenAt: z.iso.datetime({ offset: true }),
   approvedByUsername: z.string().nullable(),
   approvedAt: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * Wer zuletzt bearbeitet hat — neben dem Verfasser, nicht statt seiner. Leer, solange niemand
+   * den eingereichten Text angefasst hat.
+   */
+  editedByUsername: z.string().nullable(),
+  editedAt: z.iso.datetime({ offset: true }).nullable(),
   releasedAt: z.iso.datetime({ offset: true }).nullable(),
   /**
    * Beim Versand festgehalten, nicht später gezählt — und zwei Zahlen, weil die Wege verschieden
@@ -277,6 +283,7 @@ export default new OpenAPIHono()
       const refusal = await BroadcastQueueService.edit(
         c.req.valid("param").publicationId,
         c.req.valid("json"),
+        c.get("user"),
       );
 
       switch (refusal) {

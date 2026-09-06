@@ -509,6 +509,8 @@ export interface ProfileQuestionOption {
 export interface Publication {
   approvedAt: string | null;
   approvedBy: string | null;
+  editedAt: string | null;
+  editedBy: string | null;
   id: Generated<string>;
   kind: PublicationKind;
   releasedAt: string | null;
@@ -1396,6 +1398,8 @@ export const PUBLICATION_SCHEMA = z.object({
   approvedBy: z.uuidv7().nullable(),
   approvedAt: z.iso.datetime({ offset: true }).nullable(),
   releasedAt: z.iso.datetime({ offset: true }).nullable(),
+  editedBy: z.uuidv7().nullable(),
+  editedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export const REPORT_SCHEMA = z.object({

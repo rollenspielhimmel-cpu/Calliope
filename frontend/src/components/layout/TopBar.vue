@@ -76,10 +76,31 @@ const startChatAt = ref<string | undefined>(undefined)
 /**
  * A chat has no URL, so following its notification means swapping one dialog for the other.
  * Both live here, which is the only place that can do it.
+ *
+ * **Nacheinander, nicht im selben Durchgang.** Beide Dialoge sind Modale: Jedes hängt eine eigene
+ * Schicht an den Seitenkörper, sperrt dahinter die Zeigereignisse und blendet den Rest für
+ * Hilfstechnik aus — und räumt das beim Schließen wieder weg, mit einer Ausblendung, das Element
+ * steht also noch kurz. Ging das zweite auf, während das erste noch verschwand, überlappten Aufbau
+ * und Abbau: Der eine räumte weg, was der andere gerade gesetzt hatte. Zurück blieb eine dunkle
+ * Schicht, die keinem der beiden mehr gehörte — jeder weitere Dialog ging darunter auf, und nur
+ * ein Neuladen half.
+ *
+ * Ein Bild, das erst auffiel, als Rundmails anfingen, Chat-Benachrichtigungen zu erzeugen: Vorher
+ * hat diesen Tausch fast nie jemand ausgelöst.
+ *
+ * Die Wartezeit ist die Dauer der Ausblendung. Fällt sie zu knapp aus, ist das Schlimmste ein
+ * kurzes Flackern; zu lang wäre eine spürbare Pause. `duration-200` steht im Dialog, hier steht
+ * dieselbe Zahl.
  */
+const DIALOG_FADE_MS = 200
+
 function openChat(chatGroupId: string) {
-  startChatAt.value = chatGroupId
-  showingChats.value = true
+  showingNotifications.value = false
+
+  globalThis.setTimeout(() => {
+    startChatAt.value = chatGroupId
+    showingChats.value = true
+  }, DIALOG_FADE_MS)
 }
 
 // Pages request a chat through this ref when they start a conversation; see openChatDialog.ts.

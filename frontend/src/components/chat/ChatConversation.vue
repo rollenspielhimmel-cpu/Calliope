@@ -31,6 +31,8 @@ const props = defineProps<{
   title: string
   live: ListMessages200ResultsItem[]
   isFavourite?: boolean
+  /** Ein Rundmail-Gespräch: Die erste Nachricht darin ist die Rundmail selbst. */
+  isBroadcast?: boolean
 }>()
 
 const emit = defineEmits<{ favouriteChanged: [] }>()
@@ -120,6 +122,17 @@ const rows = computed<Array<{ message: ListMessages200ResultsItem; startsRun: bo
         Date.parse(message.createdAt) - Date.parse(previous.createdAt) > RUN_WINDOW_MS,
     }
   }),
+)
+
+/**
+ * Welche Zeile die Rundmail selbst ist — nur sie wird hervorgehoben, die Antworten nicht.
+ *
+ * **Die erste, und nur solange keine älteren nachzuladen sind.** In einem Rundmail-Gespräch ist die
+ * Rundmail die älteste Nachricht; gäbe es noch eine Seite davor, wäre die oberste angezeigte nicht
+ * die erste, und die Hervorhebung träfe eine Antwort.
+ */
+const broadcastMessageId = computed<string | undefined>(() =>
+  props.isBroadcast === true && !hasOlder.value ? messages.value[0]?.id : undefined,
 )
 
 const { data: membersData } = useListChatMemberships(() => props.chatGroupId, { limit: 50 })
@@ -352,8 +365,16 @@ async function submit() {
             {{ row.message.createdByUsername ?? 'Gelöschtes Konto' }}:
           </span>
           <!-- Plain text, deliberately: a chat is remarks, not prose. Lange Nachrichten werden
-               angeschnitten — siehe `MessageText.vue`, das es wegen der Rundmails gibt. -->
-          <MessageText :text="row.message.text" />
+               angeschnitten — siehe `MessageText.vue`, das es wegen der Rundmails gibt.
+
+               Die Kante nur an der Rundmail selbst, nicht an den Antworten — auch nicht an denen
+               der Administration. Dieselbe Farbe wie im Postfach, damit es dieselbe Aussage ist:
+               „das kam vom Team". -->
+          <div
+            :class="row.message.id === broadcastMessageId ? 'border-l-2 border-oak/70 pl-2.5' : ''"
+          >
+            <MessageText :text="row.message.text" />
+          </div>
 
           <!-- The same row a post carries, at the same weight and in the same place. -->
           <div

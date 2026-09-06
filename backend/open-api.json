@@ -46752,6 +46752,11 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
+                      "editedByUsername": { "type": ["string", "null"] },
+                      "editedAt": {
+                        "type": ["string", "null"],
+                        "format": "date-time"
+                      },
                       "releasedAt": {
                         "type": ["string", "null"],
                         "format": "date-time"
@@ -46781,6 +46786,8 @@
                       "writtenAt",
                       "approvedByUsername",
                       "approvedAt",
+                      "editedByUsername",
+                      "editedAt",
                       "releasedAt",
                       "recipientCount",
                       "emailRecipientCount",
@@ -47070,6 +47077,11 @@
                       "type": ["string", "null"],
                       "format": "date-time"
                     },
+                    "editedByUsername": { "type": ["string", "null"] },
+                    "editedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
                     "releasedAt": {
                       "type": ["string", "null"],
                       "format": "date-time"
@@ -47099,6 +47111,8 @@
                     "writtenAt",
                     "approvedByUsername",
                     "approvedAt",
+                    "editedByUsername",
+                    "editedAt",
                     "releasedAt",
                     "recipientCount",
                     "emailRecipientCount",
@@ -47414,6 +47428,11 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
+                      "editedByUsername": { "type": ["string", "null"] },
+                      "editedAt": {
+                        "type": ["string", "null"],
+                        "format": "date-time"
+                      },
                       "releasedAt": {
                         "type": ["string", "null"],
                         "format": "date-time"
@@ -47443,6 +47462,8 @@
                       "writtenAt",
                       "approvedByUsername",
                       "approvedAt",
+                      "editedByUsername",
+                      "editedAt",
                       "releasedAt",
                       "recipientCount",
                       "emailRecipientCount",

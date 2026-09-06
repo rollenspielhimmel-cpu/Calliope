@@ -3,6 +3,7 @@ import { Mailer } from "@/src/mail/mailer.ts";
 import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
 import { generate as generateUuidV7 } from "@std/uuid/v7";
+import { publishChatEvent } from "@/src/event/chat_events.ts";
 
 /**
  * One message to many members. The only thing here that is not obvious is who is left out, and
@@ -67,6 +68,19 @@ export type BroadcastReach = {
 };
 
 export type BroadcastResult = BroadcastReach;
+
+/**
+ * Was beim Zustellen ins Postfach entstanden ist — genug, um es den offenen Fenstern zu sagen.
+ *
+ * Die Kennungen der Nachrichten stehen darin, weil sie beim Anlegen erzeugt werden und nicht aus
+ * der Datenbank zurückgelesen: Ein Ereignis trägt die Nachricht selbst, damit der Browser sie
+ * anzeigen kann, ohne noch einmal zu fragen.
+ */
+type Delivered = {
+  sender: { id: string; username: string } | null;
+  chats: Array<{ id: string; messageId: string; recipientId: string }>;
+  at: string;
+};
 
 /**
  * Der Empfängerkreis, ungefiltert nach Adressbestätigung.
@@ -211,7 +225,7 @@ async function publishInArchive(
       // Forum nach einer alten Ankündigung sucht, sucht meistens genau danach.
       text: `${subject}\n\n${body}`,
       isDraft: false,
-      createdBy: sender,
+      createdBy: sender?.id ?? null,
     })
     .returning("id")
     .executeTakeFirstOrThrow();
@@ -228,18 +242,20 @@ async function publishInArchive(
  */
 async function resolveSender(
   sendAsUserId: string | null,
-): Promise<string | null> {
-  if (sendAsUserId !== null) {
-    return sendAsUserId;
-  }
-
-  const rootAdmin = await db
+): Promise<{ id: string; username: string } | null> {
+  const sender = await db
     .selectFrom("user")
-    .select("id")
-    .where("isPrimordialAdmin", "=", true)
+    .select(["id", "username"])
+    .$if(sendAsUserId !== null, (query) =>
+      // deno-lint-ignore no-non-null-assertion -- das `$if` läuft nur, wenn er gesetzt ist
+      query.where("id", "=", sendAsUserId!))
+    .$if(
+      sendAsUserId === null,
+      (query) => query.where("isPrimordialAdmin", "=", true),
+    )
     .executeTakeFirst();
 
-  return rootAdmin?.id ?? null;
+  return sender ?? null;
 }
 
 /**
@@ -268,7 +284,7 @@ async function deliverToInbox(
   body: string,
   sendAsUserId: string | null,
   recipientIds: string[],
-): Promise<number> {
+): Promise<Delivered> {
   const sender = await resolveSender(sendAsUserId);
   const now = new Date().toISOString();
 
@@ -297,11 +313,12 @@ async function deliverToInbox(
     // Kennung trägt ihre Entstehungszeit, und darauf beruht die Sortierung der Nachrichten.
     const chats = present.map((recipient) => ({
       id: generateUuidV7(),
+      messageId: generateUuidV7(),
       recipientId: recipient.id,
     }));
 
     if (chats.length === 0) {
-      return 0;
+      return { sender, chats: [], at: now };
     }
 
     await transaction
@@ -309,7 +326,7 @@ async function deliverToInbox(
       .values(chats.map((chat) => ({
         id: chat.id,
         title: subject,
-        createdBy: sender,
+        createdBy: sender?.id ?? null,
         broadcastId,
       })))
       .execute();
@@ -329,7 +346,8 @@ async function deliverToInbox(
       .values(chats.map((chat) => ({
         chatGroupId: chat.id,
         text: body,
-        createdBy: sender,
+        id: chat.messageId,
+        createdBy: sender?.id ?? null,
         // Leer, obwohl es eine echte Verfasserin gibt: Die steht auf der Veröffentlichung, und
         // dieselbe Angabe zweimal zu führen heißt, sie irgendwann an einer Stelle zu vergessen.
         // Für Antworten der Administration ist die Spalte da — dort gibt es keine Veröffentlichung,
@@ -354,12 +372,12 @@ async function deliverToInbox(
         recipientId: chat.recipientId,
         type: "broadcast_received" as const,
         chatGroupId: chat.id,
-        actorId: chat.recipientId === sender ? null : sender,
+        actorId: chat.recipientId === sender?.id ? null : sender?.id ?? null,
       })))
       .execute();
 
     // Zurückgegeben wird, was wirklich zugestellt wurde — nicht, was vorher gezählt worden war.
-    return chats.length;
+    return { sender, chats, at: now };
   });
 }
 
@@ -380,8 +398,10 @@ async function sendToInbox(
   sendAsUserId: string | null,
   recipientIds: string[],
 ): Promise<number> {
+  let delivered: Delivered;
+
   try {
-    return await deliverToInbox(
+    delivered = await deliverToInbox(
       broadcastId,
       subject,
       body,
@@ -391,7 +411,7 @@ async function sendToInbox(
   } catch (failure) {
     console.warn("Retrying the inbox delivery of a broadcast", failure);
 
-    return await deliverToInbox(
+    delivered = await deliverToInbox(
       broadcastId,
       subject,
       body,
@@ -399,6 +419,33 @@ async function sendToInbox(
       recipientIds,
     );
   }
+
+  // **Dieselbe Bahn, die jede gewöhnliche Nachricht nimmt** — und das war der Fehler: Die
+  // Zustellung schrieb ihre Zeilen direkt in die Datenbank und sagte den offenen Fenstern nichts.
+  // Wer die Seite offen hatte, als die Rundmail kam, behielt eine Chatliste ohne sie; die Glocke
+  // führte dann auf ein Gespräch, das seine Liste nicht kannte, und der Dialog blieb leer.
+  //
+  // Nach dem Schreiben, nie darin: Ein Strom, der sich nicht beschreiben lässt, darf keine
+  // Zustellung umwerfen, die längst gespeichert ist. Und ohne den Absender selbst — er sieht die
+  // Rundmail dort, wo er sie geschrieben hat.
+  for (const chat of delivered.chats) {
+    if (chat.recipientId === delivered.sender?.id) {
+      continue;
+    }
+
+    publishChatEvent([chat.recipientId], {
+      chatGroupId: chat.id,
+      message: {
+        id: chat.messageId,
+        text: body,
+        createdAt: delivered.at,
+        createdBy: delivered.sender?.id ?? null,
+        createdByUsername: delivered.sender?.username ?? null,
+      },
+    });
+  }
+
+  return delivered.chats.length;
 }
 
 /**

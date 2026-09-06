@@ -80,6 +80,15 @@ export type QueuedBroadcast = BroadcastInput & {
   writtenAt: string;
   approvedByUsername: string | null;
   approvedAt: string | null;
+  /**
+   * Wer sie zuletzt bearbeitet hat, falls jemand — **neben** dem Verfasser, nicht an dessen Stelle.
+   *
+   * Der Fall, für den die Warteschlange existiert, ist der, dass jemand etwas Grenzwertiges
+   * einreicht und eine Administration es entschärft. Dann müssen beide Namen dastehen; eine
+   * Spalte, die von einem auf den anderen überginge, hätte den ersten gelöscht.
+   */
+  editedByUsername: string | null;
+  editedAt: string | null;
   releasedAt: string | null;
   /** Wie viele es ins Postfach bekommen haben, oder null, wenn dieser Weg nicht gewählt war. */
   recipientCount: number | null;
@@ -116,6 +125,7 @@ function rows() {
     )
     .leftJoin("user as author", "author.id", "publication.writtenBy")
     .leftJoin("user as approver", "approver.id", "publication.approvedBy")
+    .leftJoin("user as editor", "editor.id", "publication.editedBy")
     .select([
       "publication.id as publicationId",
       "publication.status",
@@ -126,6 +136,8 @@ function rows() {
       "publication.writtenAt",
       "approver.username as approvedByUsername",
       "publication.approvedAt",
+      "editor.username as editedByUsername",
+      "publication.editedAt",
       "publication.releasedAt",
       "broadcast.id as broadcastId",
       "broadcast.subject",
@@ -152,6 +164,8 @@ function toQueued(row: {
   writtenAt: string;
   approvedByUsername: string | null;
   approvedAt: string | null;
+  editedByUsername: string | null;
+  editedAt: string | null;
   releasedAt: string | null;
   broadcastId: string;
   subject: string;
@@ -417,6 +431,7 @@ export type EditRefusal =
 async function edit(
   publicationId: string,
   input: BroadcastInput,
+  editor: User,
 ): Promise<EditRefusal | undefined> {
   const existing = await selectOne(publicationId);
 
@@ -441,6 +456,12 @@ async function edit(
         approvedAt: null,
         sendAsUserId: input.sendAsUserId,
         scheduledFor: input.scheduledFor,
+        // **Neben `written_by`, nicht an dessen Stelle.** Wer eingereicht hat, bleibt stehen: Der
+        // Fall, für den die Warteschlange existiert, ist der, dass jemand etwas Grenzwertiges
+        // einreicht und eine Administration es entschärft — und dann müssen beide Namen dastehen.
+        // Eine wandernde Spalte hätte den ersten gelöscht.
+        editedBy: editor.id,
+        editedAt: new Date().toISOString(),
       })
       .where("id", "=", publicationId)
       .execute();

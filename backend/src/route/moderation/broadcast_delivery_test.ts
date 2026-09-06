@@ -2,6 +2,10 @@ import { assert, assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
 import {
+  type ChatEvent,
+  subscribeToChatEvents,
+} from "@/src/event/chat_events.ts";
+import {
   clearRateLimits,
   deleteUsers,
   registerUser,
@@ -597,6 +601,83 @@ Deno.test("niemand benachrichtigt sich selbst über die eigene Rundmail", async 
     assert(others.length > 0);
     assert(others.every((row) => row.actorId !== null));
   } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("die Zustellung sagt offenen Fenstern Bescheid", async () => {
+  const cookies = await fixture();
+
+  const second = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", SECOND)
+    .executeTakeFirstOrThrow();
+
+  const seen: ChatEvent[] = [];
+  const unsubscribe = subscribeToChatEvents(second.id, (event) => {
+    seen.push(event);
+  });
+
+  try {
+    await submit(cookies.root);
+
+    // **Ohne das blieb eine offene Seite auf ihrer alten Chatliste sitzen.** Die Zustellung schrieb
+    // ihre Zeilen direkt in die Datenbank, ohne den Strom zu bedienen, den jede gewöhnliche
+    // Nachricht bedient — und die Glocke führte dann auf ein Gespräch, das die Liste nicht kannte.
+    assertEquals(seen.length, 1);
+
+    const [event] = seen;
+    assertExists(event);
+    assertEquals(event.message.text, BODY);
+    assertEquals(event.message.createdByUsername, ROOT);
+
+    // Das Ereignis nennt dasselbe Gespräch, das auch in der Datenbank steht — sonst zeigte die
+    // Oberfläche eine Nachricht in einem Faden, den es nicht gibt.
+    const chat = await db
+      .selectFrom("userInChatGroup")
+      .select("chatGroupId")
+      .where("userId", "=", second.id)
+      .where(
+        "chatGroupId",
+        "in",
+        db.selectFrom("chatGroup").select("id").where(
+          "broadcastId",
+          "=",
+          (await theBroadcast()).id,
+        ),
+      )
+      .executeTakeFirstOrThrow();
+
+    assertEquals(event.chatGroupId, chat.chatGroupId);
+  } finally {
+    unsubscribe();
+    await cleanUp();
+  }
+});
+
+Deno.test("der Absender bekommt kein Ereignis für die eigene Rundmail", async () => {
+  const cookies = await fixture();
+
+  const root = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", ROOT)
+    .executeTakeFirstOrThrow();
+
+  const seen: ChatEvent[] = [];
+  const unsubscribe = subscribeToChatEvents(root.id, (event) => {
+    seen.push(event);
+  });
+
+  try {
+    await submit(cookies.root);
+
+    // Dieselbe Regel wie beim gewöhnlichen Senden: Wer schreibt, sieht es dort, wo er geschrieben
+    // hat. Ein Ereignis an ihn selbst wäre eine Nachricht, die zweimal auftaucht.
+    assertEquals(seen, []);
+  } finally {
+    unsubscribe();
     await cleanUp();
   }
 });

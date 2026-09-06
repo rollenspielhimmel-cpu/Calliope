@@ -561,3 +561,56 @@ Deno.test("editing cannot smuggle in an unreleased sender", async () => {
 
   assertEquals(only(await waiting(cookies.second)).sendAsUsername, null);
 });
+
+Deno.test("eine Bearbeitung nennt den Bearbeiter, ohne den Verfasser zu löschen", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+
+  assertEquals(
+    (await request(
+      "PUT",
+      `/api/moderation/broadcast/queue/${created.publicationId}`,
+      cookies.second,
+      { ...BROADCAST, body: "Entschärft." },
+    )).status,
+    STATUS_CODE.OK,
+  );
+
+  const after = await db
+    .selectFrom("publication")
+    .leftJoin("user as author", "author.id", "publication.writtenBy")
+    .leftJoin("user as editor", "editor.id", "publication.editedBy")
+    .select([
+      "author.username as writtenBy",
+      "editor.username as editedBy",
+      "publication.editedAt",
+    ])
+    .where("publication.id", "=", created.publicationId)
+    .executeTakeFirstOrThrow();
+
+  // **Beide Namen, nicht einer statt des anderen.** Der Fall, für den die Warteschlange existiert,
+  // ist der, dass jemand etwas Grenzwertiges einreicht und eine Administration es entschärft. Ginge
+  // `written_by` auf den Bearbeiter über, stünde hinterher nur noch der Bearbeiter da — und dass
+  // überhaupt jemand etwas hatte entschärfen müssen, wäre nicht mehr zu sehen.
+  assertEquals(after.writtenBy, AUTHOR);
+  assertEquals(after.editedBy, SECOND);
+  assert(after.editedAt !== null);
+});
+
+Deno.test("was niemand bearbeitet hat, nennt keinen Bearbeiter", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+
+  const untouched = await db
+    .selectFrom("publication")
+    .select(["editedBy", "editedAt"])
+    .where("id", "=", created.publicationId)
+    .executeTakeFirstOrThrow();
+
+  // Leer und nicht etwa der Verfasser: „bearbeitet von" soll nur dastehen, wenn wirklich jemand
+  // hinterher etwas geändert hat.
+  assertEquals(untouched.editedBy, null);
+  assertEquals(untouched.editedAt, null);
+});
