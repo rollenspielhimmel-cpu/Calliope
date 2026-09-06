@@ -1,3 +1,8 @@
+import {
+  type ChatMessage,
+  ChatMessageService,
+} from "@/src/service/chat_message_service.ts";
+import { ChatGroupService } from "@/src/service/chat_group_service.ts";
 import { db } from "@/src/database/client.ts";
 
 /**
@@ -8,8 +13,8 @@ import { db } from "@/src/database/client.ts";
  * antwortete er dem Weihnachtsmann, läge sie in einem Postfach, das es nur an Weihnachten gibt.
  * Also liest das Team sie hier — über die Rundmail, zu der sie gehören.
  *
- * **Lesen darf die ganze Moderation, antworten nur die Administration.** Das erste steht in dieser
- * Datei und in den Routen daneben; das zweite kommt mit dem Antworten selbst.
+ * **Lesen darf die ganze Moderation, antworten nur die Administration.** Das erste steht in den
+ * Leseabfragen dieser Datei, das zweite in `reply` und der Route daneben.
  *
  * Für das Mitglied sieht nichts davon anders aus als ein gewöhnliches Gespräch: Es schreibt in
  * seinen Chat, und was zurückkommt, kommt von dem Namen, der auf der Rundmail stand.
@@ -190,11 +195,73 @@ async function readConversation(
       createdAt: message.createdAt,
       username: message.username,
       // Von der Teamseite: die Rundmail selbst, oder eine Nachricht von jemandem, der im Gespräch
-      // gar nicht sitzt. Das Zweite ist ab 2c-2 die Antwort der Administration.
+      // gar nicht sitzt — das ist die Antwort der Administration.
       fromTeam: message.id === broadcastMessage?.id ||
         message.memberId === null,
     })),
   };
 }
 
-export const BroadcastReplyService = { listReplies, readConversation };
+export type BroadcastReplyResult =
+  | { ok: true; message: ChatMessage; memberIds: string[] }
+  | { ok: false; reason: "not-found" };
+
+/**
+ * Die Administration antwortet in einem Rundmail-Gespräch.
+ *
+ * **Nach außen antwortet der Absender, nicht der Mensch.** `created_by` wird vom Gespräch
+ * abgelesen und nicht neu bestimmt: Dort steht schon der Absender, unter dem die Rundmail lief.
+ * Ihn hier noch einmal auszurechnen hieße, dieselbe Frage zweimal zu beantworten — und beim
+ * zweiten Mal womöglich anders, wenn die Freigabe des Absenders inzwischen zurückgenommen wurde.
+ * Mitten in einem Verlauf den Namen zu wechseln wäre für das Mitglied ein anderer Gesprächspartner.
+ *
+ * **`written_by` trägt den Menschen.** Das ist keine Höflichkeit gegenüber der Buchhaltung: Ohne
+ * die Spalte wäre eine Maske, hinter der niemand steht, und die Frage „wer hat das geschrieben"
+ * hätte auf dieser Plattform keine Antwort. Gelesen wird sie hier nicht — siehe `readConversation`.
+ *
+ * **Das Mitglied merkt nichts davon.** Es sieht eine Antwort in seinem Postfach, von dem Namen, der
+ * auf der Rundmail stand, in einem gewöhnlichen Gespräch. Wer wirklich getippt hat, erfährt es
+ * nicht, und genau das ist der Sinn der Kunstfigur.
+ *
+ * Die Rundmail steht in der Adresse, aus demselben Grund wie beim Lesen: Sonst wäre das eine
+ * Kennung, mit der die Administration in jedes Gespräch der Plattform hineinschreiben könnte.
+ */
+async function reply(
+  broadcastId: string,
+  chatGroupId: string,
+  text: string,
+  writtenBy: string,
+): Promise<BroadcastReplyResult> {
+  const chat = await db
+    .selectFrom("chatGroup")
+    .select(["id", "createdBy"])
+    .where("id", "=", chatGroupId)
+    .where("broadcastId", "=", broadcastId)
+    .executeTakeFirst();
+
+  if (chat === undefined) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  // **Ohne Absender keine Antwort.** `chat_group.created_by` wird leer, wenn das Konto der
+  // Kunstfigur gelöscht wird. Trotzdem zu schreiben ergäbe eine Nachricht ohne Namen mitten im
+  // Verlauf — für das Mitglied jemand Drittes. Lieber ein ehrliches Nein an die Administration.
+  if (chat.createdBy === null) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  const message = await ChatMessageService.insertMessage(
+    chat.id,
+    text,
+    chat.createdBy,
+    { writtenBy },
+  );
+
+  return {
+    ok: true,
+    message,
+    memberIds: await ChatGroupService.selectMemberIds(chat.id),
+  };
+}
+
+export const BroadcastReplyService = { listReplies, readConversation, reply };

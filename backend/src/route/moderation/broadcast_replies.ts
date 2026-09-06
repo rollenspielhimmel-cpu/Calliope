@@ -2,8 +2,14 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsModerator } from "@/src/middleware/authorized_as_platform_role.ts";
+import {
+  authorizedAsAdministrator,
+  authorizedAsModerator,
+} from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastReplyService } from "@/src/service/broadcast_reply_service.ts";
+import { publishChatEvent } from "@/src/event/chat_events.ts";
+import { notBlank } from "@/src/http/request_schema.ts";
+import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import {
   BAD_REQUEST_RESPONSE,
   COMMON_RESPONSES,
@@ -43,6 +49,19 @@ const CONVERSATION = z.object({
   messages: z.array(MESSAGE),
 });
 
+const REPLY_BODY = z.object({
+  text: notBlank(z.string().min(1).max(TEXT_LIMIT.messageText)),
+});
+
+/**
+ * Dieselbe Auskunft für „gibt es nicht" und „gehört nicht hierher".
+ *
+ * Zwei verschiedene Sätze wären eine Auskunft darüber, welche Kennungen es gibt — und die
+ * Antwort-Route nimmt eine Gesprächskennung von jemandem entgegen, der sie nicht selbst gesehen
+ * haben muss.
+ */
+const NOT_THIS_BROADCAST = "Dieses Gespräch gehört nicht zu dieser Rundmail.";
+
 const NO_SESSION_RESPONSE = {
   description: "No valid session",
   content: jsonContent(ERROR_RESPONSE),
@@ -50,6 +69,11 @@ const NO_SESSION_RESPONSE = {
 
 const NOT_AN_OPERATOR_RESPONSE = {
   description: "Not on the team",
+  content: jsonContent(ERROR_RESPONSE),
+} as const;
+
+const NOT_AN_ADMINISTRATOR_RESPONSE = {
+  description: "Not an administrator",
   content: jsonContent(ERROR_RESPONSE),
 } as const;
 
@@ -126,9 +150,73 @@ export default new OpenAPIHono()
 
       return conversation === undefined
         ? c.json(
-          { error: "Dieses Gespräch gehört nicht zu dieser Rundmail." },
+          { error: NOT_THIS_BROADCAST },
           STATUS_CODE.NotFound,
         )
         : c.json(conversation, STATUS_CODE.OK);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "post",
+      path: "/broadcast/{broadcastId}/replies/{chatGroupId}",
+      tags: [MODERATION_TAG],
+      summary: "Reply in a broadcast conversation",
+      description:
+        "Administrator only, unlike reading: a reply goes out under the sender the broadcast ran as, and speaking as the platform is not the same as watching what comes back. Stored with who actually wrote it; the member never sees that.",
+      operationId: "replyToBroadcast",
+      middleware: [authenticated, authorizedAsAdministrator] as const,
+      request: {
+        params: z.object({
+          broadcastId: z.uuidv7(),
+          chatGroupId: z.uuidv7(),
+        }),
+        body: { required: true, content: jsonContent(REPLY_BODY) },
+      },
+      responses: {
+        [STATUS_CODE.Created]: {
+          description: "The reply, as the team reads it",
+          content: jsonContent(MESSAGE),
+        },
+        [STATUS_CODE.NotFound]: {
+          description: "No such conversation for this broadcast",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
+        [STATUS_CODE.Forbidden]: NOT_AN_ADMINISTRATOR_RESPONSE,
+        ...BAD_REQUEST_RESPONSE,
+        ...COMMON_RESPONSES,
+      },
+    }),
+    async (c) => {
+      const { broadcastId, chatGroupId } = c.req.valid("param");
+      const { text } = c.req.valid("json");
+
+      const result = await BroadcastReplyService.reply(
+        broadcastId,
+        chatGroupId,
+        text,
+        c.get("user").id,
+      );
+
+      if (!result.ok) {
+        return c.json({ error: NOT_THIS_BROADCAST }, STATUS_CODE.NotFound);
+      }
+
+      // Nach dem Schreiben, nie darin: Ein Strom, in den sich nicht schreiben lässt, darf keine
+      // Nachricht umwerfen, die schon steht. Im Gespräch sitzt nur das Mitglied — der Absender
+      // gehört nicht hinein, und wer getippt hat, hat die Antwort in der Antwort.
+      publishChatEvent(result.memberIds, {
+        chatGroupId,
+        message: result.message,
+      });
+
+      return c.json({
+        id: result.message.id,
+        text: result.message.text,
+        createdAt: result.message.createdAt,
+        username: result.message.createdByUsername,
+        fromTeam: true,
+      }, STATUS_CODE.Created);
     },
   );

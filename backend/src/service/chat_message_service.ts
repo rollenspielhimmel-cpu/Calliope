@@ -63,14 +63,23 @@ async function listMessages(
   };
 }
 
+/**
+ * `writtenBy` nur, wo `createdBy` eine Maske ist.
+ *
+ * Bei einer gewöhnlichen Nachricht ist `created_by` die Wahrheit, und dieselbe Auskunft ein
+ * zweites Mal danebenzuschreiben heißt, sie irgendwann an einer Stelle zu vergessen. Gesetzt wird
+ * sie nur von der Antwort der Administration auf eine Rundmail: Nach außen trägt die den Absender,
+ * unter dem die Rundmail lief, und wer wirklich getippt hat, muss trotzdem festgehalten sein.
+ */
 async function insertMessage(
   chatGroupId: string,
   text: string,
   createdBy: string,
+  { writtenBy }: { writtenBy?: string } = {},
 ): Promise<ChatMessage> {
   const { id } = await db
     .insertInto("chatMessage")
-    .values({ chatGroupId, text, createdBy })
+    .values({ chatGroupId, text, createdBy, writtenBy: writtenBy ?? null })
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
