@@ -37,6 +37,8 @@ const MESSAGE = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   username: z.string().nullable(),
   fromTeam: z.boolean(),
+  // Die Rundmail selbst, nicht eine Antwort darauf. Ohne das liest sich der Verlauf falsch herum.
+  isAnnouncement: z.boolean(),
   writtenByUsername: z.string().nullable(),
 });
 

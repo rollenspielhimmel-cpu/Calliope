@@ -49,6 +49,8 @@ const MESSAGE = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   username: z.string().nullable(),
   fromTeam: z.boolean(),
+  // Die Rundmail selbst, nicht eine Antwort darauf. Ohne das liest sich der Verlauf falsch herum.
+  isAnnouncement: z.boolean(),
   // Leer bei allem außer den Antworten der Administration — siehe `broadcast_reply_service.ts`.
   writtenByUsername: z.string().nullable(),
 });
@@ -223,6 +225,8 @@ export default new OpenAPIHono()
         createdAt: result.message.createdAt,
         username: result.message.createdByUsername,
         fromTeam: true,
+        // Eine Antwort, nie die Rundmail selbst.
+        isAnnouncement: false,
         writtenByUsername: writer.username,
       }, STATUS_CODE.Created);
     },

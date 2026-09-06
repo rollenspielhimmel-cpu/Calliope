@@ -138,6 +138,13 @@ export type BroadcastConversationMessage = {
   /** Vom Team geschrieben — also die Rundmail selbst oder eine Antwort der Administration. */
   fromTeam: boolean;
   /**
+   * Die Rundmail selbst, mit der das Gespräch begann.
+   *
+   * Ohne diese Unterscheidung steht sie im Verlauf als „Team" wie eine Antwort der Administration —
+   * eine Antwort vor der Frage, ohne Verfasser. Genau so ist sie beim Durchklicken gelesen worden.
+   */
+  isAnnouncement: boolean;
+  /**
    * Wer wirklich getippt hat, wenn `username` eine Maske ist. Sonst leer.
    *
    * Leer bleibt es bei jeder Nachricht des Mitglieds — dort ist `username` die Wahrheit — und auch
@@ -228,6 +235,7 @@ async function readConversation(
       // gar nicht sitzt — das ist die Antwort der Administration.
       fromTeam: message.id === broadcastMessage?.id ||
         message.memberId === null,
+      isAnnouncement: message.id === broadcastMessage?.id,
       writtenByUsername: message.writtenByUsername,
     })),
   };

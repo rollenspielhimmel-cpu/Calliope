@@ -131,7 +131,12 @@ async function submitReply(chatGroupId: string) {
               {{ reply.username ?? 'Gelöschtes Konto' }}
               <span class="text-ink-6">· {{ formatActivityTime(reply.lastReplyAt) }}</span>
             </span>
-            <span class="mt-0.5 max-w-[70ch] text-[12px] text-ink-5">{{ reply.excerpt }}</span>
+            <!-- Beim Aufklappen weg: Die Nachricht steht dann im Verlauf direkt darunter. -->
+            <span
+              v-if="openConversation !== reply.chatGroupId"
+              class="mt-0.5 max-w-[70ch] text-[12px] text-ink-5"
+              >{{ reply.excerpt }}</span
+            >
           </button>
 
           <!-- **Der Weg zum Arbeiten.** Gelesen wird an beiden Orten, gearbeitet nur im Postfach —

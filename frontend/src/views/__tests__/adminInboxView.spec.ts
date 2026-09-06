@@ -43,6 +43,7 @@ const CONVERSATION = {
       createdAt: '2026-09-06T10:00:00.000Z',
       username: OPEN.username,
       fromTeam: false,
+      isAnnouncement: false,
       writtenByUsername: null,
     },
   ],

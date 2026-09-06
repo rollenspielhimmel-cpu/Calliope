@@ -31,6 +31,7 @@ const CONVERSATION = {
       createdAt: '2026-09-06T09:00:00.000Z',
       username: 'Admin',
       fromTeam: true,
+      isAnnouncement: true,
       writtenByUsername: null,
     },
     {
@@ -39,6 +40,7 @@ const CONVERSATION = {
       createdAt: '2026-09-06T10:00:00.000Z',
       username: REPLY.username,
       fromTeam: false,
+      isAnnouncement: false,
       writtenByUsername: null,
     },
     {
@@ -47,6 +49,7 @@ const CONVERSATION = {
       createdAt: '2026-09-06T11:00:00.000Z',
       username: 'Admin',
       fromTeam: true,
+      isAnnouncement: false,
       writtenByUsername: 'kommafehler',
     },
   ],
@@ -162,5 +165,36 @@ describe('Verfasser', () => {
     // Deren Verfasser steht auf der Veröffentlichung und wird oben unter „Gesendete" gezeigt.
     // Zweimal geführt heißt irgendwann an einer Stelle vergessen.
     expect(wrapper.text().match(/geschrieben von/gu)?.length).toBe(1)
+  })
+})
+
+describe('Rundmail im Verlauf', () => {
+  it('nennt sie Rundmail und nicht Team', async () => {
+    const wrapper = await openConversation()
+
+    // **Die Verwechslung, die es einmal gab.** Als „Team" stand die Ankündigung da wie eine Antwort
+    // der Administration — eine Antwort vor der Frage, ohne Verfasser. Der Verlauf las sich damit
+    // rückwärts, obwohl er richtig sortiert war.
+    expect(wrapper.text()).toContain('Rundmail ·')
+  })
+
+  it('blendet den Anriss aus, sobald das Gespräch offen ist', async () => {
+    const wrapper = mount(BroadcastReplies, {
+      props: { broadcastId: '01900000-0000-7000-8000-0000000000ff' },
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+
+    await wrapper.findAll('button')[0]?.trigger('click')
+    await flushPromises()
+
+    // Zugeklappt einmal: als Vorschau.
+    expect(wrapper.text().match(/Danke für die Ankündigung\./gu)).toHaveLength(1)
+
+    await conversationToggle(wrapper)?.trigger('click')
+    await flushPromises()
+
+    // Aufgeklappt weiterhin einmal — im Verlauf, nicht doppelt. Bei einem Gespräch mit nur einer
+    // Nachricht las sich die Wiederholung wie ein Fehler.
+    expect(wrapper.text().match(/Danke für die Ankündigung\./gu)).toHaveLength(1)
   })
 })

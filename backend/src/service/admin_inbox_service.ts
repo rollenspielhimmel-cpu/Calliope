@@ -154,6 +154,15 @@ export type InboxMessage = {
   username: string | null;
   /** Von der Teamseite — also die Rundmail selbst oder eine Antwort der Administration. */
   fromTeam: boolean;
+  /**
+   * Die Rundmail, mit der das Gespräch begann — nicht eine Antwort darauf.
+   *
+   * **Ohne diese Unterscheidung liest sich der Verlauf falsch herum.** Beide standen als „Team",
+   * und die Ankündigung sah damit aus wie eine Antwort der Administration: eine Antwort vor der
+   * Frage, ohne Verfasser. Genau so ist es beim Durchklicken gelesen worden, und der Schluss daraus
+   * war folgerichtig — die Anzeige log über das, was die erste Nachricht ist.
+   */
+  isAnnouncement: boolean;
   /** Wer wirklich getippt hat, wenn `username` eine Maske ist. Sonst leer. */
   writtenByUsername: string | null;
 };
@@ -216,6 +225,9 @@ async function readConversation(
   // erste Nachricht seine, und `memberId` sagt das bereits.
   const [firstMessage] = messages;
 
+  const isAnnouncement = (id: string) =>
+    chat.broadcastId !== null && id === firstMessage?.id;
+
   return {
     chatGroupId: chat.id,
     username: chat.username,
@@ -225,9 +237,8 @@ async function readConversation(
       text: message.text,
       createdAt: message.createdAt,
       username: message.username,
-      fromTeam:
-        (chat.broadcastId !== null && message.id === firstMessage?.id) ||
-        message.memberId === null,
+      fromTeam: isAnnouncement(message.id) || message.memberId === null,
+      isAnnouncement: isAnnouncement(message.id),
       writtenByUsername: message.writtenByUsername,
     })),
   };

@@ -19,6 +19,7 @@ export type TeamMessage = {
   createdAt: string
   username: string | null
   fromTeam: boolean
+  isAnnouncement: boolean
   writtenByUsername: string | null
 }
 
@@ -28,12 +29,20 @@ defineProps<{ messages: TeamMessage[] }>()
 <template>
   <ul class="flex flex-col gap-2 border-l-2 border-line-4 pl-3">
     <li v-for="message in messages" :key="message.id">
-      <!-- Der Verfasser steht nur bei den Antworten der Administration. Bei einer Rundmail ist er
+      <!-- **Die Rundmail heißt Rundmail, nicht „Team".**
+           Stand sie wie eine Antwort der Administration da, las sich der Verlauf verkehrt herum:
+           eine Antwort, die vor der Frage steht, und der obendrein der Verfasser fehlt. Genau so
+           ist es beim Durchklicken gelesen worden — und der Schluss war folgerichtig, die Anzeige
+           war es nicht.
+
+           Der Verfasser steht nur bei den Antworten der Administration. Bei der Rundmail ist er
            leer, weil er auf der Veröffentlichung steht und unter „Gesendete" gezeigt wird; bei
            einer Nachricht des Mitglieds ist der Name selbst schon die Wahrheit. -->
       <p class="text-[12px] text-ink-6">
-        {{ message.fromTeam ? 'Team' : (message.username ?? 'Gelöschtes Konto') }} ·
-        {{ formatActivityTime(message.createdAt) }}
+        <template v-if="message.isAnnouncement">Rundmail</template>
+        <template v-else-if="message.fromTeam">Team</template>
+        <template v-else>{{ message.username ?? 'Gelöschtes Konto' }}</template>
+        · {{ formatActivityTime(message.createdAt) }}
         <template v-if="message.writtenByUsername">
           · geschrieben von {{ message.writtenByUsername }}
         </template>

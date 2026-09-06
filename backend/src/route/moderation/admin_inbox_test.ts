@@ -344,3 +344,45 @@ Deno.test("ein gewöhnliches Mitglied erst recht nicht", async () => {
     await cleanUp();
   }
 });
+
+Deno.test("die Rundmail heißt Rundmail, nicht Team", async () => {
+  const cookies = await fixture();
+
+  try {
+    const broadcastId = await sendBroadcast(cookies.root);
+    const chatGroupId = await chatOf(broadcastId, MEMBER);
+
+    await write(cookies.member, chatGroupId, REPLY);
+    await answer(cookies.silent, broadcastId, chatGroupId, ANSWER);
+
+    const { messages } = await (await request(
+      "GET",
+      `/api/moderation/inbox/${chatGroupId}`,
+      cookies.root,
+    )).json();
+
+    const announcement = messages.find(
+      (message: { text: string }) => message.text === BODY,
+    );
+    assertExists(announcement);
+
+    // **Sonst liest sich der Verlauf verkehrt herum.** Stand die Rundmail als „Team" da wie eine
+    // Antwort, war sie eine Antwort vor der Frage — und der fehlte obendrein der Verfasser. Genau so
+    // ist es beim Durchklicken gelesen worden, und der Schluss war folgerichtig.
+    assertEquals(announcement.isAnnouncement, true);
+
+    const fromTeam = messages.find(
+      (message: { text: string }) => message.text === ANSWER,
+    );
+    assertExists(fromTeam);
+    assertEquals(fromTeam.isAnnouncement, false);
+
+    const fromMember = messages.find(
+      (message: { text: string }) => message.text === REPLY,
+    );
+    assertExists(fromMember);
+    assertEquals(fromMember.isAnnouncement, false);
+  } finally {
+    await cleanUp();
+  }
+});

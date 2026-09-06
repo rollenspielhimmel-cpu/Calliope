@@ -48990,6 +48990,7 @@
                           },
                           "username": { "type": ["string", "null"] },
                           "fromTeam": { "type": "boolean" },
+                          "isAnnouncement": { "type": "boolean" },
                           "writtenByUsername": { "type": ["string", "null"] }
                         },
                         "required": [
@@ -48998,6 +48999,7 @@
                           "createdAt",
                           "username",
                           "fromTeam",
+                          "isAnnouncement",
                           "writtenByUsername"
                         ]
                       }
@@ -49335,6 +49337,7 @@
                     "createdAt": { "type": "string", "format": "date-time" },
                     "username": { "type": ["string", "null"] },
                     "fromTeam": { "type": "boolean" },
+                    "isAnnouncement": { "type": "boolean" },
                     "writtenByUsername": { "type": ["string", "null"] }
                   },
                   "required": [
@@ -49343,6 +49346,7 @@
                     "createdAt",
                     "username",
                     "fromTeam",
+                    "isAnnouncement",
                     "writtenByUsername"
                   ]
                 }
@@ -49914,6 +49918,7 @@
                           },
                           "username": { "type": ["string", "null"] },
                           "fromTeam": { "type": "boolean" },
+                          "isAnnouncement": { "type": "boolean" },
                           "writtenByUsername": { "type": ["string", "null"] }
                         },
                         "required": [
@@ -49922,6 +49927,7 @@
                           "createdAt",
                           "username",
                           "fromTeam",
+                          "isAnnouncement",
                           "writtenByUsername"
                         ]
                       }

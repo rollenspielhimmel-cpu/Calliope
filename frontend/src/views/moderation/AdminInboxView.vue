@@ -84,7 +84,13 @@ function toggle(chatGroupId: string) {
                  kein Merker, den jemand pflegen muss, sondern eine Aussage über den Verlauf. -->
             <span v-if="entry.awaitingReply" class="text-oak-deep">· offen</span>
           </span>
-          <span class="mt-0.5 max-w-[70ch] text-[12.5px] text-ink-5">{{ entry.excerpt }}</span>
+          <!-- Beim Aufklappen weg: Die Nachricht steht dann direkt darunter im Verlauf, und bei
+               einem Gespräch mit nur einer Nachricht liest sich das doppelt wie ein Fehler. -->
+          <span
+            v-if="openConversation !== entry.chatGroupId"
+            class="mt-0.5 max-w-[70ch] text-[12.5px] text-ink-5"
+            >{{ entry.excerpt }}</span
+          >
         </button>
 
         <TeamConversation
