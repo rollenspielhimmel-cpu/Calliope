@@ -4,6 +4,7 @@ import { Plus } from '@lucide/vue'
 import { useForm } from '@tanstack/vue-form'
 import { useQueryClient } from '@tanstack/vue-query'
 import { getListChatsQueryKey, useCreateChat, useListChats } from '@/api/chats/chats'
+import { getGetCurrentUserQueryKey } from '@/api/auth/auth'
 import type { ListChats200ResultsItem, ListMessages200ResultsItem } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
@@ -80,6 +81,19 @@ watch([chats, selected, selectedId], () => {
 const liveByChat = ref<Record<string, ListMessages200ResultsItem[]>>({})
 
 const { connected } = useChatStream((event) => {
+  /**
+   * **Ein Gespräch, das die Liste nicht kennt, ist ein neues** — eine Rundmail oder eine erste
+   * Nachricht von jemandem. Und nur dann kann eine Benachrichtigung dazugekommen sein.
+   *
+   * Die Zahl an der Glocke steht in `/api/auth/me` und wurde bisher nur beim Laden der Seite
+   * geholt: Wer still auf einer Seite saß, sah eine Rundmail erst, wenn er irgendwo hinklickte.
+   *
+   * Hier zu unterscheiden statt bei jedem Ereignis nachzufragen, ist der Unterschied zwischen einer
+   * Anfrage je neuem Gespräch und einer je Chatnachricht — in einem laufenden Gespräch wären das
+   * Dutzende für eine Zahl, die sich dabei gar nicht ändert.
+   */
+  const isNewConversation = !chats.value.some((chat) => chat.id === event.chatGroupId)
+
   const existing = liveByChat.value[event.chatGroupId] ?? []
   liveByChat.value = {
     ...liveByChat.value,
@@ -87,6 +101,10 @@ const { connected } = useChatStream((event) => {
   }
   // The list carries unread counts and the ordering, both of which just changed.
   void queryClient.invalidateQueries(listOnlyFilter(getListChatsQueryKey()))
+
+  if (isNewConversation) {
+    void queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() })
+  }
 })
 
 // The stream cannot say what arrived while it was away, so coming back is a refetch rather

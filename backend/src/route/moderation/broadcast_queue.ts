@@ -25,9 +25,21 @@ import {
 const BROADCAST_BODY = z.object({
   subject: notBlank(z.string().min(1).max(TEXT_LIMIT.broadcastSubject)),
   body: notBlank(z.string().min(1).max(TEXT_LIMIT.broadcastBody)),
-  audienceGroups: z
-    .array(z.enum(["administrator", "moderator", "member"]))
-    .min(1),
+  /**
+   * Die Gruppen — und seit den namentlich Genannten darf sie leer sein.
+   *
+   * Vorher stand hier `.min(1)`, weil eine Rundmail ohne Empfängerkreis nichts erreicht. Das gilt
+   * weiter, wird aber jetzt weiter unten gegen beides zusammen geprüft: Gruppen *oder* Namen, und
+   * mindestens eines von beidem.
+   */
+  audienceGroups: z.array(z.enum(["administrator", "moderator", "member"])),
+  /**
+   * Ausdrücklich genannte Konten, zusätzlich zu den Gruppen.
+   *
+   * Die Vereinigung, nicht das eine oder das andere: Wer die Moderation wählt und zwei Namen nennt,
+   * erreicht beide. Doppelt bekommt niemand etwas — dafür sorgt die Abfrage, nicht dieses Schema.
+   */
+  memberIds: z.array(z.uuidv7()).max(TEXT_LIMIT.broadcastNamedRecipients),
   includeUnverified: z.boolean(),
   /**
    * Die drei Wege, getrennt zu haben: Postfach auf der Plattform, E-Mail, Forum-Archiv.
@@ -48,7 +60,35 @@ const BROADCAST_BODY = z.object({
    * bedacht werden muss.
    */
   scheduledFor: z.iso.datetime({ offset: true }).nullable(),
-});
+})
+  .refine(
+    (broadcast) =>
+      broadcast.audienceGroups.length > 0 || broadcast.memberIds.length > 0,
+    {
+      error:
+        "Wähle Gruppen aus oder nenne Mitglieder — sonst erreicht sie niemanden.",
+      path: ["audienceGroups"],
+    },
+  )
+  /**
+   * **Namentlich Genannte und das Archiv schließen sich aus.**
+   *
+   * Eine Rundmail an Mod X, User Z und zwei weitere ist keine Ankündigung, sondern eine Nachricht
+   * an vier Leute. Sie im Forum abzulegen hieße, sie allen zu zeigen — und das Archiv ist der Ort,
+   * an dem neue Mitglieder nachlesen, was je *angekündigt* wurde.
+   *
+   * Das Formular bietet den Haken in diesem Fall gar nicht erst an. Verbindlich ist es hier, weil
+   * das Formular nur vorschlägt.
+   */
+  .refine(
+    (broadcast) =>
+      broadcast.memberIds.length === 0 || !broadcast.publishInArchive,
+    {
+      error:
+        "Eine Rundmail an namentlich genannte Mitglieder gehört nicht ins Archiv.",
+      path: ["publishInArchive"],
+    },
+  );
 
 const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   publicationId: z.uuidv7(),
@@ -87,6 +127,10 @@ const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   emailRecipientCount: z.number().int().nullable(),
   /** Gesetzt, sobald sie im Forum steht. Die Oberfläche verlinkt darauf. */
   archivePostId: z.uuidv7().nullable(),
+  /** Die namentlich Genannten mit Namen — die Kennungen allein sagen niemandem etwas. */
+  namedRecipients: z.array(
+    z.object({ id: z.uuidv7(), username: z.string() }),
+  ),
 });
 
 const NO_SESSION_RESPONSE = {

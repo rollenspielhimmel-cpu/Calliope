@@ -412,6 +412,11 @@ export interface Broadcast {
   updatedAt: Generated<string>;
 }
 
+export interface BroadcastRecipient {
+  broadcastId: string;
+  userId: string;
+}
+
 export interface BroadcastSender {
   enabledAt: Generated<string>;
   enabledBy: string | null;
@@ -788,6 +793,7 @@ export interface DB {
   blockedEmailDomain: BlockedEmailDomain;
   blockedWord: BlockedWord;
   broadcast: Broadcast;
+  broadcastRecipient: BroadcastRecipient;
   broadcastSender: BroadcastSender;
   broadcastTemplate: BroadcastTemplate;
   chatGroup: ChatGroup;
@@ -1291,6 +1297,11 @@ export const BROADCAST_SCHEMA = z.object({
   deliverToInbox: z.boolean(),
   deliverByEmail: z.boolean(),
   emailRecipientCount: int32.nullable(),
+});
+
+export const BROADCAST_RECIPIENT_SCHEMA = z.object({
+  broadcastId: z.uuidv7(),
+  userId: z.uuidv7(),
 });
 
 export const BROADCAST_SENDER_SCHEMA = z.object({

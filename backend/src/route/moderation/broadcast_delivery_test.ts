@@ -43,6 +43,7 @@ const BROADCAST = {
   subject: SUBJECT,
   body: BODY,
   audienceGroups: ["administrator"],
+  memberIds: [],
   includeUnverified: false,
   deliverToInbox: true,
   deliverByEmail: false,
@@ -791,6 +792,116 @@ Deno.test("der Archiv-Beitrag ist ein Dokument, keine Zeichenkette", async () =>
     // Und der Volltext kommt aus dem Dokument, kann ihm also nicht widersprechen.
     assert(post.text.startsWith(SUBJECT));
     assert(post.text.includes(BODY.split("\n\n")[0] ?? ""));
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("namentlich Genannte kommen zu den Gruppen hinzu", async () => {
+  const cookies = await fixture();
+
+  const member = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", MEMBER)
+    .executeTakeFirstOrThrow();
+
+  try {
+    // MEMBER ist gewöhnliches Mitglied und stünde über die Gruppe „administrator" nicht drin.
+    await submit(cookies.root, { memberIds: [member.id] });
+
+    const broadcast = await theBroadcast();
+
+    const reached = await db
+      .selectFrom("chatGroup")
+      .innerJoin(
+        "userInChatGroup",
+        "userInChatGroup.chatGroupId",
+        "chatGroup.id",
+      )
+      .innerJoin("user", "user.id", "userInChatGroup.userId")
+      .select("user.username")
+      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .execute();
+
+    const names = reached.map((row) => row.username);
+
+    // **Die Vereinigung, nicht das eine oder das andere.**
+    assert(names.includes(MEMBER));
+    assert(names.includes(SECOND));
+    assert(names.includes(ROOT));
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("wer über Gruppe und Namen drinsteht, bekommt sie einmal", async () => {
+  const cookies = await fixture();
+
+  const second = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", SECOND)
+    .executeTakeFirstOrThrow();
+
+  try {
+    // SECOND ist Administration — und wird zusätzlich namentlich genannt.
+    await submit(cookies.root, { memberIds: [second.id] });
+
+    const chats = await db
+      .selectFrom("chatGroup")
+      .innerJoin(
+        "userInChatGroup",
+        "userInChatGroup.chatGroupId",
+        "chatGroup.id",
+      )
+      .innerJoin("user", "user.id", "userInChatGroup.userId")
+      .select("chatGroup.id")
+      .where("chatGroup.broadcastId", "=", (await theBroadcast()).id)
+      .where("user.username", "=", SECOND)
+      .execute();
+
+    // Zwei Gespräche wären zwei Rundmails im selben Postfach, für dieselbe Nachricht.
+    assertEquals(chats.length, 1);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("namentlich Genannte und das Archiv schließen sich aus", async () => {
+  const cookies = await fixture();
+
+  const member = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", MEMBER)
+    .executeTakeFirstOrThrow();
+
+  try {
+    const response = await submit(cookies.root, {
+      memberIds: [member.id],
+      publishInArchive: true,
+    });
+
+    // Eine Rundmail an vier Leute ist keine Ankündigung. Sie im Forum abzulegen hieße, sie allen zu
+    // zeigen — und das Archiv ist der Ort, an dem nachgelesen wird, was je *angekündigt* wurde.
+    // Das Formular bietet den Haken dort nicht an; verbindlich ist diese Absage.
+    assertEquals(response.status, STATUS_CODE.BadRequest);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("ohne Gruppe und ohne Namen wird abgelehnt", async () => {
+  const cookies = await fixture();
+
+  try {
+    const response = await submit(cookies.root, {
+      audienceGroups: [],
+      memberIds: [],
+    });
+
+    assertEquals(response.status, STATUS_CODE.BadRequest);
   } finally {
     await cleanUp();
   }

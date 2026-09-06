@@ -1,5 +1,5 @@
 import { sql } from "kysely";
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type { PublicationStatus } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
@@ -42,6 +42,14 @@ export type BroadcastInput = {
   subject: string;
   body: string;
   audienceGroups: BroadcastGroup[];
+  /**
+   * Ausdruecklich genannte Konten, zusaetzlich zu den Gruppen.
+   *
+   * Beides zugleich: Wer die Moderation waehlt und zwei Namen nennt, erreicht beide. Wer nur Namen
+   * nennt, schreibt an genau die — und dann ist es keine Ankuendigung mehr, weshalb das Archiv in
+   * diesem Fall gar nicht erst angeboten wird.
+   */
+  memberIds: string[];
   includeUnverified: boolean;
   /** Null heißt: unter dem Ur-Admin-Konto, das dauerhaft zur Verfügung steht. */
   sendAsUserId: string | null;
@@ -96,13 +104,47 @@ export type QueuedBroadcast = BroadcastInput & {
   emailRecipientCount: number | null;
   /** Gesetzt, sobald sie im Archiv steht — die Oberfläche verlinkt darauf. */
   archivePostId: string | null;
+  /**
+   * Die namentlich Genannten **mit Namen**, für die Liste und fürs Bearbeiten.
+   *
+   * `memberIds` allein reicht nicht: Beim Bearbeiten stünden sonst Kennungen im Formular, und
+   * niemand weiß, wer `01a077b4-…` ist.
+   */
+  namedRecipients: Array<{ id: string; username: string }>;
 };
 
 function audienceOf(broadcast: BroadcastInput): BroadcastAudience {
   return {
     groups: broadcast.audienceGroups,
+    memberIds: broadcast.memberIds,
     includeUnverified: broadcast.includeUnverified,
   };
+}
+
+/**
+ * Schreibt die namentlich Genannten, nachdem die alten weg sind.
+ *
+ * **Ersetzen statt ergänzen**, weil Bearbeiten den Empfängerkreis neu bestimmt: Wer einen Namen
+ * herausnimmt, will ihn heraus haben, und ein Ergänzen ließe ihn stehen. Dass die Freigabe dabei
+ * ohnehin zurückgesetzt wird, ist der Grund, warum das gefahrlos ist — es sieht noch jemand darauf.
+ *
+ * `onConflict … doNothing`, weil dieselbe Kennung zweimal in der Liste stehen kann, wenn jemand im
+ * Formular herumklickt. Eine Absage dafür wäre Strenge ohne Zweck.
+ */
+async function insertNamedRecipients(
+  transaction: Transaction,
+  broadcastId: string,
+  memberIds: string[],
+): Promise<void> {
+  if (memberIds.length === 0) {
+    return;
+  }
+
+  await transaction
+    .insertInto("broadcastRecipient")
+    .values(memberIds.map((userId) => ({ broadcastId, userId })))
+    .onConflict((conflict) => conflict.doNothing())
+    .execute();
 }
 
 function deliveryOf(broadcast: BroadcastInput): BroadcastDelivery {
@@ -151,6 +193,23 @@ function rows() {
       "broadcast.recipientCount",
       "broadcast.emailRecipientCount",
     ])
+    // Die namentlich Genannten als Feld daneben, statt in einer zweiten Abfrage: Die Liste zeigt
+    // sie mit an, und eine Rundmail ohne Namen bekommt eine leere Reihung statt null.
+    .select(
+      sql<
+        string[]
+      >`coalesce(array(select user_id::text from broadcast_recipient where broadcast_id = broadcast.id), array[]::text[])`
+        .as("memberIds"),
+    )
+    // **Und dieselben mit Namen.** Ohne die stünden beim Bearbeiten Kennungen im Formular, und
+    // niemand weiß, wer `01a077b4-…` ist. Nach Namen sortiert, weil eine Liste, die jemand liest,
+    // findbar sein soll — „in welcher Reihenfolge angeklickt" ist keine.
+    .select(
+      sql<
+        Array<{ id: string; username: string }>
+      >`coalesce((select json_agg(json_build_object('id', u.id, 'username', u.username) order by u.username) from broadcast_recipient r join "user" u on u.id = r.user_id where r.broadcast_id = broadcast.id), '[]'::json)`
+        .as("namedRecipients"),
+    )
     .where("publication.kind", "=", "broadcast");
 }
 
@@ -171,6 +230,7 @@ function toQueued(row: {
   subject: string;
   body: string;
   audienceGroups: string[];
+  memberIds: string[];
   includeUnverified: boolean;
   deliverToInbox: boolean;
   deliverByEmail: boolean;
@@ -178,6 +238,7 @@ function toQueued(row: {
   archivePostId: string | null;
   recipientCount: number | null;
   emailRecipientCount: number | null;
+  namedRecipients: Array<{ id: string; username: string }>;
 }): QueuedBroadcast {
   return {
     ...row,
@@ -226,7 +287,7 @@ async function submit(
       .returning("id")
       .executeTakeFirstOrThrow();
 
-    await transaction
+    const broadcast = await transaction
       .insertInto("broadcast")
       .values({
         publicationId: publication.id,
@@ -238,7 +299,10 @@ async function submit(
         deliverByEmail: input.deliverByEmail,
         publishInArchive: input.publishInArchive,
       })
-      .execute();
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    await insertNamedRecipients(transaction, broadcast.id, input.memberIds);
 
     return publication.id;
   });
@@ -466,7 +530,7 @@ async function edit(
       .where("id", "=", publicationId)
       .execute();
 
-    await transaction
+    const broadcast = await transaction
       .updateTable("broadcast")
       .set({
         subject: input.subject,
@@ -479,7 +543,16 @@ async function edit(
         updatedAt: new Date().toISOString(),
       })
       .where("publicationId", "=", publicationId)
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    // Ersetzt, nicht ergänzt: Wer beim Bearbeiten einen Namen herausnimmt, will ihn heraus haben.
+    await transaction
+      .deleteFrom("broadcastRecipient")
+      .where("broadcastId", "=", broadcast.id)
       .execute();
+
+    await insertNamedRecipients(transaction, broadcast.id, input.memberIds);
   });
 
   return undefined;

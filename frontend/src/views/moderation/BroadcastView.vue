@@ -8,7 +8,7 @@
  * same paper — but without its formatting toolbar. The mail is plain text, as every message this
  * platform sends is, so a toolbar would offer marks that the send would silently discard.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   getListBroadcastQueueQueryKey,
   getListReleasedBroadcastsQueryKey,
@@ -39,6 +39,7 @@ import ModerationTabs from '@/components/moderation/ModerationTabs.vue'
 import type { ModerationTab } from '@/components/moderation/ModerationTabs.vue'
 import BroadcastSendersPanel from '@/components/moderation/BroadcastSendersPanel.vue'
 import BroadcastReplies from '@/components/moderation/BroadcastReplies.vue'
+import UserPicker from '@/components/user/UserPicker.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
@@ -77,6 +78,52 @@ const GROUPS: ReadonlyArray<{ value: Group; label: string }> = [
  * statt jeden.
  */
 const chosen = ref<Group[]>([])
+
+/**
+ * Ausdrücklich genannte Mitglieder, zusätzlich zu den Gruppen.
+ *
+ * **Beides zugleich, nicht entweder/oder:** Wer die Moderation wählt und zwei Namen nennt, erreicht
+ * beide. Wer nur Namen nennt, schreibt an genau die — und dann ist es keine Ankündigung mehr,
+ * weshalb das Archiv in diesem Fall gar nicht erst angeboten wird.
+ *
+ * Name und Kennung zusammen: Die Kennung geht an den Server, der Name steht in der Liste. Ihn erst
+ * nachzuschlagen hieße, für jede Zeile eine Abfrage zu stellen, deren Antwort man gerade in der
+ * Hand hatte.
+ */
+const namedRecipients = ref<Array<{ id: string; username: string }>>([])
+
+const memberIds = computed<string[]>(() => namedRecipients.value.map((member) => member.id))
+
+/**
+ * Sobald jemand namentlich genannt ist, ist es keine Ankündigung mehr — dann verschwindet der
+ * Archiv-Haken, und was vielleicht schon gesetzt war, geht mit.
+ */
+const mayPublishInArchive = computed<boolean>(() => memberIds.value.length === 0)
+
+function addRecipient(member: { id: string; username: string }) {
+  if (memberIds.value.includes(member.id)) {
+    return
+  }
+
+  namedRecipients.value = [...namedRecipients.value, { id: member.id, username: member.username }]
+}
+
+function removeRecipient(id: string) {
+  namedRecipients.value = namedRecipients.value.filter((member) => member.id !== id)
+}
+
+/**
+ * Nimmt den Archiv-Haken zurück, sobald jemand namentlich dazukommt.
+ *
+ * Sonst bliebe er gesetzt, verschwände nur aus dem Blick, und der Server wiese das Absenden ab —
+ * mit einer Meldung über einen Haken, den man gar nicht mehr sieht.
+ */
+watch(mayPublishInArchive, (mayPublish) => {
+  if (!mayPublish) {
+    publishInArchive.value = false
+  }
+})
+
 const includeUnverified = ref<boolean>(false)
 
 /**
@@ -155,10 +202,16 @@ function toggleGroup(group: Group, on: boolean) {
 const { data } = useCountBroadcastRecipients(
   computed(() => ({
     groups: chosen.value.join(','),
+    memberIds: memberIds.value.join(','),
     includeUnverified: includeUnverified.value ? 'true' : 'false',
   })),
-  // Asking for nobody is a 400, so the count waits until at least one group is chosen.
-  { query: { enabled: computed(() => chosen.value.length > 0) } },
+  // Asking for nobody is a 400, so the count waits until somebody is chosen — durch eine Gruppe
+  // oder namentlich, beides zählt.
+  {
+    query: {
+      enabled: computed(() => chosen.value.length > 0 || memberIds.value.length > 0),
+    },
+  },
 )
 
 /**
@@ -252,6 +305,8 @@ function startEditing(entry: ListBroadcastQueue200Item) {
   subject.value = entry.subject
   body.value = entry.body
   chosen.value = [...entry.audienceGroups]
+  // Nur die Kennungen kommen zurueck; die Namen holt der Waehler beim Anzeigen nach.
+  namedRecipients.value = [...entry.namedRecipients]
   includeUnverified.value = entry.includeUnverified
   deliverToInbox.value = entry.deliverToInbox
   deliverByEmail.value = entry.deliverByEmail
@@ -276,6 +331,7 @@ function resetForm() {
   sendAs.value = ''
   body.value = ''
   chosen.value = []
+  namedRecipients.value = []
   includeUnverified.value = false
   deliverToInbox.value = true
   deliverByEmail.value = false
@@ -299,6 +355,7 @@ async function submit() {
         subject: subject.value.trim(),
         body: body.value.trim(),
         audienceGroups: chosen.value,
+        memberIds: memberIds.value,
         includeUnverified: includeUnverified.value,
         deliverToInbox: deliverToInbox.value,
         deliverByEmail: deliverByEmail.value,
@@ -347,6 +404,7 @@ async function saveEdit(publicationId: string) {
         subject: subject.value.trim(),
         body: body.value.trim(),
         audienceGroups: chosen.value,
+        memberIds: memberIds.value,
         includeUnverified: includeUnverified.value,
         deliverToInbox: deliverToInbox.value,
         deliverByEmail: deliverByEmail.value,
@@ -510,6 +568,34 @@ function audienceOf(groups: string[]): string {
                   {{ group.label }}
                 </label>
 
+                <!-- **Namen neben den Gruppen, nicht statt ihrer.** Wer die Moderation wählt und
+                     zwei Namen nennt, erreicht beide; wer nur Namen nennt, schreibt an genau die. -->
+                <div class="mt-1 border-t border-line-3 pt-2">
+                  <UserPicker
+                    :exclude-ids="memberIds"
+                    label="Einzelne Mitglieder"
+                    placeholder="Name eintippen"
+                    @pick="addRecipient"
+                  />
+
+                  <ul v-if="namedRecipients.length > 0" class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    <li
+                      v-for="member in namedRecipients"
+                      :key="member.id"
+                      class="flex items-baseline gap-1.5 text-[12.5px] text-ink-3"
+                    >
+                      {{ member.username }}
+                      <button
+                        type="button"
+                        class="text-[12px] text-ink-5 hover:text-oak-deep"
+                        @click="removeRecipient(member.id)"
+                      >
+                        entfernen
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+
                 <label
                   class="mt-1 flex min-h-11 items-center gap-2.5 border-t border-line-3 pt-2 text-[12.5px] text-ink-4 md:min-h-0"
                 >
@@ -556,7 +642,12 @@ function audienceOf(groups: string[]): string {
                   />
                   Per E-Mail
                 </label>
+                <!-- **Fällt weg, sobald jemand namentlich genannt ist.** Eine Rundmail an vier
+                     Leute ist keine Ankündigung; sie im Forum abzulegen hieße, sie allen zu zeigen.
+                     Ausgeblendet statt abgestumpft: Ein grauer Haken lädt zum Rätseln ein, und der
+                     Satz darunter sagt es ohnehin. Der Server weist es unabhängig davon ab. -->
                 <label
+                  v-if="mayPublishInArchive"
                   class="mt-1 flex min-h-11 items-center gap-2.5 border-t border-line-3 pt-2 text-[12.5px] text-ink-4 md:min-h-0"
                 >
                   <Checkbox
@@ -565,6 +656,10 @@ function audienceOf(groups: string[]): string {
                   />
                   Auch im Forum ablegen
                 </label>
+
+                <p v-else class="mt-1 border-t border-line-3 pt-2 text-[12px] text-ink-6">
+                  Sie geht an namentlich genannte Mitglieder und kommt deshalb nicht ins Archiv.
+                </p>
               </div>
 
               <p class="text-control text-ink-5">

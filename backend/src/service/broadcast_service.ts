@@ -38,6 +38,14 @@ export type BroadcastGroup = "administrator" | "moderator" | "member";
 
 export type BroadcastAudience = {
   groups: BroadcastGroup[];
+  /**
+   * Ausdrücklich genannte Konten, zusätzlich zu den Gruppen.
+   *
+   * **Die Vereinigung, nicht das eine oder das andere.** Wer die Moderation wählt und zusätzlich
+   * zwei Namen nennt, erreicht beide; wer nur Namen nennt, erreicht nur die. Doppelt bekommt
+   * niemand etwas — das entscheidet `selectRecipients`.
+   */
+  memberIds: string[];
   /** Off by default at the route: an unverified address belongs to nobody in particular. */
   includeUnverified: boolean;
 };
@@ -103,9 +111,12 @@ async function selectRecipients(audience: BroadcastAudience) {
     .selectFrom("user")
     .select(["id", "emailAddress", "emailAddressVerifiedAt"])
     .where("bannedAt", "is", null)
-    // `platform_role` is null for an ordinary member, so the two halves cannot be one `in`.
+    // **Gruppen und Namen zusammen, mit `or` statt zweier Abfragen.** Die Vereinigung entsteht
+    // dadurch in der Datenbank, und wer über eine Gruppe *und* namentlich drinsteht, kommt trotzdem
+    // nur einmal vor — eine Zeile ist eine Zeile.
     .where((eb) =>
       eb.or([
+        // `platform_role` is null for an ordinary member, so the two halves cannot be one `in`.
         ...(includeOrdinaryMembers ? [eb("platformRole", "is", null)] : []),
         ...(roles.length > 0
           ? [
@@ -115,6 +126,9 @@ async function selectRecipients(audience: BroadcastAudience) {
               roles as ("administrator" | "moderator")[],
             ),
           ]
+          : []),
+        ...(audience.memberIds.length > 0
+          ? [eb("id", "in", audience.memberIds)]
           : []),
       ])
     )

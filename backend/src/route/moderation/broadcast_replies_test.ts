@@ -102,6 +102,7 @@ async function sendBroadcast(cookie: string) {
       subject: SUBJECT,
       body: BODY,
       audienceGroups: ["administrator"],
+      memberIds: [],
       includeUnverified: false,
       deliverToInbox: true,
       deliverByEmail: false,

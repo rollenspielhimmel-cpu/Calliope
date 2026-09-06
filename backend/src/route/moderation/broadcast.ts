@@ -49,8 +49,15 @@ export default new OpenAPIHono()
         query: z.object({
           groups: z
             .string()
-            .transform((value) => value.split(","))
-            .pipe(z.array(BROADCAST_GROUP).min(1)),
+            .transform((value) => (value === "" ? [] : value.split(",")))
+            .pipe(z.array(BROADCAST_GROUP)),
+          // Dieselbe Form wie die Gruppen: als eine Zeichenkette mit Kommas, weil eine Abfrage in
+          // der Adresse keine verschachtelte Gestalt hat. Leer heisst: niemand namentlich.
+          memberIds: z
+            .string()
+            .default("")
+            .transform((value) => (value === "" ? [] : value.split(",")))
+            .pipe(z.array(z.uuidv7())),
           includeUnverified: z
             .enum(["true", "false"])
             .default("false")
@@ -75,9 +82,10 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const { groups, includeUnverified } = c.req.valid("query");
+      const { groups, memberIds, includeUnverified } = c.req.valid("query");
       const reach = await BroadcastService.countRecipients({
         groups,
+        memberIds,
         includeUnverified,
       });
       return c.json(reach, STATUS_CODE.OK);

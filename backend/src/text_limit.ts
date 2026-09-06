@@ -126,6 +126,14 @@ export const TEXT_LIMIT = {
   broadcastSubject: 200,
   /** One message to everybody. Room for an announcement, far short of a newsletter. */
   broadcastBody: 10_000,
+  /**
+   * Wie viele Konten eine Rundmail namentlich nennen darf.
+   *
+   * Eine Obergrenze, kein Ziel: Wer fünfzig Namen einzeln anklickt, meint in Wahrheit eine Gruppe,
+   * und die gibt es daneben. Die Zahl steht hier, damit eine Anfrage von Hand nicht die halbe
+   * Mitgliederliste in eine Reihung packt.
+   */
+  broadcastNamedRecipients: 50,
   /** A fixed text page of the site's own — its address is also its identity. */
   customPageSlug: 80,
   customPageTitle: 120,

@@ -46717,8 +46717,12 @@
                         "items": {
                           "type": "string",
                           "enum": ["administrator", "moderator", "member"]
-                        },
-                        "minItems": 1
+                        }
+                      },
+                      "memberIds": {
+                        "type": "array",
+                        "items": { "type": "string", "format": "uuid" },
+                        "maxItems": 50
                       },
                       "includeUnverified": { "type": "boolean" },
                       "deliverToInbox": { "type": "boolean" },
@@ -46766,12 +46770,24 @@
                       "archivePostId": {
                         "type": ["string", "null"],
                         "format": "uuid"
+                      },
+                      "namedRecipients": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "username": { "type": "string" }
+                          },
+                          "required": ["id", "username"]
+                        }
                       }
                     },
                     "required": [
                       "subject",
                       "body",
                       "audienceGroups",
+                      "memberIds",
                       "includeUnverified",
                       "deliverToInbox",
                       "deliverByEmail",
@@ -46791,7 +46807,8 @@
                       "releasedAt",
                       "recipientCount",
                       "emailRecipientCount",
-                      "archivePostId"
+                      "archivePostId",
+                      "namedRecipients"
                     ]
                   }
                 }
@@ -46986,8 +47003,12 @@
                     "items": {
                       "type": "string",
                       "enum": ["administrator", "moderator", "member"]
-                    },
-                    "minItems": 1
+                    }
+                  },
+                  "memberIds": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uuid" },
+                    "maxItems": 50
                   },
                   "includeUnverified": { "type": "boolean" },
                   "deliverToInbox": { "type": "boolean" },
@@ -47006,6 +47027,7 @@
                   "subject",
                   "body",
                   "audienceGroups",
+                  "memberIds",
                   "includeUnverified",
                   "deliverToInbox",
                   "deliverByEmail",
@@ -47042,8 +47064,12 @@
                       "items": {
                         "type": "string",
                         "enum": ["administrator", "moderator", "member"]
-                      },
-                      "minItems": 1
+                      }
+                    },
+                    "memberIds": {
+                      "type": "array",
+                      "items": { "type": "string", "format": "uuid" },
+                      "maxItems": 50
                     },
                     "includeUnverified": { "type": "boolean" },
                     "deliverToInbox": { "type": "boolean" },
@@ -47091,12 +47117,24 @@
                     "archivePostId": {
                       "type": ["string", "null"],
                       "format": "uuid"
+                    },
+                    "namedRecipients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "username": { "type": "string" }
+                        },
+                        "required": ["id", "username"]
+                      }
                     }
                   },
                   "required": [
                     "subject",
                     "body",
                     "audienceGroups",
+                    "memberIds",
                     "includeUnverified",
                     "deliverToInbox",
                     "deliverByEmail",
@@ -47116,7 +47154,8 @@
                     "releasedAt",
                     "recipientCount",
                     "emailRecipientCount",
-                    "archivePostId"
+                    "archivePostId",
+                    "namedRecipients"
                   ]
                 }
               }
@@ -47393,8 +47432,12 @@
                         "items": {
                           "type": "string",
                           "enum": ["administrator", "moderator", "member"]
-                        },
-                        "minItems": 1
+                        }
+                      },
+                      "memberIds": {
+                        "type": "array",
+                        "items": { "type": "string", "format": "uuid" },
+                        "maxItems": 50
                       },
                       "includeUnverified": { "type": "boolean" },
                       "deliverToInbox": { "type": "boolean" },
@@ -47442,12 +47485,24 @@
                       "archivePostId": {
                         "type": ["string", "null"],
                         "format": "uuid"
+                      },
+                      "namedRecipients": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "username": { "type": "string" }
+                          },
+                          "required": ["id", "username"]
+                        }
                       }
                     },
                     "required": [
                       "subject",
                       "body",
                       "audienceGroups",
+                      "memberIds",
                       "includeUnverified",
                       "deliverToInbox",
                       "deliverByEmail",
@@ -47467,7 +47522,8 @@
                       "releasedAt",
                       "recipientCount",
                       "emailRecipientCount",
-                      "archivePostId"
+                      "archivePostId",
+                      "namedRecipients"
                     ]
                   }
                 }
@@ -47976,8 +48032,12 @@
                     "items": {
                       "type": "string",
                       "enum": ["administrator", "moderator", "member"]
-                    },
-                    "minItems": 1
+                    }
+                  },
+                  "memberIds": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uuid" },
+                    "maxItems": 50
                   },
                   "includeUnverified": { "type": "boolean" },
                   "deliverToInbox": { "type": "boolean" },
@@ -47996,6 +48056,7 @@
                   "subject",
                   "body",
                   "audienceGroups",
+                  "memberIds",
                   "includeUnverified",
                   "deliverToInbox",
                   "deliverByEmail",
@@ -49233,6 +49294,12 @@
             "schema": { "type": "string" },
             "required": true,
             "name": "groups",
+            "in": "query"
+          },
+          {
+            "schema": { "type": "string", "default": "" },
+            "required": false,
+            "name": "memberIds",
             "in": "query"
           },
           {
