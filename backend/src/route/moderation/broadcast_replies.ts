@@ -2,10 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import {
-  authorizedAsAdministrator,
-  authorizedAsModerator,
-} from "@/src/middleware/authorized_as_platform_role.ts";
+import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastReplyService } from "@/src/service/broadcast_reply_service.ts";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
@@ -20,9 +17,20 @@ import {
 /**
  * Was auf eine Rundmail geantwortet wurde.
  *
- * **Die ganze Moderation darf lesen**, anders als beim Rest des Rundmail-Bereichs, der der
- * Administration vorbehalten ist. Wer beobachtet, wie es der Community geht, muss sehen, was auf
- * eine Ankündigung zurückkommt — und das Antworten selbst bleibt trotzdem der Administration.
+ * **Nur die Administration, lesen wie schreiben.**
+ *
+ * Hier stand einmal das Gegenteil: die ganze Moderation dürfe lesen, weil sehen muss, was auf eine
+ * Ankündigung zurückkommt, wer beobachtet, wie es der Community geht. Der Satz klingt richtig und
+ * übersieht, an wen das Mitglied geschrieben hat.
+ *
+ * Mitglieder wissen, wer die Administration ist. Wer ihr schreibt, weiß also, an welchen Kreis er
+ * sich wendet — und rechnet nicht damit, dass die Moderation mitliest. Bei einer Beschwerde über
+ * eine Moderatorin ist das nicht bloß unangenehm, sondern genau der Grund, aus dem sie an die
+ * Administration ging. Ein Rundmail-Gespräch ist derselbe Kanal wie eine direkte Nachricht an die
+ * Administration; die Regel muss deshalb dieselbe sein.
+ *
+ * Ein Weg bleibt: Meldet das Mitglied selbst eine Nachricht, hält `report` einen Auszug fest, den
+ * die Moderation liest. Das ist Absicht — dort hat das Mitglied es aus der Hand gegeben.
  *
  * Warum die Antworten nicht in einem Postfach landen und wie ein Gespräch aufgebaut ist, steht in
  * `broadcast_reply_service.ts`.
@@ -31,7 +39,7 @@ import {
 const REPLY = z.object({
   chatGroupId: z.uuidv7(),
   username: z.string().nullable(),
-  lastActivityAt: z.iso.datetime({ offset: true }),
+  lastReplyAt: z.iso.datetime({ offset: true }),
   excerpt: z.string(),
 });
 
@@ -41,6 +49,8 @@ const MESSAGE = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   username: z.string().nullable(),
   fromTeam: z.boolean(),
+  // Leer bei allem außer den Antworten der Administration — siehe `broadcast_reply_service.ts`.
+  writtenByUsername: z.string().nullable(),
 });
 
 const CONVERSATION = z.object({
@@ -67,11 +77,6 @@ const NO_SESSION_RESPONSE = {
   content: jsonContent(ERROR_RESPONSE),
 } as const;
 
-const NOT_AN_OPERATOR_RESPONSE = {
-  description: "Not on the team",
-  content: jsonContent(ERROR_RESPONSE),
-} as const;
-
 const NOT_AN_ADMINISTRATOR_RESPONSE = {
   description: "Not an administrator",
   content: jsonContent(ERROR_RESPONSE),
@@ -85,9 +90,9 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Who replied to a broadcast",
       description:
-        "Only conversations a member actually wrote in, newest activity first. Every recipient has a conversation — that is the delivery — so listing all of them would show the audience again and hide the replies inside it.",
+        "Administrator only: a member writing to the administration does not expect the moderation to read along. Only conversations a member actually wrote in, their newest message first — every recipient has a conversation, that is the delivery, so listing all of them would show the audience again and hide the replies inside it.",
       operationId: "listBroadcastReplies",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedAsAdministrator] as const,
       request: { params: z.object({ broadcastId: z.uuidv7() }) },
       responses: {
         [STATUS_CODE.OK]: {
@@ -95,7 +100,7 @@ export default new OpenAPIHono()
           content: jsonContent(z.object({ results: z.array(REPLY) })),
         },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
-        [STATUS_CODE.Forbidden]: NOT_AN_OPERATOR_RESPONSE,
+        [STATUS_CODE.Forbidden]: NOT_AN_ADMINISTRATOR_RESPONSE,
         ...BAD_REQUEST_RESPONSE,
         ...COMMON_RESPONSES,
       },
@@ -118,7 +123,7 @@ export default new OpenAPIHono()
       description:
         "The broadcast is part of the address, not decoration: without it this would be an id with which anybody on the team could open any conversation on the platform, private chats included.",
       operationId: "readBroadcastConversation",
-      middleware: [authenticated, authorizedAsModerator] as const,
+      middleware: [authenticated, authorizedAsAdministrator] as const,
       request: {
         params: z.object({
           broadcastId: z.uuidv7(),
@@ -135,7 +140,7 @@ export default new OpenAPIHono()
           content: jsonContent(ERROR_RESPONSE),
         },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
-        [STATUS_CODE.Forbidden]: NOT_AN_OPERATOR_RESPONSE,
+        [STATUS_CODE.Forbidden]: NOT_AN_ADMINISTRATOR_RESPONSE,
         ...BAD_REQUEST_RESPONSE,
         ...COMMON_RESPONSES,
       },
@@ -163,7 +168,7 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Reply in a broadcast conversation",
       description:
-        "Administrator only, unlike reading: a reply goes out under the sender the broadcast ran as, and speaking as the platform is not the same as watching what comes back. Stored with who actually wrote it; the member never sees that.",
+        "A reply goes out under the sender the broadcast ran as. Stored with who actually wrote it: the member never sees that, the administration does.",
       operationId: "replyToBroadcast",
       middleware: [authenticated, authorizedAsAdministrator] as const,
       request: {
@@ -191,12 +196,13 @@ export default new OpenAPIHono()
     async (c) => {
       const { broadcastId, chatGroupId } = c.req.valid("param");
       const { text } = c.req.valid("json");
+      const writer = c.get("user");
 
       const result = await BroadcastReplyService.reply(
         broadcastId,
         chatGroupId,
         text,
-        c.get("user").id,
+        writer.id,
       );
 
       if (!result.ok) {
@@ -217,6 +223,7 @@ export default new OpenAPIHono()
         createdAt: result.message.createdAt,
         username: result.message.createdByUsername,
         fromTeam: true,
+        writtenByUsername: writer.username,
       }, STATUS_CODE.Created);
     },
   );

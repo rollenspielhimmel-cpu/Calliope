@@ -1,17 +1,8 @@
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
-import {
-  cleanUpRetryingOnDeadlock,
-  clearRateLimits,
-  deleteUsers,
-  registerUser,
-  request,
-} from "@/src/test/support.ts";
-import {
-  borrowPrimordialSeat,
-  returnPrimordialSeat,
-} from "@/src/test/primordial_seat.ts";
+import { registerUser, request, scopedTestData } from "@/src/test/support.ts";
+import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
  * Antworten auf eine Rundmail, wie das Team sie liest.
@@ -54,53 +45,49 @@ async function setRole(
  * denn das *ist* die Zustellung. Stünden alle darin, zeigte die Liste den Empfängerkreis noch
  * einmal und versteckte die paar Antworten darin.
  *
- * **OUTSIDER ist gewöhnliches Mitglied** und darf gar nichts davon sehen; MODERATOR darf lesen,
- * ohne antworten zu dürfen.
+ * **OUTSIDER ist gewöhnliches Mitglied** und darf gar nichts davon sehen. MODERATOR auch nicht:
+ * Wer der Administration schreibt, rechnet nicht damit, dass die Moderation mitliest.
  */
-async function fixture() {
-  // Auch vorher, nicht nur nachher: Ein abgebrochener Lauf lässt diese Konten stehen, und der
-  // nächste scheitert dann schon am vergebenen Namen. Siehe `broadcast_delivery_test.ts`.
-  await cleanUp();
-
-  const cookies = {
-    root: await registerUser(ROOT),
-    member: await registerUser(MEMBER),
-    silent: await registerUser(SILENT),
-    moderator: await registerUser(MODERATOR),
-    outsider: await registerUser(OUTSIDER),
-  };
-
-  await setRole(ROOT, "administrator");
-  await setRole(MEMBER, "administrator");
-  await setRole(SILENT, "administrator");
-  await setRole(MODERATOR, "moderator");
-  await setRole(OUTSIDER, null);
-
-  await borrowPrimordialSeat(ROOT);
-
-  return cookies;
-}
-
-async function cleanUp() {
-  // Wiederholt, weil dieses Löschen über die Gespräche in `user_in_chat_group` landet und sich
-  // dort mit dem `deleteUsers` einer anderen Datei verklemmen kann — siehe die Erklärung dort.
-  await cleanUpRetryingOnDeadlock(async () => {
-    await db
+const data = scopedTestData({
+  users: USERS,
+  seat: ROOT,
+  remove: async (transaction) => {
+    await transaction
       .deleteFrom("publication")
       .where(
         "id",
         "in",
-        db
+        transaction
           .selectFrom("broadcast")
           .select("publicationId")
           .where("subject", "=", SUBJECT),
       )
       .execute();
-  });
+  },
+});
 
-  await returnPrimordialSeat(ROOT);
-  await deleteUsers(USERS);
-  await clearRateLimits();
+const cleanUp = data.cleanUp;
+
+function fixture() {
+  return data.freshly(async () => {
+    const cookies = {
+      root: await registerUser(ROOT),
+      member: await registerUser(MEMBER),
+      silent: await registerUser(SILENT),
+      moderator: await registerUser(MODERATOR),
+      outsider: await registerUser(OUTSIDER),
+    };
+
+    await setRole(ROOT, "administrator");
+    await setRole(MEMBER, "administrator");
+    await setRole(SILENT, "administrator");
+    await setRole(MODERATOR, "moderator");
+    await setRole(OUTSIDER, null);
+
+    await borrowPrimordialSeat(ROOT);
+
+    return cookies;
+  });
 }
 
 /** Verschickt an die Administration, nur ins Postfach. */
@@ -228,7 +215,7 @@ Deno.test("die Liste zeigt den Anfang der Antwort", async () => {
   }
 });
 
-Deno.test("die Moderation darf lesen", async () => {
+Deno.test("die Moderation darf nicht lesen", async () => {
   const cookies = await fixture();
 
   try {
@@ -241,9 +228,12 @@ Deno.test("die Moderation darf lesen", async () => {
       cookies.moderator,
     );
 
-    // Wer beobachtet, wie es der Community geht, muss sehen, was zurückkommt. Antworten darf sie
-    // deshalb noch lange nicht.
-    assertEquals(response.status, STATUS_CODE.OK);
+    // **Hier stand einmal 200**, mit der Begründung, wer beobachte, wie es der Community gehe,
+    // müsse sehen, was zurückkommt. Der Satz übersieht, an wen das Mitglied geschrieben hat:
+    // Mitglieder wissen, wer die Administration ist, und wer ihr schreibt, rechnet nicht damit,
+    // dass die Moderation mitliest — bei einer Beschwerde über eine Moderatorin ist genau das der
+    // Grund, aus dem es an die Administration ging.
+    assertEquals(response.status, STATUS_CODE.Forbidden);
   } finally {
     await cleanUp();
   }
@@ -459,7 +449,7 @@ Deno.test("im Verlauf steht sie auf der Teamseite", async () => {
     const response = await request(
       "GET",
       `/api/moderation/broadcast/${broadcastId}/replies/${chatGroupId}`,
-      cookies.moderator,
+      cookies.root,
     );
 
     assertEquals(response.status, STATUS_CODE.OK);
@@ -470,12 +460,25 @@ Deno.test("im Verlauf steht sie auf der Teamseite", async () => {
     );
     assertExists(answer);
     assertEquals(answer.fromTeam, true);
+
+    // **Nach außen der Absender, nach innen der Mensch — und der steht hier.** Stünde er nur in der
+    // Datenbank, wäre die Nachvollziehbarkeit, für die die Trennung gebaut wurde, eine theoretische.
+    assertEquals(answer.username, ROOT);
+    assertEquals(answer.writtenByUsername, SILENT);
+
+    // Bei der Rundmail selbst bleibt es leer: Ihr Verfasser steht auf der Veröffentlichung und wird
+    // unter „Gesendete" gezeigt. Zweimal geführt heißt irgendwann einmal vergessen.
+    const announcement = messages.find(
+      (message: { text: string }) => message.text === BODY,
+    );
+    assertExists(announcement);
+    assertEquals(announcement.writtenByUsername, null);
   } finally {
     await cleanUp();
   }
 });
 
-Deno.test("die Moderation darf lesen, aber nicht antworten", async () => {
+Deno.test("die Moderation darf auch nicht antworten", async () => {
   const cookies = await fixture();
 
   try {
@@ -573,6 +576,43 @@ Deno.test("schreibt das Mitglied noch einmal, steht es wieder da", async () => {
 
     // Der neueste Text des Mitglieds, nicht der erste und nicht der des Teams.
     assertEquals(entry.excerpt, AGAIN);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("die eigene Antwort schiebt das Gespräch nicht nach oben", async () => {
+  const cookies = await fixture();
+
+  try {
+    const broadcastId = await sendBroadcast(cookies.root);
+    const chatGroupId = await chatOf(broadcastId, MEMBER);
+
+    await reply(cookies.member, chatGroupId, REPLY);
+
+    const before = await request(
+      "GET",
+      `/api/moderation/broadcast/${broadcastId}/replies`,
+      cookies.root,
+    );
+    const [entryBefore] = (await before.json()).results;
+
+    await replyAsTeam(cookies.silent, broadcastId, chatGroupId, ANSWER);
+
+    const after = await request(
+      "GET",
+      `/api/moderation/broadcast/${broadcastId}/replies`,
+      cookies.root,
+    );
+    const [entryAfter] = (await after.json()).results;
+
+    // **Der Zeitpunkt gehört zum Auszug, und der stammt vom Mitglied.**
+    //
+    // Hier stand `chat_group.last_activity_at`, das jede Nachricht neu setzt. Dann sagte die Zeile
+    // „vor zwei Minuten" über einem Text von gestern, und ein Gespräch rutschte nach oben, weil
+    // *wir* geantwortet hatten — was wir ohnehin wissen.
+    assertEquals(entryAfter.lastReplyAt, entryBefore.lastReplyAt);
+    assertEquals(entryAfter.excerpt, REPLY);
   } finally {
     await cleanUp();
   }

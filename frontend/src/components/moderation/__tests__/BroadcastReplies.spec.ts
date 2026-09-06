@@ -17,7 +17,7 @@ import BroadcastReplies from '@/components/moderation/BroadcastReplies.vue'
 const REPLY = {
   chatGroupId: '01900000-0000-7000-8000-000000000001',
   username: 'federkiel',
-  lastActivityAt: '2026-09-06T10:00:00.000Z',
+  lastReplyAt: '2026-09-06T10:00:00.000Z',
   excerpt: 'Danke für die Ankündigung.',
 }
 
@@ -31,6 +31,7 @@ const CONVERSATION = {
       createdAt: '2026-09-06T09:00:00.000Z',
       username: 'Admin',
       fromTeam: true,
+      writtenByUsername: null,
     },
     {
       id: '01900000-0000-7000-8000-00000000000b',
@@ -38,6 +39,15 @@ const CONVERSATION = {
       createdAt: '2026-09-06T10:00:00.000Z',
       username: REPLY.username,
       fromTeam: false,
+      writtenByUsername: null,
+    },
+    {
+      id: '01900000-0000-7000-8000-00000000000c',
+      text: 'Gern geschehen.',
+      createdAt: '2026-09-06T11:00:00.000Z',
+      username: 'Admin',
+      fromTeam: true,
+      writtenByUsername: 'kommafehler',
     },
   ],
 }
@@ -133,5 +143,23 @@ describe('BroadcastReplies', () => {
     await flushPromises()
 
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
+  })
+})
+
+describe('Verfasser', () => {
+  it('zeigt bei einer Antwort der Administration, wer sie getippt hat', async () => {
+    const wrapper = await openConversation()
+
+    // Nach außen der Absender, nach innen der Mensch. Stünde er nur in der Datenbank, wäre die
+    // Nachvollziehbarkeit, für die die Trennung gebaut wurde, eine theoretische.
+    expect(wrapper.text()).toContain('geschrieben von kommafehler')
+  })
+
+  it('sagt es nicht bei der Rundmail selbst', async () => {
+    const wrapper = await openConversation()
+
+    // Deren Verfasser steht auf der Veröffentlichung und wird oben unter „Gesendete" gezeigt.
+    // Zweimal geführt heißt irgendwann an einer Stelle vergessen.
+    expect(wrapper.text().match(/geschrieben von/gu)?.length).toBe(1)
   })
 })

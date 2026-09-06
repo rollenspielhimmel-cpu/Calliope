@@ -48664,7 +48664,7 @@
       "get": {
         "tags": ["moderation"],
         "summary": "Who replied to a broadcast",
-        "description": "Only conversations a member actually wrote in, newest activity first. Every recipient has a conversation — that is the delivery — so listing all of them would show the audience again and hide the replies inside it.",
+        "description": "Administrator only: a member writing to the administration does not expect the moderation to read along. Only conversations a member actually wrote in, their newest message first — every recipient has a conversation, that is the delivery, so listing all of them would show the audience again and hide the replies inside it.",
         "operationId": "listBroadcastReplies",
         "parameters": [
           {
@@ -48689,7 +48689,7 @@
                         "properties": {
                           "chatGroupId": { "type": "string", "format": "uuid" },
                           "username": { "type": ["string", "null"] },
-                          "lastActivityAt": {
+                          "lastReplyAt": {
                             "type": "string",
                             "format": "date-time"
                           },
@@ -48698,7 +48698,7 @@
                         "required": [
                           "chatGroupId",
                           "username",
-                          "lastActivityAt",
+                          "lastReplyAt",
                           "excerpt"
                         ]
                       }
@@ -48788,7 +48788,7 @@
             }
           },
           "403": {
-            "description": "Not on the team",
+            "description": "Not an administrator",
             "content": {
               "application/json": {
                 "schema": {
@@ -48989,14 +48989,16 @@
                             "format": "date-time"
                           },
                           "username": { "type": ["string", "null"] },
-                          "fromTeam": { "type": "boolean" }
+                          "fromTeam": { "type": "boolean" },
+                          "writtenByUsername": { "type": ["string", "null"] }
                         },
                         "required": [
                           "id",
                           "text",
                           "createdAt",
                           "username",
-                          "fromTeam"
+                          "fromTeam",
+                          "writtenByUsername"
                         ]
                       }
                     }
@@ -49085,7 +49087,7 @@
             }
           },
           "403": {
-            "description": "Not on the team",
+            "description": "Not an administrator",
             "content": {
               "application/json": {
                 "schema": {
@@ -49285,7 +49287,7 @@
       "post": {
         "tags": ["moderation"],
         "summary": "Reply in a broadcast conversation",
-        "description": "Administrator only, unlike reading: a reply goes out under the sender the broadcast ran as, and speaking as the platform is not the same as watching what comes back. Stored with who actually wrote it; the member never sees that.",
+        "description": "A reply goes out under the sender the broadcast ran as. Stored with who actually wrote it: the member never sees that, the administration does.",
         "operationId": "replyToBroadcast",
         "parameters": [
           {
@@ -49332,14 +49334,16 @@
                     "text": { "type": "string" },
                     "createdAt": { "type": "string", "format": "date-time" },
                     "username": { "type": ["string", "null"] },
-                    "fromTeam": { "type": "boolean" }
+                    "fromTeam": { "type": "boolean" },
+                    "writtenByUsername": { "type": ["string", "null"] }
                   },
                   "required": [
                     "id",
                     "text",
                     "createdAt",
                     "username",
-                    "fromTeam"
+                    "fromTeam",
+                    "writtenByUsername"
                   ]
                 }
               }

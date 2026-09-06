@@ -24,8 +24,19 @@ export type BroadcastReply = {
   chatGroupId: string;
   /** Wer geantwortet hat. Null, wenn das Konto inzwischen weg ist — das Gespräch überlebt es. */
   username: string | null;
-  /** Wann zuletzt etwas geschrieben wurde, gleich von welcher Seite. */
-  lastActivityAt: string;
+  /**
+   * Wann das **Mitglied** zuletzt geschrieben hat.
+   *
+   * **Nicht die letzte Aktivität des Gesprächs**, obwohl die danebenliegt und billiger wäre.
+   * `chat_group.last_activity_at` setzt jede Nachricht neu, auch die des Teams — und dann stünde in
+   * der Zeile „vor zwei Minuten" über einem Auszug von gestern, weil der Auszug immer vom Mitglied
+   * stammt. Zwei Angaben aus zwei Quellen, die aussehen, als gehörten sie zusammen.
+   *
+   * Und die Sortierung liefe verkehrt herum: Ein Gespräch rutschte nach oben, weil *wir* geantwortet
+   * haben. Dass wir geantwortet haben, wissen wir. Die Liste beantwortet „wer hat geschrieben", also
+   * sortiert sie danach.
+   */
+  lastReplyAt: string;
   /** Der Anfang der letzten Antwort des Mitglieds, damit die Liste etwas sagt. */
   excerpt: string;
 };
@@ -60,7 +71,6 @@ async function listReplies(broadcastId: string): Promise<BroadcastReply[]> {
         .onRef("userInChatGroup.userId", "=", "chatMessage.createdBy"))
     .select([
       "chatGroup.id as chatGroupId",
-      "chatGroup.lastActivityAt",
       "user.username",
       "chatMessage.text",
       "chatMessage.createdAt",
@@ -91,7 +101,9 @@ async function listReplies(broadcastId: string): Promise<BroadcastReply[]> {
           .limit(1),
       )
     )
-    .orderBy("chatGroup.lastActivityAt", "desc")
+    // Nur nach der Nachricht, nicht mehr nach dem Gespräch: Weil unten je Gespräch der erste
+    // Treffer gewinnt, ordnet dieselbe Sortierung beides — die Auswahl der jüngsten Antwort und
+    // die Reihenfolge der Gespräche untereinander.
     .orderBy("chatMessage.createdAt", "desc")
     .execute();
 
@@ -107,7 +119,7 @@ async function listReplies(broadcastId: string): Promise<BroadcastReply[]> {
     newest.set(row.chatGroupId, {
       chatGroupId: row.chatGroupId,
       username: row.username,
-      lastActivityAt: row.lastActivityAt,
+      lastReplyAt: row.createdAt,
       excerpt: row.text.length > EXCERPT_LENGTH
         ? `${row.text.slice(0, EXCERPT_LENGTH).trimEnd()} …`
         : row.text,
@@ -125,6 +137,16 @@ export type BroadcastConversationMessage = {
   username: string | null;
   /** Vom Team geschrieben — also die Rundmail selbst oder eine Antwort der Administration. */
   fromTeam: boolean;
+  /**
+   * Wer wirklich getippt hat, wenn `username` eine Maske ist. Sonst leer.
+   *
+   * Leer bleibt es bei jeder Nachricht des Mitglieds — dort ist `username` die Wahrheit — und auch
+   * bei der Rundmail selbst: Deren Verfasser steht auf der Veröffentlichung und wird unter
+   * „Gesendete" gezeigt, und dieselbe Angabe zweimal zu führen heißt, sie irgendwann an einer
+   * Stelle zu vergessen. Gesetzt ist es genau bei den Antworten der Administration, denn die haben
+   * keine Veröffentlichung, die den Namen tragen könnte.
+   */
+  writtenByUsername: string | null;
 };
 
 export type BroadcastConversation = {
@@ -141,9 +163,15 @@ export type BroadcastConversation = {
  * jedes Team-Mitglied jedes beliebige Gespräch der Plattform aufmachen könnte — auch private Chats
  * zwischen zwei Mitgliedern, die niemanden etwas angehen.
  *
- * **`written_by` wird hier nicht ausgelesen**, obwohl es die Spalte gibt und obwohl das Team sie
- * sehen dürfte. Sie gehört in die Liste der gesendeten Rundmails, wo `written_by` und `approved_by`
- * ohnehin stehen; hier wäre sie eine zweite Stelle für dieselbe Auskunft.
+ * **`written_by` wird mit ausgelesen.** Hier stand einmal das Gegenteil, mit der Begründung, die
+ * Angabe gehöre in die Liste der gesendeten Rundmails, wo `written_by` und `approved_by` ohnehin
+ * stehen. Das galt, solange nur die Rundmail selbst im Gespräch stand — die trägt ihren Verfasser
+ * auf der Veröffentlichung. Seit die Administration antwortet, gibt es Nachrichten ohne
+ * Veröffentlichung, und für die stand die Auskunft nirgends: Die Nachvollziehbarkeit, für die die
+ * Trennung zwischen Maske und Mensch überhaupt gebaut wurde, war dann eine in der Datenbank.
+ *
+ * Doppelt wird dabei nichts: Bei der Rundmail selbst ist die Spalte leer, gesetzt ist sie genau bei
+ * den Antworten.
  */
 async function readConversation(
   broadcastId: string,
@@ -165,6 +193,7 @@ async function readConversation(
   const messages = await db
     .selectFrom("chatMessage")
     .leftJoin("user", "user.id", "chatMessage.createdBy")
+    .leftJoin("user as writer", "writer.id", "chatMessage.writtenBy")
     .leftJoin("userInChatGroup", (join) =>
       join
         .onRef("userInChatGroup.chatGroupId", "=", "chatMessage.chatGroupId")
@@ -174,6 +203,7 @@ async function readConversation(
       "chatMessage.text",
       "chatMessage.createdAt",
       "user.username",
+      "writer.username as writtenByUsername",
       "userInChatGroup.userId as memberId",
     ])
     .where("chatMessage.chatGroupId", "=", chatGroupId)
@@ -198,6 +228,7 @@ async function readConversation(
       // gar nicht sitzt — das ist die Antwort der Administration.
       fromTeam: message.id === broadcastMessage?.id ||
         message.memberId === null,
+      writtenByUsername: message.writtenByUsername,
     })),
   };
 }
