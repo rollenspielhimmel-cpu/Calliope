@@ -82,17 +82,25 @@ const includeUnverified = ref<boolean>(false)
 /**
  * Die drei Wege, einzeln zu haben.
  *
- * **Das Postfach ist voreingestellt, die E-Mail nicht.** Eine Rundmail ist eine Mitteilung
+ * **Postfach und Archiv sind voreingestellt, die E-Mail nicht.** Eine Rundmail ist eine Mitteilung
  * innerhalb der Community; hinaus in fremde Postfächer geht sie, wenn jemand das ausdrücklich
- * will. Das Archiv steht daneben und nicht darunter: Auch eine reine E-Mail-Rundmail darf im Forum
- * nachlesbar sein.
+ * will.
+ *
+ * **Das Archiv war anfangs aus, und das war falsch.** Die Begründung damals war Symmetrie: Es steht
+ * neben den Zustellwegen, also solle man es bewusst wählen. Aber ein Archiv, das man bei jeder
+ * Rundmail einzeln anhaken muss, wird lückenhaft — und die Lücken merkt niemand, bis ein neues
+ * Mitglied nachliest und die Hälfte fehlt. Genau dafür gibt es den Faden. Fünf Rundmails auf der
+ * Beta sind so vorbeigelaufen, bevor es auffiel.
+ *
+ * Der Haken bleibt: Eine interne Notiz an die Administration gehört nicht ins Archiv. Das ist aber
+ * die seltenere Entscheidung und gehört deshalb auf die aktive Seite.
  *
  * Dass mindestens einer gesetzt sein muss, prüft am Ende die Datenbank. Hier stumpft es nur den
  * Knopf ab, damit niemand erst nach dem Absenden erfährt, dass er nichts ausgewählt hat.
  */
 const deliverToInbox = ref<boolean>(true)
 const deliverByEmail = ref<boolean>(false)
-const publishInArchive = ref<boolean>(false)
+const publishInArchive = ref<boolean>(true)
 const subject = ref<string>('')
 const body = ref<string>('')
 /**
@@ -271,7 +279,7 @@ function resetForm() {
   includeUnverified.value = false
   deliverToInbox.value = true
   deliverByEmail.value = false
-  publishInArchive.value = false
+  publishInArchive.value = true
 }
 
 async function submit() {
