@@ -7,7 +7,7 @@ import {
   NavigationMenuList,
 } from '@/components/ui/navigation-menu'
 import { APP_NAME } from '@/lib/branding'
-import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LogOut, Search } from '@lucide/vue'
 import { useLogoutUser } from '@/api/auth/auth'
@@ -94,14 +94,29 @@ const startChatAt = ref<string | undefined>(undefined)
  */
 const DIALOG_FADE_MS = 200
 
+/**
+ * Der laufende Zeitgeber, damit er sich abräumen lässt.
+ *
+ * **Ein Zeitgeber, den niemand anhält, feuert auch dann, wenn die Person längst woanders ist.**
+ * Wer eine Meldung anklickt und in den zweihundert Millisekunden weiterklickt, bekäme den
+ * Chat-Dialog hinterhergeworfen — über der Seite, auf der er inzwischen steht, und ohne ihn
+ * angefordert zu haben. Ein Modal, das von selbst aufgeht, sperrt alles dahinter.
+ */
+let dialogSwap: number | undefined
+
 function openChat(chatGroupId: string) {
   showingNotifications.value = false
 
-  globalThis.setTimeout(() => {
+  globalThis.clearTimeout(dialogSwap)
+  dialogSwap = globalThis.setTimeout(() => {
+    dialogSwap = undefined
     startChatAt.value = chatGroupId
     showingChats.value = true
   }, DIALOG_FADE_MS)
 }
+
+// Verlässt die Leiste die Seite, darf nichts mehr nachkommen.
+onUnmounted(() => globalThis.clearTimeout(dialogSwap))
 
 // Pages request a chat through this ref when they start a conversation; see openChatDialog.ts.
 watch(requestedChatId, (chatGroupId) => {
