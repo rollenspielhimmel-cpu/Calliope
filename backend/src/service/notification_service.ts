@@ -140,17 +140,14 @@ function toNotification(row: NotificationRow): Notification {
         chatGroupTitle: required(row.chatGroupTitle, "chatGroupTitle"),
       };
     case "broadcast_received":
-      // **Ein Wert, den es nur noch in der Aufzählung gibt.** Eine Rundmail ist jetzt eine
-      // Nachricht im Postfach, keine Benachrichtigung; die Migration hat die letzten Zeilen
-      // entfernt, und geschrieben wird der Wert nirgends mehr. Entfernen ließ er sich nicht —
-      // PostgreSQL kennt kein DROP VALUE, und eine Aufzählung neu zu bauen hieße, jede
-      // Fremdbeziehung darauf anzufassen.
-      //
-      // Ein Wurf statt eines stillen Rückgabewerts: Käme hier je eine Zeile an, wäre das keine
-      // Anzeigefrage, sondern ein Hinweis darauf, dass irgendwo wieder welche geschrieben werden.
-      throw new Error(
-        "broadcast_received is a retired notification type; broadcasts arrive as chat messages",
-      );
+      // Zeigt auf das Gespräch, nicht auf die Rundmail: Gelesen wird im Postfach, wie bei jeder
+      // PN — die Glocke weist nur hin. Der Betreff steht als Titel des Gesprächs dort schon.
+      return {
+        ...base,
+        type: row.type,
+        chatGroupId: required(row.chatGroupId, "chatGroupId"),
+        chatGroupTitle: required(row.chatGroupTitle, "chatGroupTitle"),
+      };
     default:
       // A new notification type reaches here as a compile error, not a missing line.
       return assertUnreachable(row.type);

@@ -31009,6 +31009,39 @@
                               "chatGroupId",
                               "chatGroupTitle"
                             ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "occurredAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "readAt": {
+                                "type": ["string", "null"],
+                                "format": "date-time"
+                              },
+                              "actorUsername": { "type": ["string", "null"] },
+                              "type": {
+                                "type": "string",
+                                "enum": ["broadcast_received"]
+                              },
+                              "chatGroupId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "chatGroupTitle": { "type": "string" }
+                            },
+                            "required": [
+                              "id",
+                              "occurredAt",
+                              "readAt",
+                              "actorUsername",
+                              "type",
+                              "chatGroupId",
+                              "chatGroupTitle"
+                            ]
                           }
                         ]
                       }

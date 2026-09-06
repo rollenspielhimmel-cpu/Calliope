@@ -425,6 +425,19 @@ export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
     chatGroupId: NOTIFICATION_SCHEMA.shape.chatGroupId.unwrap(),
     chatGroupTitle: z.string(),
   }),
+  /**
+   * Eine Rundmail im Postfach.
+   *
+   * Dieselben Felder wie die Chat-Einladung darüber, und das ist kein Zufall: Beide sagen „ein
+   * neues Gespräch für dich", und gelesen wird es an derselben Stelle. Ein eigener Typ, weil es
+   * keine Einladung gibt, die jemand annehmen könnte — gleiches Verhalten, ehrlicher Name.
+   */
+  z.object({
+    ...NOTIFICATION_BASE,
+    type: z.literal("broadcast_received"),
+    chatGroupId: NOTIFICATION_SCHEMA.shape.chatGroupId.unwrap(),
+    chatGroupTitle: z.string(),
+  }),
 ]);
 
 /** A chat as its list entry: the group, its founder's name, and this member's unread count. */

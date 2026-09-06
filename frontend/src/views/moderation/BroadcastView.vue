@@ -66,7 +66,16 @@ const GROUPS: ReadonlyArray<{ value: Group; label: string }> = [
   { value: 'member', label: 'Mitglieder ohne Rolle' },
 ]
 
-const chosen = ref<Group[]>(['administrator', 'moderator', 'member'])
+/**
+ * **Nichts vorausgewählt.**
+ *
+ * Standen alle drei Haken, ging eine Rundmail, die an die Administration gedacht war, an alle —
+ * genau so passiert, beim ersten Durchklicken auf der Beta. Eine Voreinstellung, die im
+ * Zweifelsfall die größtmögliche Reichweite wählt, ist bei etwas Unwiderruflichem die falsche
+ * Richtung: Wer an alle schreiben will, setzt drei Haken; wer sich vertut, erreicht niemanden
+ * statt jeden.
+ */
+const chosen = ref<Group[]>([])
 const includeUnverified = ref<boolean>(false)
 
 /**
@@ -277,8 +286,24 @@ function reachOf(entry: ListReleasedBroadcasts200Item): string {
 const { data: queueData } = useListBroadcastQueue()
 const { data: releasedData } = useListReleasedBroadcasts()
 
-const waitingBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
+const queuedBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
   queueData.value?.status === 200 ? queueData.value.data : [],
+)
+
+/**
+ * Zwei Abschnitte, weil es zwei Zustände sind — und der Unterschied ist, wer am Zug ist.
+ *
+ * **Was wartet, wartet auf einen Menschen.** Was freigegeben ist, wartet nur noch auf die Uhr und
+ * geht von selbst raus. Beides stand hier untereinander unter der Überschrift „Warteschlange", und
+ * das las sich für das Freigegebene wie „hängt fest" — genau so ist es gelesen worden. Der Satz
+ * darunter sagte zwar das Richtige, aber der Ort sagte etwas anderes, und der Ort gewinnt.
+ */
+const waitingBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
+  queuedBroadcasts.value.filter((entry) => entry.status === 'awaiting_approval'),
+)
+
+const scheduledBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
+  queuedBroadcasts.value.filter((entry) => entry.status === 'approved'),
 )
 
 const releasedBroadcasts = computed<ListReleasedBroadcasts200Item[]>(() =>
@@ -519,9 +544,27 @@ function audienceOf(groups: string[]): string {
           class="mt-6 max-w-[60ch] rounded-lg border border-line-4 bg-paper-1 p-4"
         >
           <p class="text-row text-ink-2">{{ reachSentence }}</p>
+
+          <!--
+            **Der Termin gehört in die Bestätigung.** Ohne ihn bestätigt man eine Rundmail, ohne je
+            zu sehen, wann sie rausgeht — und wenn im Feld etwas steht, das man nicht dort haben
+            wollte, ist die Bestätigung die letzte Stelle, an der das auffallen kann. Genau das ist
+            passiert: eine Rundmail lag „in der Warteschlange", weil ein Termin gesetzt war, den
+            niemand bemerkt hatte.
+          -->
+          <p v-if="scheduledFor !== ''" class="mt-1 text-row text-ink-2">
+            Sie geht am {{ formatBerlin(scheduledForUtc ?? '') }} raus, nicht sofort.
+          </p>
+
           <p class="mt-1 text-[12.5px] text-ink-5">
-            Sie geht erst raus, wenn jemand aus der Administration sie freigibt — verschickte Mails
-            lassen sich nicht zurückholen.
+            <template v-if="scheduledFor === ''">
+              Sie geht raus, sobald sie freigegeben ist — verschickte Rundmails lassen sich nicht
+              zurückholen.
+            </template>
+            <template v-else>
+              Freigegeben sein muss sie trotzdem; der Termin allein schickt nichts. Verschickte
+              Rundmails lassen sich nicht zurückholen.
+            </template>
           </p>
           <div class="mt-3 flex flex-wrap gap-2">
             <Button :disabled="isPending" @click="submit">
@@ -553,7 +596,13 @@ function audienceOf(groups: string[]): string {
         <p v-if="error" class="mt-4 text-[12.5px] text-destructive" role="alert">{{ error }}</p>
       </template>
 
-      <!-- ── Warteschlange ─────────────────────────────────────────────────────────────────── -->
+      <!-- ── Warteschlange und Geplant ─────────────────────────────────────────────────────── -->
+      <!--
+        **Zwei Abschnitte, weil zwei verschiedene Leute am Zug sind.** Oben wartet etwas auf einen
+        Menschen, unten nur noch auf die Uhr. Beides stand einmal untereinander unter „Warteschlange",
+        und das Freigegebene las sich dort wie „hängt fest" — der Satz darunter sagte das Richtige,
+        aber der Ort sagte etwas anderes, und der Ort gewinnt.
+      -->
       <template v-else-if="tab === 'queue'">
         <p v-if="waitingBroadcasts.length === 0" class="max-w-[70ch] text-note text-ink-5">
           Nichts wartet auf eine Freigabe.
@@ -576,24 +625,12 @@ function audienceOf(groups: string[]): string {
               {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }},
               {{ formatActivityTime(entry.writtenAt) }}
             </p>
-
-            <!--
-              Zwei Zustände in einer Liste, und der Unterschied ist die Arbeit: Was wartet, wartet
-              auf einen Menschen; was freigegeben ist, nur noch auf die Uhr. Beides steht hier,
-              weil eine Rundmail, die an alle geht und nirgends zu sehen ist, das Falsche ist —
-              siehe `listWaiting`.
-            -->
             <p v-if="entry.scheduledFor" class="mt-1 text-[12px] text-ink-4">
-              <template v-if="entry.status === 'approved'">
-                Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }} · geht am
-                {{ formatBerlin(entry.scheduledFor) }} von selbst raus
-              </template>
-              <template v-else>Termin: {{ formatBerlin(entry.scheduledFor) }}</template>
+              Termin: {{ formatBerlin(entry.scheduledFor) }}
             </p>
 
             <div class="mt-3 flex flex-wrap gap-2">
               <Button
-                v-if="entry.status === 'awaiting_approval'"
                 size="sm"
                 :disabled="isApproving || isDiscarding"
                 @click="approve(entry.publicationId)"
@@ -611,6 +648,49 @@ function audienceOf(groups: string[]): string {
             </div>
           </li>
         </ul>
+
+        <section v-if="scheduledBroadcasts.length > 0" class="mt-8">
+          <h2 class="font-serif text-h2 text-ink-1">Geplant</h2>
+          <p class="mt-1 max-w-[70ch] text-[12.5px] text-ink-5">
+            Freigegeben und wartet nur noch auf den Termin. Niemand muss hier etwas tun.
+          </p>
+
+          <ul class="mt-3 flex flex-col">
+            <li
+              v-for="entry in scheduledBroadcasts"
+              :key="entry.publicationId"
+              class="border-b border-line-2 py-4"
+            >
+              <p class="text-row text-ink-2">{{ entry.subject }}</p>
+              <p class="mt-1 max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-4">
+                {{ entry.body }}
+              </p>
+              <p class="mt-2 text-[12px] text-ink-6">
+                An {{ audienceOf(entry.audienceGroups)
+                }}<template v-if="entry.includeUnverified"
+                  >, auch an unbestätigte Adressen</template
+                >
+                · Als {{ entry.sendAsUsername ?? 'Admin' }} · Von
+                {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }}
+              </p>
+              <p class="mt-1 text-[12px] text-ink-4">
+                Geht am {{ formatBerlin(entry.scheduledFor ?? '') }} von selbst raus · Freigegeben
+                von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
+              </p>
+
+              <div class="mt-3 flex flex-wrap gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :disabled="isApproving || isDiscarding"
+                  @click="discard(entry.publicationId)"
+                >
+                  Verwerfen
+                </Button>
+              </div>
+            </li>
+          </ul>
+        </section>
 
         <p v-if="queueError" class="mt-3 text-[12.5px] text-destructive" role="alert">
           {{ queueError }}

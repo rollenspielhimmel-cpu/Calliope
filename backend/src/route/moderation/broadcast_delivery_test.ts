@@ -517,3 +517,86 @@ Deno.test("ohne Archiv-Haken bleibt das Forum unberührt", async () => {
     await cleanUp();
   }
 });
+
+Deno.test("die Rundmail meldet sich wie eine neue PN", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root);
+
+    const broadcast = await theBroadcast();
+
+    const notified = await db
+      .selectFrom("notification")
+      .innerJoin("chatGroup", "chatGroup.id", "notification.chatGroupId")
+      .innerJoin("user", "user.id", "notification.recipientId")
+      .select([
+        "user.username",
+        "notification.type",
+        "notification.actorId",
+        "notification.readAt",
+      ])
+      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .execute();
+
+    // **Ohne sie erführe niemand, dass etwas da ist.** Eine gewöhnliche neue PN meldet sich über
+    // ihre Einladung; eine Rundmail setzt das Mitglied direkt hinein und übersprang damit genau
+    // diese Meldung. Wer nicht zufällig ins Postfach sieht, hätte die Ankündigung nie bemerkt.
+    const reached = notified.map((row) => row.username);
+
+    // Unsere eigenen Konten, nicht die Kontenliste der Plattform — siehe die Vorrichtung oben.
+    assert(reached.includes(ROOT));
+    assert(reached.includes(SECOND));
+    assert(reached.includes(UNVERIFIED));
+    assert(!reached.includes(MEMBER));
+
+    // Genau eine je Empfänger: Zwei Meldungen für dieselbe Rundmail wären eine Doppelung, die man
+    // erst bemerkt, wenn die Glocke zweimal dasselbe sagt.
+    assertEquals(new Set(reached).size, reached.length);
+
+    assert(notified.every((row) => row.type === "broadcast_received"));
+    // Ungelesen, sonst wäre die Glocke schon still, bevor jemand hingesehen hat.
+    assert(notified.every((row) => row.readAt === null));
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("niemand benachrichtigt sich selbst über die eigene Rundmail", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root);
+
+    const broadcast = await theBroadcast();
+
+    const own = await db
+      .selectFrom("notification")
+      .innerJoin("chatGroup", "chatGroup.id", "notification.chatGroupId")
+      .innerJoin("user", "user.id", "notification.recipientId")
+      .select("notification.actorId")
+      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("user.username", "=", ROOT)
+      .executeTakeFirstOrThrow();
+
+    // ROOT hält den Ur-Admin-Platz, ist also Absender — und als Administration zugleich Empfänger.
+    // `notification_actor_is_not_recipient` verbietet genau diese Zeile; stünde der Absender darin,
+    // fiele sie um und mit ihr die ganze Anweisung, also käme die Rundmail bei niemandem an.
+    assertEquals(own.actorId, null);
+
+    // Bei allen anderen steht er sehr wohl da, sonst käme die Meldung von niemandem.
+    const others = await db
+      .selectFrom("notification")
+      .innerJoin("chatGroup", "chatGroup.id", "notification.chatGroupId")
+      .innerJoin("user", "user.id", "notification.recipientId")
+      .select("notification.actorId")
+      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("user.username", "!=", ROOT)
+      .execute();
+
+    assert(others.length > 0);
+    assert(others.every((row) => row.actorId !== null));
+  } finally {
+    await cleanUp();
+  }
+});

@@ -66,6 +66,17 @@ export function notificationText(notification: ListNotifications200ResultsItem):
     case 'invited_to_chat_group':
       // The two invitations are different things and land in different places.
       return `${actor} hat dich zum Chat „${notification.chatGroupTitle}“ eingeladen.`
+    case 'broadcast_received':
+      // **Kein „eingeladen".** Es gibt nichts anzunehmen: Die Rundmail liegt schon im Postfach, und
+      // der Betreff ist der Titel des Gesprächs.
+      //
+      // `actorUsername` direkt statt `actor`, weil leer hier etwas anderes heißt als sonst: nicht
+      // „gelöschtes Konto", sondern „du hast sie selbst geschickt". Wer an alle schreibt, steht
+      // meist selbst unter „alle", und niemand benachrichtigt sich selbst — deshalb bleibt die
+      // Spalte in genau dieser einen Zeile leer.
+      return notification.actorUsername === null
+        ? `Rundmail „${notification.chatGroupTitle}“.`
+        : `${notification.actorUsername} hat eine Rundmail geschickt: „${notification.chatGroupTitle}“.`
     default:
       return assertUnreachable(notification)
   }
@@ -121,6 +132,8 @@ export function notificationAction(
         to: { name: 'group', params: { groupId: notification.writingGroupId } },
       }
     case 'invited_to_chat_group':
+    // Dasselbe Ziel wie die Einladung: Gelesen wird im Postfach, die Glocke weist nur hin.
+    case 'broadcast_received':
       return { kind: 'chat', chatGroupId: notification.chatGroupId }
     default:
       // A new notification type reaches here as a compile error, not a silent fallthrough to

@@ -338,6 +338,26 @@ async function deliverToInbox(
       })))
       .execute();
 
+    // **Die Meldung, wie bei jeder neuen PN.**
+    //
+    // Ein gewöhnliches Gespräch beginnt mit einer Einladung, und die meldet sich. Eine Rundmail
+    // setzt das Mitglied direkt hinein und übersprang damit genau diese Meldung — wer nicht zufällig
+    // ins Postfach sieht, erführe nie, dass eine Ankündigung da ist. Sie zeigt auf das Gespräch,
+    // nicht auf die Rundmail: gelesen wird im Postfach, die Glocke weist nur hin.
+    //
+    // **`actorId` ist der Absender, außer bei ihm selbst.** `notification_actor_is_not_recipient`
+    // verbietet, sich selbst zu benachrichtigen, und wer an alle schreibt, steht fast immer selbst
+    // unter „alle" — genau seine Zeile würde umfallen und mit ihr die ganze Anweisung.
+    await transaction
+      .insertInto("notification")
+      .values(chats.map((chat) => ({
+        recipientId: chat.recipientId,
+        type: "broadcast_received" as const,
+        chatGroupId: chat.id,
+        actorId: chat.recipientId === sender ? null : sender,
+      })))
+      .execute();
+
     // Zurückgegeben wird, was wirklich zugestellt wurde — nicht, was vorher gezählt worden war.
     return chats.length;
   });
