@@ -1,29 +1,30 @@
 import { db } from "@/src/database/client.ts";
+import {
+  type ChatMessage,
+  ChatMessageService,
+} from "@/src/service/chat_message_service.ts";
+import { ChatGroupService } from "@/src/service/chat_group_service.ts";
 
 /**
  * Das Postfach der Administration: ein Ort für alles, was an sie gerichtet ist.
  *
- * **Wozu es da ist.** Die Antworten auf Rundmails lagen je Rundmail vor. Wer wissen wollte, ob
- * etwas zurückgekommen ist, musste Rundmail für Rundmail nachsehen — und was man nachsehen muss,
- * geht unter. Hier laufen sie zusammen.
+ * **Ein Verlauf je Mitglied und Absender.** Bis vor kurzem legte jede Rundmail für jeden Empfänger
+ * einen eigenen Faden an — zehn Ankündigungen waren zehn Gespräche mit je einer Nachricht. Jetzt
+ * sammelt sich alles in einem: Ankündigungen, Antworten darauf, und später Nachrichten, die jemand
+ * von sich aus schickt. Je Absender getrennt, weil eine Kunstfigur ein anderer Gesprächspartner
+ * ist und der Name mitten im Verlauf nicht wechseln darf.
  *
  * **Nur die Administration, lesen wie schreiben.** Mitglieder wissen, wer die Administration ist;
  * wer ihr schreibt, weiß, an welchen Kreis er sich wendet, und rechnet nicht damit, dass die
  * Moderation mitliest. Bei einer Beschwerde über eine Moderatorin ist das nicht bloß unangenehm,
- * sondern der Grund, aus dem es an die Administration ging. Die Begründung im Langen steht in
- * `route/moderation/broadcast_replies.ts`.
- *
- * **Die Liste unter „Gesendete" bleibt daneben bestehen**, und das ist kein Versehen. Sie
- * beantwortet, was dieses Postfach nicht kann: „Ist diese eine Ankündigung angekommen." Das ist
- * eine Eigenschaft der Rundmail, nicht des Stapels. Zwei Orte werden erst dann zum Problem, wenn
- * beide zum *Handeln* einladen — geantwortet wird deshalb nur hier.
+ * sondern der Grund, aus dem es an die Administration ging.
  */
 
 /**
  * Wie viel von der letzten Nachricht in der Liste steht.
  *
- * Dieselbe Länge wie bei den Antworten je Rundmail: genug, um zu erkennen, worum es geht, und zu
- * wenig, um das Aufklappen zu ersetzen.
+ * Genug, um zu erkennen, worum es geht, und zu wenig, um das Aufklappen zu ersetzen — sonst liest
+ * man die halbe Nachricht in einer Liste, die dafür nicht gemacht ist.
  */
 const EXCERPT_LENGTH = 140;
 
@@ -31,6 +32,8 @@ export type InboxConversation = {
   chatGroupId: string;
   /** Wer schreibt. Null, wenn das Konto inzwischen weg ist — das Gespräch überlebt es. */
   username: string | null;
+  /** Unter welchem Namen die Plattform in diesem Faden spricht. */
+  senderUsername: string | null;
   /** Der Anfang der letzten Nachricht des Mitglieds. */
   excerpt: string;
   /** Wann das **Mitglied** zuletzt geschrieben hat. Siehe unten, warum nicht das Gespräch. */
@@ -47,8 +50,6 @@ export type InboxConversation = {
    * jemand antwortet — oder es später in einen Ordner legt.
    */
   awaitingReply: boolean;
-  /** Die Rundmail, aus der das Gespräch entstand, falls es eine gibt. */
-  broadcastId: string | null;
 };
 
 /**
@@ -57,50 +58,51 @@ export type InboxConversation = {
  * **Sortiert nach dem Mitglied, nicht nach dem Gespräch.** `chat_group.last_activity_at` setzt
  * jede Nachricht neu, auch die eigene: Ein Gespräch rutschte dann nach oben, weil *wir* geantwortet
  * haben — was wir ohnehin wissen. Und der Zeitpunkt in der Zeile stünde über einem Auszug, der
- * immer vom Mitglied stammt, also über einem Text von gestern. Dieselbe Entscheidung wie bei den
- * Antworten je Rundmail, aus demselben Grund.
+ * immer vom Mitglied stammt, also über einem Text von gestern.
  *
  * **Gespräche ohne eine einzige Nachricht des Mitglieds stehen nicht darin.** Jeder Empfänger einer
- * Rundmail hat ein Gespräch — das *ist* die Zustellung. Sie alle aufzulisten hieße, den
+ * Rundmail hat einen Faden — das *ist* die Zustellung. Sie alle aufzulisten hieße, den
  * Empfängerkreis noch einmal zu zeigen und die paar echten Nachrichten darin zu verstecken.
+ *
+ * **Und nicht, was die Administration sich selbst schreibt.** Der Ur-Admin bekommt seine eigene
+ * Rundmail wie jeder andere — an der Zustellung ändert das nichts —, aber ein Faden, in dem er
+ * sich selbst gegenübersitzt, ist keine Arbeit: Da ist niemand, dem man antworten könnte. Er stand
+ * prompt als „offen" in der Liste, sobald jemand als Admin darin schrieb.
  */
 async function listConversations(): Promise<InboxConversation[]> {
   const rows = await db
     .selectFrom("chatGroup")
     .innerJoin("chatMessage", "chatMessage.chatGroupId", "chatGroup.id")
     .innerJoin("user", "user.id", "chatMessage.createdBy")
-    .innerJoin("userInChatGroup", (join) =>
-      join
-        .onRef("userInChatGroup.chatGroupId", "=", "chatGroup.id")
-        .onRef("userInChatGroup.userId", "=", "chatMessage.createdBy"))
+    .leftJoin("user as sender", "sender.id", "chatGroup.createdBy")
     .select([
       "chatGroup.id as chatGroupId",
-      "chatGroup.broadcastId",
       "user.username",
+      "sender.username as senderUsername",
       "chatMessage.id as messageId",
       "chatMessage.text",
       "chatMessage.createdAt",
     ])
     .where("chatGroup.addressedToAdministration", "=", true)
-    // **Vom Mitglied**: Wer im Gespräch sitzt, ist das Mitglied — die Plattformseite gehört mit
-    // Absicht nicht hinein. Der `innerJoin` oben ist diese Bedingung.
+    // Vom Mitglied: Es ist das Gegenüber des Fadens, und die Plattformseite sitzt nicht darin.
+    .whereRef("chatMessage.createdBy", "=", "chatGroup.administrationPartnerId")
+    // **Und keine Ankündigung.** Die trägt eine Rundmail-Kennung, und sie stammt vom Absender —
+    // der im eigenen Faden das Mitglied sein kann, wenn er an die Administration schrieb. Ohne
+    // diese Bedingung zählte seine Ankündigung als Antwort auf sich selbst.
     //
-    // **Und nicht die erste Nachricht**, denn die ist bei einer Rundmail die Ankündigung selbst.
-    // Der Absender kann im eigenen Gespräch selbst Mitglied sein — schickt er an die
-    // Administration, gehört er zum Empfängerkreis —, und seine Ankündigung zählte sonst als
-    // Antwort auf sich selbst. Über Sortierung statt über `min`, weil PostgreSQL kein `min(uuid)`
-    // kennt; Kennungen sind uuidv7 und tragen ihre Entstehungszeit, also ist „die kleinste" auch
-    // „die erste".
-    .where(({ eb, selectFrom }) =>
-      eb(
-        "chatMessage.id",
-        "!=",
-        selectFrom("chatMessage as first")
-          .select("first.id")
-          .whereRef("first.chatGroupId", "=", "chatGroup.id")
-          .orderBy("first.id", "asc")
-          .limit(1),
-      )
+    // Früher stand hier „nicht die erste Nachricht des Gesprächs", als Unterabfrage. Das war die
+    // brüchige Fassung derselben Aussage, und sie stimmte nur, solange ein Faden genau eine
+    // Rundmail trug.
+    .where("chatMessage.broadcastId", "is", null)
+    .where((eb) =>
+      eb.or([
+        eb("chatGroup.createdBy", "is", null),
+        eb(
+          "chatGroup.createdBy",
+          "!=",
+          eb.ref("chatGroup.administrationPartnerId"),
+        ),
+      ])
     )
     .orderBy("chatMessage.createdAt", "desc")
     .execute();
@@ -130,19 +132,17 @@ async function listConversations(): Promise<InboxConversation[]> {
     .orderBy("id", "desc")
     .execute();
 
-  const latestByChat = new Map(
-    latest.map((row) => [row.chatGroupId, row.id]),
-  );
+  const latestByChat = new Map(latest.map((row) => [row.chatGroupId, row.id]));
 
   return [...newest.values()].map((row) => ({
     chatGroupId: row.chatGroupId,
     username: row.username,
+    senderUsername: row.senderUsername,
     excerpt: row.text.length > EXCERPT_LENGTH
       ? `${row.text.slice(0, EXCERPT_LENGTH).trimEnd()} …`
       : row.text,
     lastMessageAt: row.createdAt,
     awaitingReply: latestByChat.get(row.chatGroupId) === row.messageId,
-    broadcastId: row.broadcastId,
   }));
 }
 
@@ -152,17 +152,18 @@ export type InboxMessage = {
   createdAt: string;
   /** Der Name nach außen: das Mitglied, oder der Absender, unter dem geschrieben wurde. */
   username: string | null;
-  /** Von der Teamseite — also die Rundmail selbst oder eine Antwort der Administration. */
+  /** Von der Teamseite — also eine Ankündigung oder eine Antwort der Administration. */
   fromTeam: boolean;
   /**
-   * Die Rundmail, mit der das Gespräch begann — nicht eine Antwort darauf.
+   * Eine Rundmail, keine Antwort darauf.
    *
    * **Ohne diese Unterscheidung liest sich der Verlauf falsch herum.** Beide standen als „Team",
    * und die Ankündigung sah damit aus wie eine Antwort der Administration: eine Antwort vor der
-   * Frage, ohne Verfasser. Genau so ist es beim Durchklicken gelesen worden, und der Schluss daraus
-   * war folgerichtig — die Anzeige log über das, was die erste Nachricht ist.
+   * Frage, ohne Verfasser. Genau so ist sie beim Durchklicken gelesen worden.
    */
   isAnnouncement: boolean;
+  /** Der Betreff der Rundmail, leer bei allem anderen. */
+  subject: string | null;
   /** Wer wirklich getippt hat, wenn `username` eine Maske ist. Sonst leer. */
   writtenByUsername: string | null;
 };
@@ -170,7 +171,7 @@ export type InboxMessage = {
 export type InboxConversationDetail = {
   chatGroupId: string;
   username: string | null;
-  broadcastId: string | null;
+  senderUsername: string | null;
   messages: InboxMessage[];
 };
 
@@ -179,17 +180,28 @@ export type InboxConversationDetail = {
  *
  * **Die Marke wird mitgeprüft, nicht nur die Kennung.** Ohne sie wäre das ein Schlüssel, mit dem
  * die Administration jedes beliebige Gespräch der Plattform aufmachen könnte, private Chats
- * zwischen zwei Mitgliedern eingeschlossen. Dieselbe Sperre wie bei den Antworten je Rundmail, wo
- * die Rundmail in der Adresse steht.
+ * zwischen zwei Mitgliedern eingeschlossen.
+ *
+ * **`written_by` wird mit ausgelesen.** Hier stand einmal das Gegenteil, mit der Begründung, die
+ * Angabe gehöre zur Liste der gesendeten Rundmails. Das galt, solange nur Ankündigungen im Faden
+ * standen — die tragen ihren Verfasser auf der Veröffentlichung. Seit die Administration antwortet,
+ * gibt es Nachrichten ohne Veröffentlichung, und für die stand die Auskunft nirgends: Die
+ * Nachvollziehbarkeit, für die die Trennung zwischen Maske und Mensch gebaut wurde, wäre eine in
+ * der Datenbank gewesen.
  */
 async function readConversation(
   chatGroupId: string,
 ): Promise<InboxConversationDetail | undefined> {
   const chat = await db
     .selectFrom("chatGroup")
-    .leftJoin("userInChatGroup", "userInChatGroup.chatGroupId", "chatGroup.id")
-    .leftJoin("user", "user.id", "userInChatGroup.userId")
-    .select(["chatGroup.id", "chatGroup.broadcastId", "user.username"])
+    .leftJoin("user", "user.id", "chatGroup.administrationPartnerId")
+    .leftJoin("user as sender", "sender.id", "chatGroup.createdBy")
+    .select([
+      "chatGroup.id",
+      "chatGroup.administrationPartnerId",
+      "user.username",
+      "sender.username as senderUsername",
+    ])
     .where("chatGroup.id", "=", chatGroupId)
     .where("chatGroup.addressedToAdministration", "=", true)
     .executeTakeFirst();
@@ -202,46 +214,100 @@ async function readConversation(
     .selectFrom("chatMessage")
     .leftJoin("user", "user.id", "chatMessage.createdBy")
     .leftJoin("user as writer", "writer.id", "chatMessage.writtenBy")
-    .leftJoin("userInChatGroup", (join) =>
-      join
-        .onRef("userInChatGroup.chatGroupId", "=", "chatMessage.chatGroupId")
-        .onRef("userInChatGroup.userId", "=", "chatMessage.createdBy"))
     .select([
       "chatMessage.id",
       "chatMessage.text",
       "chatMessage.createdAt",
+      "chatMessage.subject",
+      "chatMessage.broadcastId",
+      "chatMessage.createdBy",
       "user.username",
       "writer.username as writtenByUsername",
-      "userInChatGroup.userId as memberId",
     ])
     .where("chatMessage.chatGroupId", "=", chatGroupId)
     // Kennungen sind uuidv7 und tragen ihre Entstehungszeit, also ist das die Lesereihenfolge.
     .orderBy("chatMessage.id", "asc")
     .execute();
 
-  // Bei einer Rundmail ist die erste Nachricht die Ankündigung. Sie eigens zu merken ist nötig,
-  // weil der Absender im eigenen Gespräch selbst Mitglied sein kann und sie sonst aussähe wie eine
-  // Nachricht von ihm. Bei einem Gespräch ohne Rundmail schreibt das Mitglied zuerst — dann ist die
-  // erste Nachricht seine, und `memberId` sagt das bereits.
-  const [firstMessage] = messages;
-
-  const isAnnouncement = (id: string) =>
-    chat.broadcastId !== null && id === firstMessage?.id;
-
   return {
     chatGroupId: chat.id,
     username: chat.username,
-    broadcastId: chat.broadcastId,
+    senderUsername: chat.senderUsername,
     messages: messages.map((message) => ({
       id: message.id,
       text: message.text,
       createdAt: message.createdAt,
       username: message.username,
-      fromTeam: isAnnouncement(message.id) || message.memberId === null,
-      isAnnouncement: isAnnouncement(message.id),
+      // Von der Teamseite ist alles, was nicht vom Gegenüber des Fadens stammt. Der Absender kann
+      // im eigenen Faden selbst das Gegenüber sein — dann ist seine Ankündigung trotzdem eine.
+      fromTeam: message.broadcastId !== null ||
+        message.createdBy !== chat.administrationPartnerId,
+      isAnnouncement: message.broadcastId !== null,
+      subject: message.subject,
       writtenByUsername: message.writtenByUsername,
     })),
   };
 }
 
-export const AdminInboxService = { listConversations, readConversation };
+export type InboxReplyResult =
+  | { ok: true; message: ChatMessage; memberIds: string[] }
+  | { ok: false; reason: "not-found" };
+
+/**
+ * Die Administration antwortet in einem Gespräch des Postfachs.
+ *
+ * **Nach außen antwortet der Absender, nicht der Mensch.** `created_by` wird vom Gespräch abgelesen
+ * und nicht neu bestimmt: Dort steht schon der Name, unter dem dieser Faden läuft. Ihn hier noch
+ * einmal auszurechnen hieße, dieselbe Frage zweimal zu beantworten — und beim zweiten Mal womöglich
+ * anders, wenn die Freigabe des Absenders inzwischen zurückgenommen wurde. Mitten in einem Verlauf
+ * den Namen zu wechseln wäre für das Mitglied ein anderer Gesprächspartner. Genau deshalb ist ein
+ * Faden je Absender getrennt und nicht alles in einem.
+ *
+ * **`written_by` trägt den Menschen.** Ohne die Spalte wäre es eine Maske, hinter der niemand
+ * steht, und die Frage „wer hat das geschrieben" hätte auf dieser Plattform keine Antwort.
+ *
+ * **Das Mitglied merkt nichts davon.** Es sieht eine Antwort in seinem Postfach, von dem Namen, den
+ * es kennt, in einem gewöhnlichen Gespräch.
+ */
+async function reply(
+  chatGroupId: string,
+  text: string,
+  writtenBy: string,
+): Promise<InboxReplyResult> {
+  const chat = await db
+    .selectFrom("chatGroup")
+    .select(["id", "createdBy", "administrationPartnerId"])
+    .where("id", "=", chatGroupId)
+    .where("addressedToAdministration", "=", true)
+    .executeTakeFirst();
+
+  if (chat === undefined) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  // **Ohne Absender keine Antwort.** `chat_group.created_by` wird leer, wenn das Konto der
+  // Kunstfigur gelöscht wird. Trotzdem zu schreiben ergäbe eine Nachricht ohne Namen mitten im
+  // Verlauf — für das Mitglied jemand Drittes. Lieber ein ehrliches Nein an die Administration.
+  //
+  // **Und ohne Gegenüber auch nicht.** Löscht sich das Mitglied, überlebt der Faden als Beleg;
+  // hineinzuschreiben hieße, an niemanden zu schreiben. Das ist das Gegenstück zum Fall darüber,
+  // und es fehlte.
+  if (chat.createdBy === null || chat.administrationPartnerId === null) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  const message = await ChatMessageService.insertMessage(
+    chat.id,
+    text,
+    chat.createdBy,
+    { writtenBy },
+  );
+
+  return {
+    ok: true,
+    message,
+    memberIds: await ChatGroupService.selectMemberIds(chat.id),
+  };
+}
+
+export const AdminInboxService = { listConversations, readConversation, reply };

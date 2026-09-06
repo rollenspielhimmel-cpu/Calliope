@@ -442,27 +442,28 @@ export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
 
 /** A chat as its list entry: the group, its founder's name, and this member's unread count. */
 export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA
-  // Als Ja/Nein statt als Kennung: Die Oberfläche muss eine Rundmail im Postfach erkennen können,
-  // um sie hervorzuheben — mehr braucht sie nicht. Die Kennung wäre ein Griff auf etwas, das dem
-  // Team gehört, und Mitglieder könnten damit ohnehin nichts anfangen.
+  // **Was die Arbeit des Teams beschreibt, gehört nicht in die Antwort an das Mitglied.**
   //
-  // **Und `addressedToAdministration` gehört aus demselben Grund nicht hinein.** Die Marke sagt,
-  // dass ein Gespräch im Postfach der Administration auftaucht — eine Auskunft über die Arbeit des
-  // Teams, nicht über das Gespräch, wie das Mitglied es führt. Für das Mitglied ist es eine
-  // gewöhnliche Unterhaltung, und genau das ist der Entwurf.
+  // `addressedToAdministration` sagt, dass ein Gespräch im Postfach der Administration auftaucht;
+  // `administrationPartnerId` sagt, als wessen Faden es dort geführt wird. Beides sind Auskünfte
+  // über die Teamseite, nicht über das Gespräch, wie das Mitglied es führt — für das ist es eine
+  // gewöhnliche Unterhaltung, und genau das ist der Entwurf. Als Ja/Nein kommt das Nötige unten
+  // wieder herein: `isFromAdministration`, damit die Oberfläche hervorheben und Einladen wie
+  // Verlassen verbergen kann.
   //
-  // Sie wäre hier von selbst gelandet, weil dieses Schema aus der Tabelle erzeugt wird: Eine neue
-  // Spalte steht ohne Zutun in der Antwort an jedes Mitglied. Der Typprüfer hat es gemeldet, weil
-  // der Dienst sie nicht mitliefert — sonst wäre es niemandem aufgefallen.
-  .omit({ broadcastId: true, addressedToAdministration: true })
+  // Beide wären hier von selbst gelandet, weil dieses Schema aus der Tabelle erzeugt wird: Eine
+  // neue Spalte steht ohne Zutun in der Antwort an jedes Mitglied. Beim ersten Mal hat der
+  // Typprüfer es gemeldet, weil der Dienst sie nicht mitlieferte — sonst wäre es niemandem
+  // aufgefallen. Verlassen sollte man sich darauf nicht.
+  .omit({ addressedToAdministration: true, administrationPartnerId: true })
   .extend({
     ...OWN_FAVOURITE,
     /** The reader's own standing in it, so the interface knows whether to show a conversation. */
     status: USER_IN_CHAT_GROUP_SCHEMA.shape.status,
     createdByUsername: z.string().nullable(),
     unreadMessages: z.number().int(),
-    /** Eine Rundmail des Teams statt einer gewöhnlichen Nachricht. */
-    isBroadcast: z.boolean(),
+    /** Das Gespräch mit der Administration statt einer gewöhnlichen Unterhaltung. */
+    isFromAdministration: z.boolean(),
   });
 
 /**
@@ -477,9 +478,13 @@ export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA
  * sondern die Wahrheit.
  */
 export const CHAT_MESSAGE_RESPONSE = CHAT_MESSAGE_SCHEMA
-  .omit({ writtenBy: true })
+  // `broadcastId` aus demselben Grund wie `writtenBy` draußen: Die Kennung gehört dem Team, und
+  // das Mitglied kann mit ihr nichts anfangen. Als Ja/Nein kommt sie unten wieder herein — die
+  // Ansicht muss eine Ankündigung im Verlauf erkennen können, seit ein Faden viele davon trägt.
+  .omit({ writtenBy: true, broadcastId: true })
   .extend({
     createdByUsername: z.string().nullable(),
+    isBroadcast: z.boolean(),
   });
 
 export const CHAT_MEMBERSHIP_RESPONSE = USER_IN_CHAT_GROUP_SCHEMA

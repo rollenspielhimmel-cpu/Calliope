@@ -436,7 +436,7 @@ export interface BroadcastTemplate {
 
 export interface ChatGroup {
   addressedToAdministration: Generated<boolean>;
-  broadcastId: string | null;
+  administrationPartnerId: string | null;
   createdAt: Generated<string>;
   createdBy: string | null;
   id: Generated<string>;
@@ -445,10 +445,12 @@ export interface ChatGroup {
 }
 
 export interface ChatMessage {
+  broadcastId: string | null;
   chatGroupId: string;
   createdAt: Generated<string>;
   createdBy: string | null;
   id: Generated<string>;
+  subject: string | null;
   text: string;
   writtenBy: string | null;
 }
@@ -1328,8 +1330,8 @@ export const CHAT_GROUP_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   lastActivityAt: z.iso.datetime({ offset: true }),
-  broadcastId: z.uuidv7().nullable(),
   addressedToAdministration: z.boolean(),
+  administrationPartnerId: z.uuidv7().nullable(),
 });
 
 export const CHAT_MESSAGE_SCHEMA = z.object({
@@ -1339,6 +1341,8 @@ export const CHAT_MESSAGE_SCHEMA = z.object({
   createdBy: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   writtenBy: z.uuidv7().nullable(),
+  broadcastId: z.uuidv7().nullable(),
+  subject: z.string().nullable(),
 });
 
 export const CUSTOM_PAGE_SCHEMA = z.object({

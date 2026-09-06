@@ -6,10 +6,24 @@ import type { ChatMessage as DatabaseChatMessage } from "@/src/database/schema.t
 export type ChatMessage =
   & Pick<
     Selectable<DatabaseChatMessage>,
-    "id" | "chatGroupId" | "text" | "createdBy" | "createdAt"
+    "id" | "chatGroupId" | "text" | "createdBy" | "createdAt" | "subject"
   >
   // Null once the author's account is gone: what they wrote outlives it.
-  & { createdByUsername: string | null };
+  & { createdByUsername: string | null }
+  & {
+    /**
+     * Eine Rundmail statt einer gewöhnlichen Nachricht.
+     *
+     * **An der Nachricht, nicht mehr am Gespräch.** Ein Faden mit der Administration trägt viele
+     * Ankündigungen, dazwischen Antworten — welche davon eine Rundmail ist, ist deshalb eine Frage
+     * je Nachricht. Vorher hing sie am Gespräch, und die Oberfläche hob „die erste Nachricht"
+     * hervor; das stimmte nur, solange jede Rundmail ihren eigenen Faden hatte.
+     *
+     * Ja/Nein statt der Kennung: Die Kennung gehört dem Team, das Mitglied kann mit ihr nichts
+     * anfangen.
+     */
+    isBroadcast: boolean;
+  };
 
 const SELECTED_COLUMNS = [
   "chatMessage.id",
@@ -17,13 +31,24 @@ const SELECTED_COLUMNS = [
   "chatMessage.text",
   "chatMessage.createdBy",
   "chatMessage.createdAt",
+  // Der Betreff der Rundmail, leer bei allem anderen. Als eigenes Feld, damit die Ansicht ihn als
+  // Überschrift zeigen kann statt ihn in den Text zu kleben, wo er nicht mehr davon zu trennen wäre.
+  "chatMessage.subject",
 ] as const;
 
 function messagesWithAuthor() {
   return db
     .selectFrom("chatMessage")
     .leftJoin("user", "user.id", "chatMessage.createdBy")
-    .select([...SELECTED_COLUMNS, "user.username as createdByUsername"]);
+    .select((eb) => [
+      ...SELECTED_COLUMNS,
+      "user.username as createdByUsername",
+      // `$castTo`, weil Kyselys `SqlBool` auch 0 und 1 zulässt — eine Aussage über Treiber, die
+      // keinen Wahrheitswert kennen, und keine über PostgreSQL.
+      eb("chatMessage.broadcastId", "is not", null)
+        .$castTo<boolean>()
+        .as("isBroadcast"),
+    ]);
 }
 
 /**

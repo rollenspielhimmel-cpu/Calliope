@@ -1,7 +1,12 @@
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
-import { registerUser, request, scopedTestData } from "@/src/test/support.ts";
+import {
+  getUserId,
+  registerUser,
+  request,
+  scopedTestData,
+} from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
@@ -20,13 +25,15 @@ const MEMBER = "ai-member";
 const SILENT = "ai-silent";
 const MODERATOR = "ai-moderator";
 const OUTSIDER = "ai-outsider";
+const PERSONA = "ai-persona";
 
-const USERS = [ROOT, MEMBER, SILENT, MODERATOR, OUTSIDER];
+const USERS = [ROOT, MEMBER, SILENT, MODERATOR, OUTSIDER, PERSONA];
 
 const SUBJECT = "Postfach-Test";
 const BODY = "Bitte einmal zurückschreiben.";
 const REPLY = "Ich hätte da eine Frage.";
 const ANSWER = "Gern — hier ist die Antwort.";
+const SECOND_SUBJECT = "Postfach-Test, zweite Runde";
 
 async function setRole(
   username: string,
@@ -39,6 +46,12 @@ async function setRole(
     .execute();
 }
 
+// **Beide Betreffs, nicht nur einer.**
+//
+// Bleibt eine Veröffentlichung stehen, scheitert danach das Löschen ihres Freigebers: `approved_by`
+// ist `ON DELETE SET NULL`, und die Bedingung `publication_approval_is_whole` verlangt beide
+// Spalten oder keine. Der Fehler kommt dann als Verletzung einer Bedingung an, die mit dem Test
+// nichts zu tun hat — siehe die Notiz dazu in `AGENTS.md`.
 const data = scopedTestData({
   users: USERS,
   seat: ROOT,
@@ -51,7 +64,7 @@ const data = scopedTestData({
         transaction
           .selectFrom("broadcast")
           .select("publicationId")
-          .where("subject", "=", SUBJECT),
+          .where("subject", "in", [SUBJECT, SECOND_SUBJECT]),
       )
       .execute();
   },
@@ -69,11 +82,19 @@ function fixture() {
       outsider: await registerUser(OUTSIDER),
     };
 
+    // Ein Konto, unter dem eine Rundmail laufen kann, ohne dass jemand sich damit anmeldet.
+    await registerUser(PERSONA);
+
     await setRole(ROOT, "administrator");
     await setRole(MEMBER, "administrator");
     await setRole(SILENT, "administrator");
     await setRole(MODERATOR, "moderator");
     await setRole(OUTSIDER, null);
+
+    await db
+      .insertInto("broadcastSender")
+      .values({ userId: await getUserId(PERSONA) })
+      .execute();
 
     await borrowPrimordialSeat(ROOT);
 
@@ -82,13 +103,17 @@ function fixture() {
 }
 
 /** Eine Rundmail an die Administration, nur ins Postfach. */
-async function sendBroadcast(cookie: string) {
+async function sendBroadcast(
+  cookie: string,
+  subject: string = SUBJECT,
+  sendAsUserId: string | null = null,
+) {
   const response = await request(
     "POST",
     "/api/moderation/broadcast/queue",
     cookie,
     {
-      subject: SUBJECT,
+      subject,
       body: BODY,
       audienceRoles: ["administrator"],
       memberIds: [],
@@ -96,7 +121,7 @@ async function sendBroadcast(cookie: string) {
       deliverToInbox: true,
       deliverByEmail: false,
       publishInArchive: false,
-      sendAsUserId: null,
+      sendAsUserId,
       scheduledFor: null,
     },
   );
@@ -106,7 +131,7 @@ async function sendBroadcast(cookie: string) {
   const broadcast = await db
     .selectFrom("broadcast")
     .select("id")
-    .where("subject", "=", SUBJECT)
+    .where("subject", "=", subject)
     .executeTakeFirstOrThrow();
 
   return broadcast.id;
@@ -122,7 +147,15 @@ async function chatOf(broadcastId: string, username: string) {
     )
     .innerJoin("user", "user.id", "userInChatGroup.userId")
     .select("chatGroup.id")
-    .where("chatGroup.broadcastId", "=", broadcastId)
+    .where(
+      "chatGroup.id",
+      "in",
+      db.selectFrom("chatMessage").select("chatGroupId").where(
+        "broadcastId",
+        "=",
+        broadcastId,
+      ),
+    )
     .where("user.username", "=", username)
     .executeTakeFirstOrThrow();
 
@@ -136,16 +169,11 @@ function write(cookie: string, chatGroupId: string, text: string) {
   });
 }
 
-/** Die Administration antwortet, über die Rundmail. */
-function answer(
-  cookie: string,
-  broadcastId: string,
-  chatGroupId: string,
-  text: string,
-) {
+/** Die Administration antwortet — über das Gespräch, nicht mehr über die Rundmail. */
+function answer(cookie: string, chatGroupId: string, text: string) {
   return request(
     "POST",
-    `/api/moderation/broadcast/${broadcastId}/replies/${chatGroupId}`,
+    `/api/moderation/inbox/${chatGroupId}`,
     cookie,
     { text },
   );
@@ -161,7 +189,7 @@ type Entry = {
   excerpt: string;
   lastMessageAt: string;
   awaitingReply: boolean;
-  broadcastId: string | null;
+  senderUsername: string | null;
 };
 
 /** Nur die Gespräche dieser Datei — andere Läufe legen ihre eigenen an. */
@@ -192,7 +220,8 @@ Deno.test("was zurückkommt, liegt im Postfach", async () => {
     assertEquals(entry.excerpt, REPLY);
 
     // Die Rundmail steht dabei, damit die Zeile sagt, woher das Gespräch kommt.
-    assertEquals(entry.broadcastId, broadcastId);
+    // Der Name, unter dem die Plattform in diesem Faden spricht.
+    assertEquals(entry.senderUsername, ROOT);
   } finally {
     await cleanUp();
   }
@@ -231,7 +260,7 @@ Deno.test("offen heißt: die letzte Nachricht ist noch vom Mitglied", async () =
     assertExists(before);
     assertEquals(before.awaitingReply, true);
 
-    await answer(cookies.silent, broadcastId, chatGroupId, ANSWER);
+    await answer(cookies.silent, chatGroupId, ANSWER);
 
     const [after] = ours((await (await inbox(cookies.root)).json()).results);
     assertExists(after);
@@ -256,7 +285,7 @@ Deno.test("der Verlauf zeigt beide Seiten und den Verfasser", async () => {
     const chatGroupId = await chatOf(broadcastId, MEMBER);
 
     await write(cookies.member, chatGroupId, REPLY);
-    await answer(cookies.silent, broadcastId, chatGroupId, ANSWER);
+    await answer(cookies.silent, chatGroupId, ANSWER);
 
     const response = await request(
       "GET",
@@ -268,7 +297,7 @@ Deno.test("der Verlauf zeigt beide Seiten und den Verfasser", async () => {
 
     const conversation = await response.json();
     assertEquals(conversation.username, MEMBER);
-    assertEquals(conversation.broadcastId, broadcastId);
+    assertEquals(conversation.senderUsername, ROOT);
 
     const announcement = conversation.messages.find(
       (message: { text: string }) => message.text === BODY,
@@ -353,7 +382,7 @@ Deno.test("die Rundmail heißt Rundmail, nicht Team", async () => {
     const chatGroupId = await chatOf(broadcastId, MEMBER);
 
     await write(cookies.member, chatGroupId, REPLY);
-    await answer(cookies.silent, broadcastId, chatGroupId, ANSWER);
+    await answer(cookies.silent, chatGroupId, ANSWER);
 
     const { messages } = await (await request(
       "GET",
@@ -382,6 +411,113 @@ Deno.test("die Rundmail heißt Rundmail, nicht Team", async () => {
     );
     assertExists(fromMember);
     assertEquals(fromMember.isAnnouncement, false);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("zwei Rundmails landen im selben Faden", async () => {
+  const cookies = await fixture();
+
+  try {
+    const first = await sendBroadcast(cookies.root);
+    const chatGroupId = await chatOf(first, MEMBER);
+
+    await write(cookies.member, chatGroupId, REPLY);
+    await sendBroadcast(cookies.root, SECOND_SUBJECT);
+
+    // **Der Kern des Umbaus.** Vorher war jede Ankündigung ein eigener Faden mit einer Nachricht;
+    // für das Mitglied ein Stapel statt eines Gesprächs, und für die Administration „was hat diese
+    // Person geschrieben" über zehn Orte verteilt.
+    // **Nur unser Absender.** Ein Lauf mit `--parallel` schickt nebenher eigene Rundmails an die
+    // Administration, und MEMBER steht in deren Empfängerkreis: Deren Fäden zu zählen hieße, die
+    // Geschwindigkeit anderer Dateien zu messen.
+    const chats = await db
+      .selectFrom("chatGroup")
+      .select("id")
+      .where("addressedToAdministration", "=", true)
+      .where(
+        "administrationPartnerId",
+        "=",
+        db.selectFrom("user").select("id").where("username", "=", MEMBER),
+      )
+      .where(
+        "createdBy",
+        "=",
+        db.selectFrom("user").select("id").where("username", "=", ROOT),
+      )
+      .execute();
+
+    assertEquals(chats.length, 1);
+    assertEquals(chats[0]?.id, chatGroupId);
+
+    const { messages } = await (await request(
+      "GET",
+      `/api/moderation/inbox/${chatGroupId}`,
+      cookies.root,
+    )).json();
+
+    // Beide Ankündigungen und die Antwort dazwischen, in der Reihenfolge, in der sie entstanden.
+    assertEquals(
+      messages.map((message: { text: string }) => message.text),
+      [BODY, REPLY, BODY],
+    );
+
+    const subjects = messages.map(
+      (message: { subject: string | null }) => message.subject,
+    );
+    assertEquals(subjects, [SUBJECT, null, SECOND_SUBJECT]);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("eine Kunstfigur bekommt ihren eigenen Faden", async () => {
+  const cookies = await fixture();
+
+  try {
+    await sendBroadcast(cookies.root);
+    await sendBroadcast(cookies.root, SECOND_SUBJECT, await getUserId(PERSONA));
+
+    const chats = await db
+      .selectFrom("chatGroup")
+      .leftJoin("user as sender", "sender.id", "chatGroup.createdBy")
+      .select("sender.username as senderUsername")
+      .where("chatGroup.addressedToAdministration", "=", true)
+      .where(
+        "chatGroup.administrationPartnerId",
+        "=",
+        db.selectFrom("user").select("id").where("username", "=", MEMBER),
+      )
+      .execute();
+
+    // **Nicht alles in einen Topf.** Liefe die Kunstfigur in denselben Faden, wechselte für das
+    // Mitglied mitten im Verlauf der Gesprächspartner — und die Regel „der Absender wird vom
+    // Gespräch abgelesen" wäre nicht mehr haltbar.
+    assertEquals(
+      chats.map((chat) => chat.senderUsername).toSorted(),
+      [PERSONA, ROOT].toSorted(),
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("was die Administration sich selbst schreibt, ist keine Arbeit", async () => {
+  const cookies = await fixture();
+
+  try {
+    const broadcastId = await sendBroadcast(cookies.root);
+
+    // ROOT hält den Ur-Admin-Platz und steht selbst im Empfängerkreis — er bekommt seine eigene
+    // Rundmail wie jeder andere. Schreibt er in seinem eigenen Faden, ist das keine Frage an
+    // jemanden.
+    await write(cookies.root, await chatOf(broadcastId, ROOT), "Notiz an mich");
+
+    const { results } = await (await inbox(cookies.root)).json();
+    const names = ours(results).map((row) => row.username);
+
+    assert(!names.includes(ROOT));
   } finally {
     await cleanUp();
   }

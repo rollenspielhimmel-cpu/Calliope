@@ -297,7 +297,7 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
               chat.id === selectedId
                 ? 'bg-paper-3 font-medium text-ink-1'
                 : 'text-ink-4 hover:bg-paper-2 hover:text-ink-1',
-              chat.isBroadcast ? 'border-oak' : 'border-line-4',
+              chat.isFromAdministration ? 'border-oak' : 'border-line-4',
             ]"
             @click="selectedId = chat.id"
           >
@@ -315,8 +315,8 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
                  Halbfett und eine Stufe dunkler reicht — mehr wäre eine Marke, und Marken kommen
                  hier nicht vor. -->
             <span class="text-[11px] text-ink-6">
-              <template v-if="chat.isBroadcast">
-                <span class="font-medium text-ink-4">Rundmail</span> ·
+              <template v-if="chat.isFromAdministration">
+                <span class="font-medium text-ink-4">Administration</span> ·
               </template>
               {{ formatActivityTime(chat.lastActivityAt) }}
             </span>
@@ -375,7 +375,7 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
               :title="selected.title"
               :live="liveByChat[selected.id] ?? []"
               :is-favourite="selected.isFavourite"
-              :is-broadcast="selected.isBroadcast"
+              :is-from-administration="selected.isFromAdministration"
               @favourite-changed="refetch"
             />
           </template>

@@ -38,7 +38,6 @@ import ModerationPage from '@/components/moderation/ModerationPage.vue'
 import ModerationTabs from '@/components/moderation/ModerationTabs.vue'
 import type { ModerationTab } from '@/components/moderation/ModerationTabs.vue'
 import BroadcastSendersPanel from '@/components/moderation/BroadcastSendersPanel.vue'
-import BroadcastReplies from '@/components/moderation/BroadcastReplies.vue'
 import UserPicker from '@/components/user/UserPicker.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -999,7 +998,12 @@ function rolesOf(roles: string[]): string {
               · Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
             </p>
 
-            <BroadcastReplies :broadcast-id="entry.broadcastId" />
+            <!-- Hier stand die Liste „wer hat geantwortet". Sie ging mit dem einen Verlauf je
+                 Mitglied: Eine Antwort hängt seitdem nicht mehr an einer Ankündigung, sondern ist
+                 die nächste Nachricht im Faden. Die Liste hätte raten müssen — und ihre Auskunft
+                 hätte sich rückwirkend geändert, sobald die nächste Rundmail rausgeht. Gelesen und
+                 geantwortet wird im Postfach.
+                 Siehe views/moderation/AdminInboxView.vue. -->
           </li>
         </ul>
       </template>

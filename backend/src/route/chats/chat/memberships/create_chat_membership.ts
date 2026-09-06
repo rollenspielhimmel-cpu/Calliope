@@ -111,7 +111,7 @@ export default new OpenAPIHono().openapi(
      */
     const chat = await ChatGroupService.selectChatGroup(user, chatId);
 
-    if (chat?.isBroadcast === true) {
+    if (chat?.isFromAdministration === true) {
       return c.json(
         { error: "Zu einer Rundmail lässt sich niemand einladen." },
         STATUS_CODE.Forbidden,

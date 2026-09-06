@@ -12,7 +12,7 @@
  */
 import { formatActivityTime } from '@/lib/format/formatTime'
 
-/** Dieselbe Form in beiden Schnittstellen — Postfach und Rundmail-Antworten. */
+/** Die Form, die das Postfach liefert. */
 export type TeamMessage = {
   id: string
   text: string
@@ -20,6 +20,7 @@ export type TeamMessage = {
   username: string | null
   fromTeam: boolean
   isAnnouncement: boolean
+  subject: string | null
   writtenByUsername: string | null
 }
 
@@ -46,6 +47,10 @@ defineProps<{ messages: TeamMessage[] }>()
         <template v-if="message.writtenByUsername">
           · geschrieben von {{ message.writtenByUsername }}
         </template>
+      </p>
+      <!-- Der Betreff steht über der Ankündigung, zu der er gehört: Ein Faden trägt viele. -->
+      <p v-if="message.subject" class="text-[12.5px] font-medium text-ink-2">
+        {{ message.subject }}
       </p>
       <p class="max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-3">
         {{ message.text }}

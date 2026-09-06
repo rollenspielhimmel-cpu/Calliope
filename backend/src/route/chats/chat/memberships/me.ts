@@ -101,7 +101,7 @@ const leave = new OpenAPIHono().openapi(
      */
     const chat = await ChatGroupService.selectChatGroup(c.get("user"), chatId);
 
-    if (chat?.isBroadcast === true) {
+    if (chat?.isFromAdministration === true) {
       return c.json(
         { error: "Eine Rundmail lässt sich nicht verlassen." },
         STATUS_CODE.Forbidden,

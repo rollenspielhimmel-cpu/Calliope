@@ -32,7 +32,11 @@ const props = defineProps<{
   live: ListMessages200ResultsItem[]
   isFavourite?: boolean
   /**
-   * Ein Rundmail-Gespräch: Die erste Nachricht darin ist die Rundmail selbst.
+   * Das Gespräch mit der Administration: Einladen und Verlassen gibt es dort nicht.
+   *
+   * Hier stand „ein Rundmail-Gespräch: die erste Nachricht darin ist die Rundmail selbst". Das
+   * stimmte, solange jede Ankündigung ihren eigenen Faden bekam. Seit ein Faden je Absender alles
+   * sammelt, ist „ist eine Rundmail" eine Frage je Nachricht — die beantwortet `message.isBroadcast`.
    *
    * **Pflicht, nicht optional** — und das ist der Unterschied zwischen einem Fehler, der auffällt,
    * und einem, der nicht auffällt. Als sie optional war, hat der Dialog sie schlicht nicht
@@ -40,7 +44,7 @@ const props = defineProps<{
    * wurden weiter angeboten. Nichts brach, es galt nur nichts mehr. Verpflichtend ist dasselbe
    * Versäumnis ein Uebersetzungsfehler.
    */
-  isBroadcast: boolean
+  isFromAdministration: boolean
 }>()
 
 const emit = defineEmits<{ favouriteChanged: [] }>()
@@ -130,17 +134,6 @@ const rows = computed<Array<{ message: ListMessages200ResultsItem; startsRun: bo
         Date.parse(message.createdAt) - Date.parse(previous.createdAt) > RUN_WINDOW_MS,
     }
   }),
-)
-
-/**
- * Welche Zeile die Rundmail selbst ist — nur sie wird hervorgehoben, die Antworten nicht.
- *
- * **Die erste, und nur solange keine älteren nachzuladen sind.** In einem Rundmail-Gespräch ist die
- * Rundmail die älteste Nachricht; gäbe es noch eine Seite davor, wäre die oberste angezeigte nicht
- * die erste, und die Hervorhebung träfe eine Antwort.
- */
-const broadcastMessageId = computed<string | undefined>(() =>
-  props.isBroadcast && !hasOlder.value ? messages.value[0]?.id : undefined,
 )
 
 const { data: membersData } = useListChatMemberships(() => props.chatGroupId, { limit: 50 })
@@ -288,7 +281,11 @@ async function submit() {
         <!-- **In einer Rundmail sitzt nur das Mitglied, und das ist der Sinn.** Wer hier jemanden
              einlüde, holte eine dritte Person in einen Kanal, der ihm und dem Team gehört — sie
              läse mit, und die Zusage, dass niemand die Antwort eines anderen sieht, wäre dahin. -->
-        <ChatInvite v-if="!isBroadcast" :chat-group-id="chatGroupId" :member-ids="memberIds" />
+        <ChatInvite
+          v-if="!isFromAdministration"
+          :chat-group-id="chatGroupId"
+          :member-ids="memberIds"
+        />
         <!-- A raw button like the ones beside it: this row is text actions on one baseline, not
              buttons. The wording still comes from `favouriteToggle`. -->
         <button
@@ -328,7 +325,7 @@ async function submit() {
              Das Melden bleibt: Auch eine Ankündigung kann etwas enthalten, das jemand zur Sprache
              bringen will, und das ist der Weg dafür. -->
         <button
-          v-if="knowsWhoIsHere && !isBroadcast"
+          v-if="knowsWhoIsHere && !isFromAdministration"
           type="button"
           class="flex min-h-11 items-center gap-1.5 text-[12.5px] text-ink-5 hover:text-oak-deep md:min-h-0"
           @click="askingToLeave = true"
@@ -389,7 +386,13 @@ async function submit() {
                Die Kante nur an der Rundmail selbst, nicht an den Antworten — auch nicht an denen
                der Administration. Dieselbe Farbe wie im Postfach, damit es dieselbe Aussage ist:
                „das kam vom Team". -->
-          <div :class="row.message.id === broadcastMessageId ? 'border-l-2 border-oak pl-2.5' : ''">
+          <div :class="row.message.isBroadcast ? 'border-l-2 border-oak pl-2.5' : ''">
+            <!-- Der Betreff war der Titel des Gesprächs, solange jede Rundmail ihren eigenen Faden
+                 hatte. Jetzt trägt ein Faden viele, also steht er über der Nachricht, zu der er
+                 gehört — als Überschrift und nicht in den Text geklebt. -->
+            <p v-if="row.message.subject" class="mb-0.5 text-[13.5px] font-medium text-ink-2">
+              {{ row.message.subject }}
+            </p>
             <MessageText :text="row.message.text" />
           </div>
 

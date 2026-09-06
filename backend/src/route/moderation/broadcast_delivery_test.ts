@@ -138,6 +138,19 @@ function fixture() {
   });
 }
 
+/**
+ * Die Gespräche, in denen diese Rundmail liegt.
+ *
+ * **Die Rundmail hängt an der Nachricht, nicht mehr am Gespräch.** Ein Faden je Mitglied und
+ * Absender trägt viele Ankündigungen; „welches Gespräch gehört zu dieser Rundmail" ist deshalb eine
+ * Frage über die Nachrichten darin.
+ */
+const chatsOf = (broadcastId: string) =>
+  db
+    .selectFrom("chatMessage")
+    .select("chatGroupId")
+    .where("broadcastId", "=", broadcastId);
+
 /** Nur die Rundmails dieser Datei — andere Läufe legen ihre eigenen an. */
 async function ourBroadcasts() {
   return await db
@@ -168,7 +181,7 @@ async function chatOf(
     )
     .innerJoin("user", "user.id", "userInChatGroup.userId")
     .select("chatGroup.id")
-    .where("chatGroup.broadcastId", "=", broadcast.id)
+    .where("chatGroup.id", "in", chatsOf(broadcast.id))
     .where("user.username", "=", username)
     .executeTakeFirstOrThrow();
 
@@ -202,14 +215,23 @@ Deno.test("ins Postfach heißt: eine Zeile für jeden Empfänger", async () => {
         "chatGroup.id",
       )
       .innerJoin("user", "user.id", "userInChatGroup.userId")
-      .select(["user.username", "userInChatGroup.status", "chatGroup.title"])
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .select(["user.username", "userInChatGroup.status"])
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .execute();
 
     const reached = notified.map((row) => row.username);
 
-    // Der Betreff ist der Titel des Gesprächs — so findet man sie im Postfach wieder.
-    assert(notified.every((row) => row.title === SUBJECT));
+    // **Der Betreff steht an der Nachricht, nicht mehr am Gespräch.** Ein Faden je Mitglied und
+    // Absender trägt viele Ankündigungen, und einen Titel kann er nur einmal tragen; er heißt jetzt
+    // nach dem Absender.
+    const announcements = await db
+      .selectFrom("chatMessage")
+      .select("subject")
+      .where("broadcastId", "=", broadcast.id)
+      .execute();
+
+    assert(announcements.length > 0);
+    assert(announcements.every((row) => row.subject === SUBJECT));
 
     // **Beigetreten, nicht eingeladen.** Eine Rundmail nimmt man nicht an; eine Einladung, die erst
     // bestätigt werden müsste, wäre eine Hürde vor einer Mitteilung, die schon ausgesprochen ist.
@@ -272,7 +294,7 @@ Deno.test("der Absender sitzt in keinem der Gespräche", async () => {
       .selectFrom("userInChatGroup")
       .innerJoin("chatGroup", "chatGroup.id", "userInChatGroup.chatGroupId")
       .select("userInChatGroup.userId")
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .where("userInChatGroup.userId", "=", sender.id)
       .execute();
 
@@ -283,7 +305,7 @@ Deno.test("der Absender sitzt in keinem der Gespräche", async () => {
       .selectFrom("chatMessage")
       .innerJoin("chatGroup", "chatGroup.id", "chatMessage.chatGroupId")
       .select(["chatMessage.createdBy", "chatMessage.text"])
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .execute();
 
     assert(messages.length > 0);
@@ -312,7 +334,7 @@ Deno.test("das Gespräch gehört dem Absender, nicht der schreibenden Person", a
     const chats = await db
       .selectFrom("chatGroup")
       .select("createdBy")
-      .where("broadcastId", "=", broadcast.id)
+      .where("id", "in", chatsOf(broadcast.id))
       .execute();
 
     // **Die Ecke, an die niemand denkt.** `created_by` am Gespräch sieht sich nie jemand an — und
@@ -369,7 +391,7 @@ Deno.test("ohne Postfach-Weg entsteht keine Zeile im Postfach", async () => {
     const chats = await db
       .selectFrom("chatGroup")
       .select("id")
-      .where("broadcastId", "=", broadcast.id)
+      .where("id", "in", chatsOf(broadcast.id))
       .execute();
 
     assertEquals(chats, []);
@@ -412,7 +434,7 @@ Deno.test("die Reichweite wird beim Versand festgehalten", async () => {
     const chats = await db
       .selectFrom("chatGroup")
       .select("id")
-      .where("broadcastId", "=", broadcast.id)
+      .where("id", "in", chatsOf(broadcast.id))
       .execute();
 
     // **Gegen die eigenen Gespräche geprüft, nicht gegen die Kontenliste von jetzt.** Die Dateien
@@ -558,7 +580,7 @@ Deno.test("die Rundmail meldet sich wie eine neue PN", async () => {
         "notification.actorId",
         "notification.readAt",
       ])
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .execute();
 
     // **Ohne sie erführe niemand, dass etwas da ist.** Eine gewöhnliche neue PN meldet sich über
@@ -597,7 +619,7 @@ Deno.test("niemand benachrichtigt sich selbst über die eigene Rundmail", async 
       .innerJoin("chatGroup", "chatGroup.id", "notification.chatGroupId")
       .innerJoin("user", "user.id", "notification.recipientId")
       .select("notification.actorId")
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .where("user.username", "=", ROOT)
       .executeTakeFirstOrThrow();
 
@@ -612,7 +634,7 @@ Deno.test("niemand benachrichtigt sich selbst über die eigene Rundmail", async 
       .innerJoin("chatGroup", "chatGroup.id", "notification.chatGroupId")
       .innerJoin("user", "user.id", "notification.recipientId")
       .select("notification.actorId")
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .where("user.username", "!=", ROOT)
       .execute();
 
@@ -656,15 +678,7 @@ Deno.test("die Zustellung sagt offenen Fenstern Bescheid", async () => {
       .selectFrom("userInChatGroup")
       .select("chatGroupId")
       .where("userId", "=", second.id)
-      .where(
-        "chatGroupId",
-        "in",
-        db.selectFrom("chatGroup").select("id").where(
-          "broadcastId",
-          "=",
-          (await theBroadcast()).id,
-        ),
-      )
+      .where("chatGroupId", "in", chatsOf((await theBroadcast()).id))
       .executeTakeFirstOrThrow();
 
     assertEquals(event.chatGroupId, chat.chatGroupId);
@@ -817,7 +831,7 @@ Deno.test("namentlich Genannte kommen zu den Rollen hinzu", async () => {
       )
       .innerJoin("user", "user.id", "userInChatGroup.userId")
       .select("user.username")
-      .where("chatGroup.broadcastId", "=", broadcast.id)
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
       .execute();
 
     const names = reached.map((row) => row.username);
@@ -853,7 +867,7 @@ Deno.test("wer über Rolle und Namen drinsteht, bekommt sie einmal", async () =>
       )
       .innerJoin("user", "user.id", "userInChatGroup.userId")
       .select("chatGroup.id")
-      .where("chatGroup.broadcastId", "=", (await theBroadcast()).id)
+      .where("chatGroup.id", "in", chatsOf((await theBroadcast()).id))
       .where("user.username", "=", SECOND)
       .execute();
 

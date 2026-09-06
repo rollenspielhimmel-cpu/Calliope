@@ -33,12 +33,16 @@ export type ChatGroup =
     /** The reader's own favourite, visible to nobody else. */
     isFavourite: boolean;
     /**
-     * Eine Rundmail des Teams statt einer gewöhnlichen Nachricht.
+     * Das Gespräch mit der Administration statt einer gewöhnlichen Unterhaltung.
      *
-     * Ja/Nein statt der Kennung: Die Oberfläche hebt sie damit im Postfach hervor, und mehr braucht
-     * sie dafür nicht.
+     * Hier stand einmal „eine Rundmail des Teams". Das galt, solange jede Ankündigung ihren eigenen
+     * Faden bekam; jetzt sammelt ein Faden je Absender alles — Ankündigungen wie Antworten —, und
+     * „ist eine Rundmail" ist keine Eigenschaft des Gesprächs mehr, sondern der einzelnen Nachricht.
+     *
+     * Ja/Nein statt einer Kennung: Die Oberfläche hebt das Gespräch damit hervor und verbirgt
+     * Einladen und Verlassen. Mehr braucht sie nicht.
      */
-    isBroadcast: boolean;
+    isFromAdministration: boolean;
   };
 
 const SELECTED_COLUMNS = [
@@ -87,9 +91,9 @@ function chatsWithDetail(user: User) {
       // `$castTo` ist hier nicht geschummelt: Kyselys `SqlBool` lässt auch 0 und 1 zu, weil manche
       // Treiber keinen eigenen Wahrheitswert kennen. PostgreSQL hat einen und liefert ihn, also ist
       // die Einschränkung eine Aussage über den Treiber und keine Behauptung über die Daten.
-      eb("chatGroup.broadcastId", "is not", null)
+      eb("chatGroup.addressedToAdministration", "=", true)
         .$castTo<boolean>()
-        .as("isBroadcast"),
+        .as("isFromAdministration"),
       // Counted against the member's own last_read_at, which is why it cannot be a column on
       // the chat: the same chat is a different number of unread messages per person.
       // Wrapped in coalesce so the type is not nullable: a correlated subquery is optional to
@@ -155,8 +159,8 @@ export type ChatGroupGate = {
   title: string;
   createdBy: string | null;
   status: UserInChatGroupStatus;
-  /** Ein Rundmail-Gespräch. Einladen und Verlassen sind dort verboten — siehe die Routen. */
-  isBroadcast: boolean;
+  /** Das Gespräch mit der Administration. Einladen und Verlassen sind dort verboten. */
+  isFromAdministration: boolean;
 };
 
 /** Returns nothing when the chat does not exist or the user is not in it. */
@@ -172,9 +176,9 @@ async function selectChatGroup(
       "userInChatGroup.status",
     ])
     .select((eb) =>
-      eb("chatGroup.broadcastId", "is not", null)
+      eb("chatGroup.addressedToAdministration", "=", true)
         .$castTo<boolean>()
-        .as("isBroadcast")
+        .as("isFromAdministration")
     )
     .where("chatGroup.id", "=", chatGroupId)
     .executeTakeFirst();

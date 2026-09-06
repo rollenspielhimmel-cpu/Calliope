@@ -330,43 +330,89 @@ async function deliverToInbox(
       .where("id", "in", recipientIds)
       .execute();
 
+    if (present.length === 0) {
+      return { sender, chats: [], at: now };
+    }
+
+    const recipientsPresent = present.map((recipient) => recipient.id);
+
+    // **Gefunden statt angelegt, wo es das Gespräch schon gibt.**
+    //
+    // Bis hierher legte jede Rundmail für jeden Empfänger einen neuen Faden an: Zehn Ankündigungen
+    // waren zehn Gespräche mit je einer Nachricht. Jetzt sammelt sich alles in einem — je Mitglied
+    // *und* Absender, denn eine Kunstfigur ist ein anderer Gesprächspartner, und der Name darf
+    // mitten im Verlauf nicht wechseln.
+    // **Ohne Absender wird nichts wiederverwendet.**
+    //
+    // `resolveSender` liefert leer, wenn es gerade keinen Ur-Admin gibt — im laufenden Betrieb nie,
+    // im Testlauf für die Dauer der Hochfahr-Tests. „Leer" ist dann aber kein Absender, sondern das
+    // Fehlen eines Namens, und zwei Fäden ohne Namen sind nicht derselbe Gesprächspartner. Wer sie
+    // zusammenlegt, hängt seine Ankündigung in den Faden einer fremden Kunstfigur — genau das ist
+    // passiert, und es kam als zwei rote Tests in zwei Dateien an, deren eigener Code stimmte.
+    const existing = sender === null ? [] : await transaction
+      .selectFrom("chatGroup")
+      .select(["id", "administrationPartnerId"])
+      .where("addressedToAdministration", "=", true)
+      .where("administrationPartnerId", "in", recipientsPresent)
+      .where("createdBy", "=", sender.id)
+      .execute();
+
+    const chatByRecipient = new Map(
+      existing.flatMap((chat) =>
+        chat.administrationPartnerId === null
+          ? []
+          : [[chat.administrationPartnerId, chat.id] as const]
+      ),
+    );
+
     // **Die Kennungen entstehen hier, nicht in der Datenbank.** Mitgliedschaft und Nachricht hängen
     // an ihnen, und sie aus einem `RETURNING` zurückzulesen hieße, sich auf eine Reihenfolge zu
     // verlassen, die PostgreSQL nirgends zusagt. Version 7, wie die Vorgabewerte der Tabellen: Die
     // Kennung trägt ihre Entstehungszeit, und darauf beruht die Sortierung der Nachrichten.
-    const chats = present.map((recipient) => ({
-      id: generateUuidV7(),
-      messageId: generateUuidV7(),
-      recipientId: recipient.id,
-    }));
+    const fresh = recipientsPresent
+      .filter((recipientId) => !chatByRecipient.has(recipientId))
+      .map((recipientId) => ({ id: generateUuidV7(), recipientId }));
 
-    if (chats.length === 0) {
-      return { sender, chats: [], at: now };
+    if (fresh.length > 0) {
+      await transaction
+        .insertInto("chatGroup")
+        .values(fresh.map((chat) => ({
+          id: chat.id,
+          // Der Name, unter dem geschrieben wird — nicht mehr der Betreff, denn ein Faden kann
+          // nicht zehn tragen. Bleibt stehen, wenn die Kunstfigur später umbenannt wird: selten,
+          // und beim nächsten Blick zu sehen, während ein Titel, der sich still ändert, niemandem
+          // auffällt.
+          title: sender?.username ?? "Administration",
+          createdBy: sender?.id ?? null,
+          administrationPartnerId: chat.recipientId,
+          // **Was hier zurückkommt, geht an die Administration.** Die Marke wird beim Entstehen
+          // gesetzt und nicht später abgeleitet: Die Plattformseite sitzt mit Absicht nicht im
+          // Gespräch, und „wer sitzt drin" änderte sich ohnehin, sobald jemand austritt.
+          addressedToAdministration: true,
+        })))
+        .execute();
+
+      await transaction
+        .insertInto("userInChatGroup")
+        .values(fresh.map((chat) => ({
+          chatGroupId: chat.id,
+          userId: chat.recipientId,
+          status: "joined" as const,
+          joinedAt: now,
+        })))
+        .execute();
+
+      for (const chat of fresh) {
+        chatByRecipient.set(chat.recipientId, chat.id);
+      }
     }
 
-    await transaction
-      .insertInto("chatGroup")
-      .values(chats.map((chat) => ({
-        id: chat.id,
-        title: subject,
-        createdBy: sender?.id ?? null,
-        broadcastId,
-        // **Was hier zurückkommt, geht an die Administration.** Die Marke wird beim Entstehen
-        // gesetzt und nicht später abgeleitet: Die Plattformseite sitzt mit Absicht nicht im
-        // Gespräch, und „wer sitzt drin" änderte sich ohnehin, sobald jemand austritt.
-        addressedToAdministration: true,
-      })))
-      .execute();
-
-    await transaction
-      .insertInto("userInChatGroup")
-      .values(chats.map((chat) => ({
-        chatGroupId: chat.id,
-        userId: chat.recipientId,
-        status: "joined" as const,
-        joinedAt: now,
-      })))
-      .execute();
+    const chats = recipientsPresent.flatMap((recipientId) => {
+      const id = chatByRecipient.get(recipientId);
+      return id === undefined
+        ? []
+        : [{ id, messageId: generateUuidV7(), recipientId }];
+    });
 
     await transaction
       .insertInto("chatMessage")
@@ -375,6 +421,11 @@ async function deliverToInbox(
         text: body,
         id: chat.messageId,
         createdBy: sender?.id ?? null,
+        // Die Rundmail hängt jetzt an der Nachricht: Ein Faden trägt viele Ankündigungen, und
+        // „welche Nachricht ist eine" muss ohne die brüchige Regel „die erste im Gespräch"
+        // beantwortbar sein.
+        broadcastId,
+        subject,
         // Leer, obwohl es eine echte Verfasserin gibt: Die steht auf der Veröffentlichung, und
         // dieselbe Angabe zweimal zu führen heißt, sie irgendwann an einer Stelle zu vergessen.
         // Für Antworten der Administration ist die Spalte da — dort gibt es keine Veröffentlichung,

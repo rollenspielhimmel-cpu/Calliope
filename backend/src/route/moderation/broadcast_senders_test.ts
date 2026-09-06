@@ -157,8 +157,14 @@ Deno.test("an ordinary administrator may read the list", async () => {
 
   const senders = await response.json() as { username: string }[];
 
+  // **Nur die Konten dieser Datei.** Der Endpunkt gibt alles zurück, was freigegeben ist, und unter
+  // `--parallel` gibt eine andere Datei nebenher ihre eigene Kunstfigur frei — die stand prompt
+  // mitten in der erwarteten Liste. Geprüft wird, was unabhängig davon gilt: dass der Ur-Admin
+  // vorangeht, ohne je freigegeben worden zu sein, und dass die Freigabe gewirkt hat.
   assertEquals(
-    senders.map((sender) => sender.username),
+    senders.map((sender) => sender.username).filter((name) =>
+      USERNAMES.includes(name)
+    ),
     [PRIMORDIAL, PERSONA],
     "the first administrator leads the list without having been released into it",
   );
@@ -185,9 +191,17 @@ Deno.test("releasing the same account twice is not an error", async () => {
     cookies.primordial,
   );
 
-  const senders = await response.json() as unknown[];
+  const senders = await response.json() as { username: string }[];
 
-  assertEquals(senders.length, 2, "released once, listed once");
+  // Wieder nur die eigenen: Zweimal freigegeben, einmal gelistet — und was andere Dateien nebenher
+  // freigeben, geht diese Aussage nichts an.
+  assertEquals(
+    senders.map((sender) => sender.username).filter((name) =>
+      USERNAMES.includes(name)
+    ),
+    [PRIMORDIAL, PERSONA],
+    "released once, listed once",
+  );
 });
 
 Deno.test("the first administrator cannot be released into the list", async () => {
@@ -242,7 +256,9 @@ Deno.test("a released account can be withdrawn again", async () => {
   const senders = await listing.json() as { username: string }[];
 
   assertEquals(
-    senders.map((sender) => sender.username),
+    senders.map((sender) => sender.username).filter((name) =>
+      USERNAMES.includes(name)
+    ),
     [PRIMORDIAL],
     "the persona is gone and the permanent one remains",
   );
