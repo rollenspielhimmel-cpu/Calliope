@@ -6,6 +6,7 @@ import authenticated from "@/src/middleware/authenticated.ts";
 import { BanService } from "@/src/service/ban_service.ts";
 import { BlockService } from "@/src/service/block_service.ts";
 import { UserInChatGroupService } from "@/src/service/user_in_chat_group_service.ts";
+import { ChatGroupService } from "@/src/service/chat_group_service.ts";
 import { userExists } from "@/src/service/user_in_writing_group_service.ts";
 import { checkJoinedChatMember } from "@/src/route/chats/chat/chat_membership.ts";
 import {
@@ -95,6 +96,24 @@ export default new OpenAPIHono().openapi(
     ) {
       return c.json(
         { error: "Contact is not possible" },
+        STATUS_CODE.Forbidden,
+      );
+    }
+
+    /**
+     * **In eine Rundmail lädt man niemanden ein.**
+     *
+     * Dort sitzt nur das Mitglied, und genau das ist die Zusage: Niemand sieht die Antwort eines
+     * anderen. Wer hier eine dritte Person hineinholte, gäbe ihr den ganzen Verlauf zu lesen — und
+     * für das Team sähe ein Rundmail-Gespräch plötzlich aus wie eines mit zwei Mitgliedern.
+     *
+     * Die Oberfläche zeigt den Knopf dort nicht. Das ist ein Vorschlag; verbindlich ist das hier.
+     */
+    const chat = await ChatGroupService.selectChatGroup(user, chatId);
+
+    if (chat?.isBroadcast === true) {
+      return c.json(
+        { error: "Zu einer Rundmail lässt sich niemand einladen." },
         STATUS_CODE.Forbidden,
       );
     }

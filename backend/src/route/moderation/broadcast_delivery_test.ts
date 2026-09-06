@@ -157,6 +157,27 @@ async function submit(cookie: string, overrides: Record<string, unknown> = {}) {
   });
 }
 
+/** Das Gespräch, das dieses Mitglied aus der Rundmail bekommen hat. */
+async function chatOf(
+  broadcast: { id: string },
+  username: string,
+): Promise<string> {
+  const chat = await db
+    .selectFrom("chatGroup")
+    .innerJoin(
+      "userInChatGroup",
+      "userInChatGroup.chatGroupId",
+      "chatGroup.id",
+    )
+    .innerJoin("user", "user.id", "userInChatGroup.userId")
+    .select("chatGroup.id")
+    .where("chatGroup.broadcastId", "=", broadcast.id)
+    .where("user.username", "=", username)
+    .executeTakeFirstOrThrow();
+
+  return chat.id;
+}
+
 /** Die eine Rundmail dieser Datei, oder ein Fehlschlag mit einem Satz statt `undefined`. */
 async function theBroadcast() {
   const all = await ourBroadcasts();
@@ -678,6 +699,67 @@ Deno.test("der Absender bekommt kein Ereignis für die eigene Rundmail", async (
     assertEquals(seen, []);
   } finally {
     unsubscribe();
+    await cleanUp();
+  }
+});
+
+Deno.test("eine Rundmail lässt sich nicht verlassen", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root);
+
+    const chat = await chatOf(await theBroadcast(), SECOND);
+
+    const response = await request(
+      "DELETE",
+      `/api/chats/${chat}/memberships/me`,
+      cookies.second,
+    );
+
+    // **Nicht nur unpassend, sondern zerstörend.** Im Rundmail-Gespräch sitzt nur das Mitglied;
+    // ginge es hinaus, bliebe keine Mitgliedschaft übrig, und der Auslöser räumt das Gespräch dann
+    // ab. Die zugestellte Rundmail wäre gelöscht, samt allem, was darunter gesagt wurde — und aus
+    // der Antwortliste des Teams verschwände sie mit.
+    assertEquals(response.status, STATUS_CODE.Forbidden);
+
+    // Und es steht auch wirklich noch da.
+    const still = await db
+      .selectFrom("userInChatGroup")
+      .select("userId")
+      .where("chatGroupId", "=", chat)
+      .execute();
+
+    assertEquals(still.length, 1);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("zu einer Rundmail lässt sich niemand einladen", async () => {
+  const cookies = await fixture();
+
+  try {
+    await submit(cookies.root);
+
+    const chat = await chatOf(await theBroadcast(), SECOND);
+
+    const outsider = await db
+      .selectFrom("user")
+      .select("id")
+      .where("username", "=", MEMBER)
+      .executeTakeFirstOrThrow();
+
+    const response = await request(
+      "POST",
+      `/api/chats/${chat}/memberships`,
+      cookies.second,
+      { userId: outsider.id },
+    );
+
+    // Dort sitzt nur das Mitglied, und das ist die Zusage: Niemand sieht die Antwort eines anderen.
+    assertEquals(response.status, STATUS_CODE.Forbidden);
+  } finally {
     await cleanUp();
   }
 });

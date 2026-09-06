@@ -155,6 +155,8 @@ export type ChatGroupGate = {
   title: string;
   createdBy: string | null;
   status: UserInChatGroupStatus;
+  /** Ein Rundmail-Gespräch. Einladen und Verlassen sind dort verboten — siehe die Routen. */
+  isBroadcast: boolean;
 };
 
 /** Returns nothing when the chat does not exist or the user is not in it. */
@@ -169,6 +171,11 @@ async function selectChatGroup(
       "chatGroup.createdBy",
       "userInChatGroup.status",
     ])
+    .select((eb) =>
+      eb("chatGroup.broadcastId", "is not", null)
+        .$castTo<boolean>()
+        .as("isBroadcast")
+    )
     .where("chatGroup.id", "=", chatGroupId)
     .executeTakeFirst();
 }

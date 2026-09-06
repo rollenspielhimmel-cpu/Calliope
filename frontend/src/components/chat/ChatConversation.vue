@@ -277,7 +277,14 @@ async function submit() {
     >
       <span class="text-[12.5px] text-ink-4">{{ participants }}</span>
       <div class="ml-auto flex items-center gap-4">
-        <ChatInvite :chat-group-id="chatGroupId" :member-ids="memberIds" />
+        <!-- **In einer Rundmail sitzt nur das Mitglied, und das ist der Sinn.** Wer hier jemanden
+             einlüde, holte eine dritte Person in einen Kanal, der ihm und dem Team gehört — sie
+             läse mit, und die Zusage, dass niemand die Antwort eines anderen sieht, wäre dahin. -->
+        <ChatInvite
+          v-if="isBroadcast !== true"
+          :chat-group-id="chatGroupId"
+          :member-ids="memberIds"
+        />
         <!-- A raw button like the ones beside it: this row is text actions on one baseline, not
              buttons. The wording still comes from `favouriteToggle`. -->
         <button
@@ -308,8 +315,16 @@ async function submit() {
           <Flag :size="14" :stroke-width="1.5" aria-hidden="true" />
           Melden
         </button>
+        <!-- **Eine Ankündigung verlässt man nicht — und hier wäre es zerstörend.**
+             Im Rundmail-Gespräch ist das Mitglied der einzige Teilnehmer. Ginge es hinaus, bliebe
+             keine Mitgliedschaft übrig, und der Auslöser räumt das Gespräch dann ab: Die zugestellte
+             Rundmail wäre gelöscht, samt allem, was darunter gesagt wurde, und aus der Antwortliste
+             des Teams verschwände sie mit.
+
+             Das Melden bleibt: Auch eine Ankündigung kann etwas enthalten, das jemand zur Sprache
+             bringen will, und das ist der Weg dafür. -->
         <button
-          v-if="knowsWhoIsHere"
+          v-if="knowsWhoIsHere && isBroadcast !== true"
           type="button"
           class="flex min-h-11 items-center gap-1.5 text-[12.5px] text-ink-5 hover:text-oak-deep md:min-h-0"
           @click="askingToLeave = true"
@@ -370,9 +385,7 @@ async function submit() {
                Die Kante nur an der Rundmail selbst, nicht an den Antworten — auch nicht an denen
                der Administration. Dieselbe Farbe wie im Postfach, damit es dieselbe Aussage ist:
                „das kam vom Team". -->
-          <div
-            :class="row.message.id === broadcastMessageId ? 'border-l-2 border-oak pl-2.5' : ''"
-          >
+          <div :class="row.message.id === broadcastMessageId ? 'border-l-2 border-oak pl-2.5' : ''">
             <MessageText :text="row.message.text" />
           </div>
 

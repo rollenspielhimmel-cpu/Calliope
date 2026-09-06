@@ -4,6 +4,7 @@ import { CHATS_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { UserInChatGroupService } from "@/src/service/user_in_chat_group_service.ts";
+import { ChatGroupService } from "@/src/service/chat_group_service.ts";
 import {
   COMMON_RESPONSES,
   ERROR_RESPONSE,
@@ -86,6 +87,26 @@ const leave = new OpenAPIHono().openapi(
   }),
   async (c) => {
     const { chatId } = c.req.valid("param");
+
+    /**
+     * **Eine Rundmail verlässt man nicht, und hier wäre es zerstörend.**
+     *
+     * In einem Rundmail-Gespräch sitzt nur das Mitglied. Ginge es hinaus, bliebe keine
+     * Mitgliedschaft übrig, und der Auslöser räumt das Gespräch dann ab: Die zugestellte Rundmail
+     * wäre gelöscht, samt allem, was darunter gesagt wurde, und aus der Antwortliste des Teams
+     * verschwände sie mit.
+     *
+     * Die Oberfläche bietet den Knopf dort nicht an — aber das ist ein Vorschlag, und diese Regel
+     * muss auch für den gelten, der die Schnittstelle von Hand aufruft.
+     */
+    const chat = await ChatGroupService.selectChatGroup(c.get("user"), chatId);
+
+    if (chat?.isBroadcast === true) {
+      return c.json(
+        { error: "Eine Rundmail lässt sich nicht verlassen." },
+        STATUS_CODE.Forbidden,
+      );
+    }
 
     const left = await UserInChatGroupService.deleteMembership(
       chatId,
