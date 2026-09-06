@@ -2,6 +2,7 @@ import { assert, assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
 import {
+  cleanUpRetryingOnDeadlock,
   clearRateLimits,
   deleteUsers,
   registerUser,
@@ -55,6 +56,10 @@ async function setRole(
  * ohne antworten zu dürfen.
  */
 async function fixture() {
+  // Auch vorher, nicht nur nachher: Ein abgebrochener Lauf lässt diese Konten stehen, und der
+  // nächste scheitert dann schon am vergebenen Namen. Siehe `broadcast_delivery_test.ts`.
+  await cleanUp();
+
   const cookies = {
     root: await registerUser(ROOT),
     member: await registerUser(MEMBER),
@@ -75,17 +80,21 @@ async function fixture() {
 }
 
 async function cleanUp() {
-  await db
-    .deleteFrom("publication")
-    .where(
-      "id",
-      "in",
-      db
-        .selectFrom("broadcast")
-        .select("publicationId")
-        .where("subject", "=", SUBJECT),
-    )
-    .execute();
+  // Wiederholt, weil dieses Löschen über die Gespräche in `user_in_chat_group` landet und sich
+  // dort mit dem `deleteUsers` einer anderen Datei verklemmen kann — siehe die Erklärung dort.
+  await cleanUpRetryingOnDeadlock(async () => {
+    await db
+      .deleteFrom("publication")
+      .where(
+        "id",
+        "in",
+        db
+          .selectFrom("broadcast")
+          .select("publicationId")
+          .where("subject", "=", SUBJECT),
+      )
+      .execute();
+  });
 
   await returnPrimordialSeat(ROOT);
   await deleteUsers(USERS);
@@ -101,7 +110,7 @@ async function sendBroadcast(cookie: string) {
     {
       subject: SUBJECT,
       body: BODY,
-      audienceGroups: ["administrator"],
+      audienceRoles: ["administrator"],
       memberIds: [],
       includeUnverified: false,
       deliverToInbox: true,

@@ -34,12 +34,12 @@ import {
  * Who a message goes to, as the groups an operator actually thinks in: the team, and everybody
  * else. `member` is the ordinary account with no platform role, which is almost everybody.
  */
-export type BroadcastGroup = "administrator" | "moderator" | "member";
+export type BroadcastRole = "administrator" | "moderator" | "member";
 
 export type BroadcastAudience = {
-  groups: BroadcastGroup[];
+  roles: BroadcastRole[];
   /**
-   * Ausdrücklich genannte Konten, zusätzlich zu den Gruppen.
+   * Ausdrücklich genannte Konten, zusätzlich zu den Rollen.
    *
    * **Die Vereinigung, nicht das eine oder das andere.** Wer die Moderation wählt und zusätzlich
    * zwei Namen nennt, erreicht beide; wer nur Namen nennt, erreicht nur die. Doppelt bekommt
@@ -104,15 +104,15 @@ type Delivered = {
  * `mayReceiveEmail` weiter unten.
  */
 async function selectRecipients(audience: BroadcastAudience) {
-  const roles = audience.groups.filter((group) => group !== "member");
-  const includeOrdinaryMembers = audience.groups.includes("member");
+  const roles = audience.roles.filter((role) => role !== "member");
+  const includeOrdinaryMembers = audience.roles.includes("member");
 
   return await db
     .selectFrom("user")
     .select(["id", "emailAddress", "emailAddressVerifiedAt"])
     .where("bannedAt", "is", null)
-    // **Gruppen und Namen zusammen, mit `or` statt zweier Abfragen.** Die Vereinigung entsteht
-    // dadurch in der Datenbank, und wer über eine Gruppe *und* namentlich drinsteht, kommt trotzdem
+    // **Rollen und Namen zusammen, mit `or` statt zweier Abfragen.** Die Vereinigung entsteht
+    // dadurch in der Datenbank, und wer über eine Rolle *und* namentlich drinsteht, kommt trotzdem
     // nur einmal vor — eine Zeile ist eine Zeile.
     .where((eb) =>
       eb.or([

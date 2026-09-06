@@ -16,7 +16,7 @@ import {
  * acting on one account.
  */
 
-const BROADCAST_GROUP = z.enum(["administrator", "moderator", "member"]);
+const BROADCAST_ROLE = z.enum(["administrator", "moderator", "member"]);
 
 /**
  * At least one group, or the request asks for nothing. `member` is the ordinary account with no
@@ -43,15 +43,15 @@ export default new OpenAPIHono()
         "So the form can say how many before anybody presses send. A moment's truth rather than a promise: somebody may register in between.",
       operationId: "countBroadcastRecipients",
       middleware: [authenticated, authorizedAsAdministrator] as const,
-      // Flattened, because a query string carries no object: the groups arrive as one
+      // Flattened, because a query string carries no object: the roles arrive as one
       // comma-separated value rather than as a nested shape that would have to be encoded.
       request: {
         query: z.object({
-          groups: z
+          roles: z
             .string()
             .transform((value) => (value === "" ? [] : value.split(",")))
-            .pipe(z.array(BROADCAST_GROUP)),
-          // Dieselbe Form wie die Gruppen: als eine Zeichenkette mit Kommas, weil eine Abfrage in
+            .pipe(z.array(BROADCAST_ROLE)),
+          // Dieselbe Form wie die Rollen: als eine Zeichenkette mit Kommas, weil eine Abfrage in
           // der Adresse keine verschachtelte Gestalt hat. Leer heisst: niemand namentlich.
           memberIds: z
             .string()
@@ -82,9 +82,9 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const { groups, memberIds, includeUnverified } = c.req.valid("query");
+      const { roles, memberIds, includeUnverified } = c.req.valid("query");
       const reach = await BroadcastService.countRecipients({
-        groups,
+        roles,
         memberIds,
         includeUnverified,
       });

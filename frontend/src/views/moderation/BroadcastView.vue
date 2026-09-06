@@ -25,7 +25,7 @@ import type {
   ListBroadcastQueue200Item,
   ListBroadcastSenders200Item,
   ListReleasedBroadcasts200Item,
-  SubmitBroadcastBodyAudienceGroupsItem,
+  SubmitBroadcastBodyAudienceRolesItem,
 } from '@/api/models'
 import { queryClient } from '@/lib/api/queryClient'
 import { ApiError } from '@/lib/api/apiFetch'
@@ -59,10 +59,10 @@ const TABS: ModerationTab[] = [
   { value: 'senders', label: 'Absender' },
 ]
 
-type Group = SubmitBroadcastBodyAudienceGroupsItem
+type Role = SubmitBroadcastBodyAudienceRolesItem
 
 /** Ordered as somebody reads them: the team first, then everybody else. */
-const GROUPS: ReadonlyArray<{ value: Group; label: string }> = [
+const ROLES: ReadonlyArray<{ value: Role; label: string }> = [
   { value: 'administrator', label: 'Administration' },
   { value: 'moderator', label: 'Moderation' },
   { value: 'member', label: 'Mitglieder ohne Rolle' },
@@ -77,10 +77,10 @@ const GROUPS: ReadonlyArray<{ value: Group; label: string }> = [
  * Richtung: Wer an alle schreiben will, setzt drei Haken; wer sich vertut, erreicht niemanden
  * statt jeden.
  */
-const chosen = ref<Group[]>([])
+const chosen = ref<Role[]>([])
 
 /**
- * Ausdrücklich genannte Mitglieder, zusätzlich zu den Gruppen.
+ * Ausdrücklich genannte Mitglieder, zusätzlich zu den Rollen.
  *
  * **Beides zugleich, nicht entweder/oder:** Wer die Moderation wählt und zwei Namen nennt, erreicht
  * beide. Wer nur Namen nennt, schreibt an genau die — und dann ist es keine Ankündigung mehr,
@@ -195,17 +195,17 @@ const scheduledAt = ref<string | undefined>(undefined)
 const outcome = ref<'sent' | 'scheduled' | 'waiting' | 'edited' | undefined>(undefined)
 const error = ref<string | undefined>(undefined)
 
-function toggleGroup(group: Group, on: boolean) {
-  chosen.value = on ? [...chosen.value, group] : chosen.value.filter((value) => value !== group)
+function toggleRole(role: Role, on: boolean) {
+  chosen.value = on ? [...chosen.value, role] : chosen.value.filter((value) => value !== role)
 }
 
 const { data } = useCountBroadcastRecipients(
   computed(() => ({
-    groups: chosen.value.join(','),
+    roles: chosen.value.join(','),
     memberIds: memberIds.value.join(','),
     includeUnverified: includeUnverified.value ? 'true' : 'false',
   })),
-  // Asking for nobody is a 400, so the count waits until somebody is chosen — durch eine Gruppe
+  // Asking for nobody is a 400, so the count waits until somebody is chosen — über eine Rolle
   // oder namentlich, beides zählt.
   {
     query: {
@@ -304,7 +304,7 @@ function startEditing(entry: ListBroadcastQueue200Item) {
   editing.value = entry.publicationId
   subject.value = entry.subject
   body.value = entry.body
-  chosen.value = [...entry.audienceGroups]
+  chosen.value = [...entry.audienceRoles]
   // Nur die Kennungen kommen zurueck; die Namen holt der Waehler beim Anzeigen nach.
   namedRecipients.value = [...entry.namedRecipients]
   includeUnverified.value = entry.includeUnverified
@@ -354,7 +354,7 @@ async function submit() {
       data: {
         subject: subject.value.trim(),
         body: body.value.trim(),
-        audienceGroups: chosen.value,
+        audienceRoles: chosen.value,
         memberIds: memberIds.value,
         includeUnverified: includeUnverified.value,
         deliverToInbox: deliverToInbox.value,
@@ -403,7 +403,7 @@ async function saveEdit(publicationId: string) {
       data: {
         subject: subject.value.trim(),
         body: body.value.trim(),
-        audienceGroups: chosen.value,
+        audienceRoles: chosen.value,
         memberIds: memberIds.value,
         includeUnverified: includeUnverified.value,
         deliverToInbox: deliverToInbox.value,
@@ -515,14 +515,14 @@ async function discard(publicationId: string) {
   await refreshBoth()
 }
 
-const AUDIENCE_LABELS: Record<string, string> = {
+const ROLE_LABELS: Record<string, string> = {
   administrator: 'Administration',
   moderator: 'Moderation',
   member: 'Mitglieder ohne Rolle',
 }
 
-function audienceOf(groups: string[]): string {
-  return groups.map((group) => AUDIENCE_LABELS[group] ?? group).join(', ')
+function rolesOf(roles: string[]): string {
+  return roles.map((role) => ROLE_LABELS[role] ?? role).join(', ')
 }
 </script>
 
@@ -554,21 +554,21 @@ function audienceOf(groups: string[]): string {
         <form class="flex max-w-[684px] flex-col gap-5" @submit.prevent="confirming = true">
           <FieldGroup>
             <Field>
-              <FieldLabel>Empfänger</FieldLabel>
+              <FieldLabel>Empfängerkreis</FieldLabel>
               <div class="flex flex-col gap-1">
                 <label
-                  v-for="group in GROUPS"
-                  :key="group.value"
+                  v-for="role in ROLES"
+                  :key="role.value"
                   class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
                 >
                   <Checkbox
-                    :model-value="chosen.includes(group.value)"
-                    @update:model-value="(on) => toggleGroup(group.value, on === true)"
+                    :model-value="chosen.includes(role.value)"
+                    @update:model-value="(on) => toggleRole(role.value, on === true)"
                   />
-                  {{ group.label }}
+                  {{ role.label }}
                 </label>
 
-                <!-- **Namen neben den Gruppen, nicht statt ihrer.** Wer die Moderation wählt und
+                <!-- **Namen neben den Rollen, nicht statt ihrer.** Wer die Moderation wählt und
                      zwei Namen nennt, erreicht beide; wer nur Namen nennt, schreibt an genau die. -->
                 <div class="mt-1 border-t border-line-3 pt-2">
                   <UserPicker
@@ -608,7 +608,13 @@ function audienceOf(groups: string[]): string {
               </div>
 
               <p class="text-control text-ink-5">
-                <template v-if="chosen.length === 0">Wähle mindestens eine Gruppe.</template>
+                <!-- **Nicht „Gruppe".** Eine Gruppe ist auf dieser Plattform eine Schreibgruppe;
+                     hier geht es um Rollen. Der alte Satz ließ lesen, ob eine Rundmail an eine
+                     Schreibgruppe gehen kann — und war seit den namentlich Genannten ohnehin
+                     falsch, weil ein Name allein auch reicht. -->
+                <template v-if="chosen.length === 0 && namedRecipients.length === 0">
+                  Wähle eine Rolle aus oder nenne Mitglieder.
+                </template>
                 <template v-else-if="reachSentence === undefined">Wird gezählt.</template>
                 <template v-else>{{ reachSentence }}</template>
                 An unbestätigte Adressen zu schreiben heißt, an Postfächer zu schreiben, die
@@ -848,7 +854,7 @@ function audienceOf(groups: string[]): string {
               {{ entry.body }}
             </p>
             <p class="mt-2 text-[12px] text-ink-6">
-              An {{ audienceOf(entry.audienceGroups)
+              An {{ rolesOf(entry.audienceRoles)
               }}<template v-if="entry.includeUnverified">, auch an unbestätigte Adressen</template>
               · Als {{ entry.sendAsUsername ?? 'Admin' }} · Von
               {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }},
@@ -907,7 +913,7 @@ function audienceOf(groups: string[]): string {
                 {{ entry.body }}
               </p>
               <p class="mt-2 text-[12px] text-ink-6">
-                An {{ audienceOf(entry.audienceGroups)
+                An {{ rolesOf(entry.audienceRoles)
                 }}<template v-if="entry.includeUnverified"
                   >, auch an unbestätigte Adressen</template
                 >

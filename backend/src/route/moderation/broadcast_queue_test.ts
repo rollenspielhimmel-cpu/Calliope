@@ -36,7 +36,7 @@ const BROADCAST = {
   subject: SUBJECT,
   body: "Ein Text, der an alle ginge.",
   // Nur die Administration: Der Testlauf soll keine Post an erfundene Saatkonten auslösen.
-  audienceGroups: ["administrator"],
+  audienceRoles: ["administrator"],
   memberIds: [],
   includeUnverified: false,
   // Nur ins Postfach: Der Testlauf soll keine Post an erfundene Saatkonten auslösen, und ohne
@@ -132,7 +132,7 @@ type Row = {
   recipientCount: number | null;
   releasedAt: string | null;
   includeUnverified: boolean;
-  audienceGroups: string[];
+  audienceRoles: string[];
 };
 
 /**
@@ -266,14 +266,14 @@ Deno.test("changing the audience takes back an approval", async () => {
     "PUT",
     `/api/moderation/broadcast/queue/${created.publicationId}`,
     cookies.author,
-    { ...BROADCAST, audienceGroups: ["administrator", "member"] },
+    { ...BROADCAST, audienceRoles: ["administrator", "member"] },
   );
   assertEquals(changed.status, STATUS_CODE.OK);
 
   const stillWaiting = await waiting(cookies.second);
   assertEquals(only(stillWaiting).status, "awaiting_approval");
   assertEquals(only(stillWaiting).approvedByUsername, null);
-  assertEquals(only(stillWaiting).audienceGroups, ["administrator", "member"]);
+  assertEquals(only(stillWaiting).audienceRoles, ["administrator", "member"]);
 });
 
 Deno.test("what has gone out cannot be edited or discarded", async () => {

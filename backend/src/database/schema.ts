@@ -397,7 +397,7 @@ export interface BlockedWord {
 
 export interface Broadcast {
   archivePostId: string | null;
-  audienceGroups: string[];
+  audienceRoles: string[];
   body: string;
   createdAt: Generated<string>;
   deliverByEmail: Generated<boolean>;
@@ -1287,7 +1287,7 @@ export const BROADCAST_SCHEMA = z.object({
   publicationId: z.uuidv7(),
   subject: z.string(),
   body: z.string(),
-  audienceGroups: z.array(z.string()),
+  audienceRoles: z.array(z.string()),
   includeUnverified: z.boolean(),
   publishInArchive: z.boolean(),
   archivePostId: z.uuidv7().nullable(),

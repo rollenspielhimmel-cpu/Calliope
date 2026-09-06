@@ -46712,7 +46712,7 @@
                         "maxLength": 10000,
                         "pattern": "\\S"
                       },
-                      "audienceGroups": {
+                      "audienceRoles": {
                         "type": "array",
                         "items": {
                           "type": "string",
@@ -46786,7 +46786,7 @@
                     "required": [
                       "subject",
                       "body",
-                      "audienceGroups",
+                      "audienceRoles",
                       "memberIds",
                       "includeUnverified",
                       "deliverToInbox",
@@ -46998,7 +46998,7 @@
                     "maxLength": 10000,
                     "pattern": "\\S"
                   },
-                  "audienceGroups": {
+                  "audienceRoles": {
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -47026,7 +47026,7 @@
                 "required": [
                   "subject",
                   "body",
-                  "audienceGroups",
+                  "audienceRoles",
                   "memberIds",
                   "includeUnverified",
                   "deliverToInbox",
@@ -47059,7 +47059,7 @@
                       "maxLength": 10000,
                       "pattern": "\\S"
                     },
-                    "audienceGroups": {
+                    "audienceRoles": {
                       "type": "array",
                       "items": {
                         "type": "string",
@@ -47133,7 +47133,7 @@
                   "required": [
                     "subject",
                     "body",
-                    "audienceGroups",
+                    "audienceRoles",
                     "memberIds",
                     "includeUnverified",
                     "deliverToInbox",
@@ -47427,7 +47427,7 @@
                         "maxLength": 10000,
                         "pattern": "\\S"
                       },
-                      "audienceGroups": {
+                      "audienceRoles": {
                         "type": "array",
                         "items": {
                           "type": "string",
@@ -47501,7 +47501,7 @@
                     "required": [
                       "subject",
                       "body",
-                      "audienceGroups",
+                      "audienceRoles",
                       "memberIds",
                       "includeUnverified",
                       "deliverToInbox",
@@ -48027,7 +48027,7 @@
                     "maxLength": 10000,
                     "pattern": "\\S"
                   },
-                  "audienceGroups": {
+                  "audienceRoles": {
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -48055,7 +48055,7 @@
                 "required": [
                   "subject",
                   "body",
-                  "audienceGroups",
+                  "audienceRoles",
                   "memberIds",
                   "includeUnverified",
                   "deliverToInbox",
@@ -49293,7 +49293,7 @@
           {
             "schema": { "type": "string" },
             "required": true,
-            "name": "groups",
+            "name": "roles",
             "in": "query"
           },
           {

@@ -6,6 +6,7 @@ import {
   subscribeToChatEvents,
 } from "@/src/event/chat_events.ts";
 import {
+  cleanUpRetryingOnDeadlock,
   clearRateLimits,
   deleteUsers,
   registerUser,
@@ -42,7 +43,7 @@ const BODY = "Erster Absatz.\n\nZweiter Absatz.";
 const BROADCAST = {
   subject: SUBJECT,
   body: BODY,
-  audienceGroups: ["administrator"],
+  audienceRoles: ["administrator"],
   memberIds: [],
   includeUnverified: false,
   deliverToInbox: true,
@@ -82,6 +83,15 @@ async function setRole(
  * selbst.
  */
 async function fixture() {
+  // **Aufgeräumt wird auch vorher, nicht nur nachher.**
+  //
+  // Bricht ein Lauf mittendrin ab, bleiben diese vier Konten stehen — und der nächste Lauf kommt
+  // dann nicht einmal bis zum ersten Test, weil `registerUser` an den vergebenen Namen scheitert.
+  // Eines der Konten hielt dabei den Ur-Admin-Platz, und damit fiel der ganze Lauf: 53 rote Tests
+  // in Dateien, die mit Rundmails nichts zu tun haben. Ein Aufräumen davor kostet in einem gesunden
+  // Lauf nichts — da ist nichts zu löschen — und macht den kaputten Zustand selbstheilend.
+  await cleanUp();
+
   const cookies = {
     root: await registerUser(ROOT),
     member: await registerUser(MEMBER),
@@ -119,23 +129,27 @@ async function fixture() {
  * Archiv bei jedem Lauf um eine Test-Ankündigung.
  */
 async function cleanUp() {
-  await db
-    .deleteFrom("writingPost")
-    .where("text", "like", `${SUBJECT}%`)
-    .execute();
+  // Wiederholt, weil dieses Löschen über die Gespräche in `user_in_chat_group` landet und sich
+  // dort mit dem `deleteUsers` einer anderen Datei verklemmen kann — siehe die Erklärung dort.
+  await cleanUpRetryingOnDeadlock(async () => {
+    await db
+      .deleteFrom("writingPost")
+      .where("text", "like", `${SUBJECT}%`)
+      .execute();
 
-  await db
-    .deleteFrom("publication")
-    .where(
-      "id",
-      "in",
-      db.selectFrom("broadcast").select("publicationId").where(
-        "subject",
-        "=",
-        SUBJECT,
-      ),
-    )
-    .execute();
+    await db
+      .deleteFrom("publication")
+      .where(
+        "id",
+        "in",
+        db.selectFrom("broadcast").select("publicationId").where(
+          "subject",
+          "=",
+          SUBJECT,
+        ),
+      )
+      .execute();
+  });
 
   await returnPrimordialSeat(ROOT);
   await deleteUsers(USERS);
@@ -337,7 +351,7 @@ Deno.test("zwei Zahlen: das Postfach reicht weiter als die E-Mail", async () => 
   try {
     const response = await request(
       "GET",
-      "/api/moderation/broadcast/recipients?groups=administrator&includeUnverified=false",
+      "/api/moderation/broadcast/recipients?roles=administrator&includeUnverified=false",
       cookies.root,
     );
 
@@ -797,7 +811,7 @@ Deno.test("der Archiv-Beitrag ist ein Dokument, keine Zeichenkette", async () =>
   }
 });
 
-Deno.test("namentlich Genannte kommen zu den Gruppen hinzu", async () => {
+Deno.test("namentlich Genannte kommen zu den Rollen hinzu", async () => {
   const cookies = await fixture();
 
   const member = await db
@@ -807,7 +821,7 @@ Deno.test("namentlich Genannte kommen zu den Gruppen hinzu", async () => {
     .executeTakeFirstOrThrow();
 
   try {
-    // MEMBER ist gewöhnliches Mitglied und stünde über die Gruppe „administrator" nicht drin.
+    // MEMBER ist gewöhnliches Mitglied und stünde über die Rolle „administrator" nicht drin.
     await submit(cookies.root, { memberIds: [member.id] });
 
     const broadcast = await theBroadcast();
@@ -835,7 +849,7 @@ Deno.test("namentlich Genannte kommen zu den Gruppen hinzu", async () => {
   }
 });
 
-Deno.test("wer über Gruppe und Namen drinsteht, bekommt sie einmal", async () => {
+Deno.test("wer über Rolle und Namen drinsteht, bekommt sie einmal", async () => {
   const cookies = await fixture();
 
   const second = await db
@@ -892,12 +906,12 @@ Deno.test("namentlich Genannte und das Archiv schließen sich aus", async () => 
   }
 });
 
-Deno.test("ohne Gruppe und ohne Namen wird abgelehnt", async () => {
+Deno.test("ohne Rolle und ohne Namen wird abgelehnt", async () => {
   const cookies = await fixture();
 
   try {
     const response = await submit(cookies.root, {
-      audienceGroups: [],
+      audienceRoles: [],
       memberIds: [],
     });
 

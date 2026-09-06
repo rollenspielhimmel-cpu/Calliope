@@ -26,15 +26,15 @@ const BROADCAST_BODY = z.object({
   subject: notBlank(z.string().min(1).max(TEXT_LIMIT.broadcastSubject)),
   body: notBlank(z.string().min(1).max(TEXT_LIMIT.broadcastBody)),
   /**
-   * Die Gruppen — und seit den namentlich Genannten darf sie leer sein.
+   * Die Rollen — und seit den namentlich Genannten darf die Liste leer sein.
    *
    * Vorher stand hier `.min(1)`, weil eine Rundmail ohne Empfängerkreis nichts erreicht. Das gilt
-   * weiter, wird aber jetzt weiter unten gegen beides zusammen geprüft: Gruppen *oder* Namen, und
+   * weiter, wird aber jetzt weiter unten gegen beides zusammen geprüft: Rollen *oder* Namen, und
    * mindestens eines von beidem.
    */
-  audienceGroups: z.array(z.enum(["administrator", "moderator", "member"])),
+  audienceRoles: z.array(z.enum(["administrator", "moderator", "member"])),
   /**
-   * Ausdrücklich genannte Konten, zusätzlich zu den Gruppen.
+   * Ausdrücklich genannte Konten, zusätzlich zu den Rollen.
    *
    * Die Vereinigung, nicht das eine oder das andere: Wer die Moderation wählt und zwei Namen nennt,
    * erreicht beide. Doppelt bekommt niemand etwas — dafür sorgt die Abfrage, nicht dieses Schema.
@@ -63,11 +63,11 @@ const BROADCAST_BODY = z.object({
 })
   .refine(
     (broadcast) =>
-      broadcast.audienceGroups.length > 0 || broadcast.memberIds.length > 0,
+      broadcast.audienceRoles.length > 0 || broadcast.memberIds.length > 0,
     {
       error:
-        "Wähle Gruppen aus oder nenne Mitglieder — sonst erreicht sie niemanden.",
-      path: ["audienceGroups"],
+        "Wähle eine Rolle aus oder nenne Mitglieder — sonst erreicht sie niemanden.",
+      path: ["audienceRoles"],
     },
   )
   /**

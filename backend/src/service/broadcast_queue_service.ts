@@ -6,7 +6,7 @@ import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.t
 import {
   type BroadcastAudience,
   type BroadcastDelivery,
-  type BroadcastGroup,
+  type BroadcastRole,
   BroadcastService,
 } from "@/src/service/broadcast_service.ts";
 
@@ -41,9 +41,9 @@ import {
 export type BroadcastInput = {
   subject: string;
   body: string;
-  audienceGroups: BroadcastGroup[];
+  audienceRoles: BroadcastRole[];
   /**
-   * Ausdruecklich genannte Konten, zusaetzlich zu den Gruppen.
+   * Ausdruecklich genannte Konten, zusaetzlich zu den Rollen.
    *
    * Beides zugleich: Wer die Moderation waehlt und zwei Namen nennt, erreicht beide. Wer nur Namen
    * nennt, schreibt an genau die — und dann ist es keine Ankuendigung mehr, weshalb das Archiv in
@@ -115,7 +115,7 @@ export type QueuedBroadcast = BroadcastInput & {
 
 function audienceOf(broadcast: BroadcastInput): BroadcastAudience {
   return {
-    groups: broadcast.audienceGroups,
+    roles: broadcast.audienceRoles,
     memberIds: broadcast.memberIds,
     includeUnverified: broadcast.includeUnverified,
   };
@@ -184,7 +184,7 @@ function rows() {
       "broadcast.id as broadcastId",
       "broadcast.subject",
       "broadcast.body",
-      "broadcast.audienceGroups",
+      "broadcast.audienceRoles",
       "broadcast.includeUnverified",
       "broadcast.deliverToInbox",
       "broadcast.deliverByEmail",
@@ -229,7 +229,7 @@ function toQueued(row: {
   broadcastId: string;
   subject: string;
   body: string;
-  audienceGroups: string[];
+  audienceRoles: string[];
   memberIds: string[];
   includeUnverified: boolean;
   deliverToInbox: boolean;
@@ -245,7 +245,7 @@ function toQueued(row: {
     // Die Spalte ist `TEXT[]`, weil die Datenbank den Empfängerbegriff nicht kennt. Die Werte
     // stammen aus dem geprüften Anfragekörper, also ist die Einschränkung hier eine Behauptung
     // über bereits Geprüftes und kein Vertrauen in die Datenbank.
-    audienceGroups: row.audienceGroups as BroadcastGroup[],
+    audienceRoles: row.audienceRoles as BroadcastRole[],
   };
 }
 
@@ -293,7 +293,7 @@ async function submit(
         publicationId: publication.id,
         subject: input.subject,
         body: input.body,
-        audienceGroups: input.audienceGroups,
+        audienceRoles: input.audienceRoles,
         includeUnverified: input.includeUnverified,
         deliverToInbox: input.deliverToInbox,
         deliverByEmail: input.deliverByEmail,
@@ -535,7 +535,7 @@ async function edit(
       .set({
         subject: input.subject,
         body: input.body,
-        audienceGroups: input.audienceGroups,
+        audienceRoles: input.audienceRoles,
         includeUnverified: input.includeUnverified,
         deliverToInbox: input.deliverToInbox,
         deliverByEmail: input.deliverByEmail,
