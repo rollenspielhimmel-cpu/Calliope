@@ -348,12 +348,16 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
                 </Button>
               </div>
             </div>
+            <!-- `is-broadcast` steuert drei Dinge im Gespräch: die Kante an der Rundmail selbst
+                 und dass Einladen und Verlassen dort nicht angeboten werden. Ohne diese Zeile
+                 blieb der Wert `undefined`, und alle drei Regeln liefen ins Leere. -->
             <ChatConversation
               v-else
               :chat-group-id="selected.id"
               :title="selected.title"
               :live="liveByChat[selected.id] ?? []"
               :is-favourite="selected.isFavourite"
+              :is-broadcast="selected.isBroadcast"
               @favourite-changed="refetch"
             />
           </template>

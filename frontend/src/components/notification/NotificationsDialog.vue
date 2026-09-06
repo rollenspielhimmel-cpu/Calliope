@@ -119,11 +119,20 @@ watch(notifications, async (loaded) => {
       <ul v-else-if="hasLoaded" class="-mx-2">
         <!-- Hairline rows, no cards. Unread is a matter of ink — and of one oak dot, which
              weight alone was too quiet to supply when only a single row is new. -->
+        <!-- **Dieselbe Kante wie im Postfach**, damit eine Rundmail an beiden Orten dasselbe sagt
+             und man sie beim Ueberfliegen findet, ohne zu lesen. Der Typ steht schon in der
+             Meldung, es braucht also kein zusaetzliches Feld.
+
+             Durchsichtig statt weggelassen, wenn es keine ist: Sonst rueckten die Zeilen
+             gegeneinander, je nachdem was gerade in der Liste steht. -->
         <li
           v-for="(notification, index) in notifications"
           :key="notification.id"
-          class="border-b border-line-2"
-          :class="index === 0 ? 'border-t' : ''"
+          class="border-b border-l-2 border-line-2"
+          :class="[
+            index === 0 ? 'border-t' : '',
+            notification.type === 'broadcast_received' ? 'border-l-oak' : 'border-l-transparent',
+          ]"
         >
           <!-- A button rather than a link, because not every notification leads to a URL: a
                chat opens the Chats dialog instead. Closing on the way out is the point

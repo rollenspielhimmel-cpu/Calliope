@@ -31,8 +31,16 @@ const props = defineProps<{
   title: string
   live: ListMessages200ResultsItem[]
   isFavourite?: boolean
-  /** Ein Rundmail-Gespräch: Die erste Nachricht darin ist die Rundmail selbst. */
-  isBroadcast?: boolean
+  /**
+   * Ein Rundmail-Gespräch: Die erste Nachricht darin ist die Rundmail selbst.
+   *
+   * **Pflicht, nicht optional** — und das ist der Unterschied zwischen einem Fehler, der auffällt,
+   * und einem, der nicht auffällt. Als sie optional war, hat der Dialog sie schlicht nicht
+   * durchgereicht: Der Wert blieb `undefined`, die Kante erschien nie, und Einladen und Verlassen
+   * wurden weiter angeboten. Nichts brach, es galt nur nichts mehr. Verpflichtend ist dasselbe
+   * Versäumnis ein Uebersetzungsfehler.
+   */
+  isBroadcast: boolean
 }>()
 
 const emit = defineEmits<{ favouriteChanged: [] }>()
@@ -132,7 +140,7 @@ const rows = computed<Array<{ message: ListMessages200ResultsItem; startsRun: bo
  * die erste, und die Hervorhebung träfe eine Antwort.
  */
 const broadcastMessageId = computed<string | undefined>(() =>
-  props.isBroadcast === true && !hasOlder.value ? messages.value[0]?.id : undefined,
+  props.isBroadcast && !hasOlder.value ? messages.value[0]?.id : undefined,
 )
 
 const { data: membersData } = useListChatMemberships(() => props.chatGroupId, { limit: 50 })
@@ -280,11 +288,7 @@ async function submit() {
         <!-- **In einer Rundmail sitzt nur das Mitglied, und das ist der Sinn.** Wer hier jemanden
              einlüde, holte eine dritte Person in einen Kanal, der ihm und dem Team gehört — sie
              läse mit, und die Zusage, dass niemand die Antwort eines anderen sieht, wäre dahin. -->
-        <ChatInvite
-          v-if="isBroadcast !== true"
-          :chat-group-id="chatGroupId"
-          :member-ids="memberIds"
-        />
+        <ChatInvite v-if="!isBroadcast" :chat-group-id="chatGroupId" :member-ids="memberIds" />
         <!-- A raw button like the ones beside it: this row is text actions on one baseline, not
              buttons. The wording still comes from `favouriteToggle`. -->
         <button
@@ -324,7 +328,7 @@ async function submit() {
              Das Melden bleibt: Auch eine Ankündigung kann etwas enthalten, das jemand zur Sprache
              bringen will, und das ist der Weg dafür. -->
         <button
-          v-if="knowsWhoIsHere && isBroadcast !== true"
+          v-if="knowsWhoIsHere && !isBroadcast"
           type="button"
           class="flex min-h-11 items-center gap-1.5 text-[12.5px] text-ink-5 hover:text-oak-deep md:min-h-0"
           @click="askingToLeave = true"
