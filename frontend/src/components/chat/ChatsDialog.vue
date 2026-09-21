@@ -57,6 +57,19 @@ const selected = computed<ListChats200ResultsItem | undefined>(() =>
 )
 
 /**
+ * Statt einer Einladung kam der Faden mit der Administration zurück — er wird aufgeschlagen.
+ *
+ * **Bei Admin nimmt niemand an.** Wer Admin benennt, will der Administration schreiben, und die
+ * Antwort darauf ist der eine Faden, den es dafür gibt; liegen dort schon Rundmails, liegen sie
+ * gleich mit darin. Das leere Gespräch, das gerade angelegt wurde, ist auf dem Server schon weg —
+ * die Liste muss also neu geholt werden, bevor der Faden ausgewählt werden kann.
+ */
+async function openTheAdministration(chatGroupId: string) {
+  await refetch()
+  selectedId.value = chatGroupId
+}
+
+/**
  * A selection has to name something in the list. Leaving a chat, declining an invitation or
  * being removed from one takes it away underneath the pane, which would otherwise sit blank:
  * nothing to render, and not empty enough to offer the prompt.
@@ -377,6 +390,7 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
               :is-favourite="selected.isFavourite"
               :is-from-administration="selected.isFromAdministration"
               @favourite-changed="refetch"
+              @opened="openTheAdministration"
             />
           </template>
         </div>

@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertExists } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+} from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { db } from "@/src/database/client.ts";
 import {
@@ -514,6 +519,137 @@ Deno.test("was die Administration sich selbst schreibt, ist keine Arbeit", async
     const names = ours(results).map((row) => row.username);
 
     assert(!names.includes(ROOT));
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Das Mitglied legt ein Gespräch an und benennt Admin — wie bei jedem anderen Konto. */
+async function writeToTheAdministration(cookie: string) {
+  const created = await request("POST", "/api/chats", cookie, {
+    title: "Frage an das Team",
+  });
+  assertEquals(created.status, STATUS_CODE.Created);
+  const husk = await created.json();
+
+  const invited = await request(
+    "POST",
+    `/api/chats/${husk.id}/memberships`,
+    cookie,
+    { userId: await getUserId(ROOT) },
+  );
+
+  return { huskId: husk.id as string, response: invited };
+}
+
+Deno.test("wer Admin benennt, bekommt den Faden statt einer Einladung", async () => {
+  const cookies = await fixture();
+
+  try {
+    const { huskId, response } = await writeToTheAdministration(cookies.member);
+
+    // **Keine Einladung, sondern der Faden.** Bei Admin nimmt niemand an — eine Einladung bliebe
+    // für immer offen, und die Nachricht käme nie an.
+    assertEquals(response.status, STATUS_CODE.OK);
+
+    const { chatGroupId } = await response.json();
+    assertNotEquals(chatGroupId, huskId);
+
+    // Keine Annahme nötig: Das Mitglied sitzt von Anfang an drin, also trägt die gewöhnliche
+    // Nachrichtenroute.
+    const sent = await write(cookies.member, chatGroupId, REPLY);
+    assertEquals(sent.status, STATUS_CODE.Created);
+
+    const { results } = await (await inbox(cookies.root)).json();
+    const mine = ours(results).filter((row) => row.username === MEMBER);
+
+    assertEquals(mine.length, 1);
+    assertEquals(mine[0]?.chatGroupId, chatGroupId);
+    assertEquals(mine[0]?.awaitingReply, true);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("die leere Hülle bleibt nicht liegen", async () => {
+  const cookies = await fixture();
+
+  try {
+    const { huskId } = await writeToTheAdministration(cookies.member);
+
+    const husk = await db
+      .selectFrom("chatGroup")
+      .select("id")
+      .where("id", "=", huskId)
+      .executeTakeFirst();
+
+    // Sonst hätte das Mitglied einen leeren Faden mit einem Titel, der nirgends hinführt.
+    assertEquals(husk, undefined);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("wer erst schreibt und dann eine Rundmail bekommt, hat einen Faden", async () => {
+  const cookies = await fixture();
+
+  try {
+    const { response } = await writeToTheAdministration(cookies.member);
+    const { chatGroupId } = await response.json();
+    await write(cookies.member, chatGroupId, REPLY);
+
+    const broadcastId = await sendBroadcast(cookies.root);
+
+    // **Die Reihenfolge darf keine Rolle spielen.** Die Rundmail findet den Faden, den das
+    // Mitglied angelegt hat, statt einen zweiten anzulegen — dieselbe Funktion entscheidet das
+    // für beide Wege.
+    assertEquals(await chatOf(broadcastId, MEMBER), chatGroupId);
+
+    const { messages } = await (await request(
+      "GET",
+      `/api/moderation/inbox/${chatGroupId}`,
+      cookies.root,
+    )).json();
+
+    assertEquals(
+      messages.map((message: { text: string }) => message.text),
+      [REPLY, BODY],
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("in einen Raum, in dem schon jemand sitzt, kommt Admin nicht", async () => {
+  const cookies = await fixture();
+
+  try {
+    const created = await request("POST", "/api/chats", cookies.member, {
+      title: "Zu dritt",
+    });
+    const room = await created.json();
+
+    assertEquals(
+      (await request(
+        "POST",
+        `/api/chats/${room.id}/memberships`,
+        cookies.member,
+        { userId: await getUserId(SILENT) },
+      )).status,
+      STATUS_CODE.Created,
+    );
+
+    const invited = await request(
+      "POST",
+      `/api/chats/${room.id}/memberships`,
+      cookies.member,
+      { userId: await getUserId(ROOT) },
+    );
+
+    // **Admin ist eine Adresse, kein Teilnehmer.** Die anderen im Raum haben der Administration
+    // nichts geschrieben; ihre Worte würden für jeden Administrator lesbar, ohne dass sie es
+    // wissen.
+    assertEquals(invited.status, STATUS_CODE.Forbidden);
   } finally {
     await cleanUp();
   }

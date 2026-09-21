@@ -1,3 +1,4 @@
+import { theAdministration } from "@/src/service/root_admin_service.ts";
 import type { Selectable } from "kysely";
 import { db } from "@/src/database/client.ts";
 import type {
@@ -187,12 +188,28 @@ async function selectChatGroup(
 /**
  * The founder joins outright; everybody else is invited and has to accept. Invitations ride
  * the same transaction as the chat, so a conversation cannot exist half-announced.
+ *
+ * **Die Administration wird hier niemals Teilnehmerin**, und das steht als Abbruch da, nicht als
+ * höfliche Absage: Dies ist die eine Stelle, durch die jedes Anlegen mit Teilnehmern geht. Wer
+ * einen freundlichen Satz will, fragt vorher `isTheAdministration` — so macht es die Einladung,
+ * die stattdessen den Faden mit der Administration aufschlägt. Wer es hier trifft, hat einen Weg
+ * gebaut, der die Frage nicht gestellt hat.
  */
 async function insertChatGroup(
   creator: User,
   title: string,
   inviteeIds: ReadonlyArray<string> = [],
 ): Promise<ChatGroup> {
+  const administration = await theAdministration();
+
+  if (
+    administration !== undefined && inviteeIds.includes(administration.id)
+  ) {
+    throw new Error(
+      "Die Administration wird nicht in ein Gespräch eingeladen — siehe isTheAdministration",
+    );
+  }
+
   const id = await db.transaction().execute(async (transaction) => {
     const chatGroup = await transaction
       .insertInto("chatGroup")

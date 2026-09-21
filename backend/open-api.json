@@ -32183,6 +32183,20 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Writing to the administration: the conversation to use, instead of an invitation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chatGroupId": { "type": "string", "format": "uuid" }
+                  },
+                  "required": ["chatGroupId"]
+                }
+              }
+            }
+          },
           "201": {
             "description": "The invitation",
             "content": {

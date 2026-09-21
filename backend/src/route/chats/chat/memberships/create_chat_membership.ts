@@ -7,6 +7,8 @@ import { BanService } from "@/src/service/ban_service.ts";
 import { BlockService } from "@/src/service/block_service.ts";
 import { UserInChatGroupService } from "@/src/service/user_in_chat_group_service.ts";
 import { ChatGroupService } from "@/src/service/chat_group_service.ts";
+import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
+import { isTheAdministration } from "@/src/service/root_admin_service.ts";
 import { userExists } from "@/src/service/user_in_writing_group_service.ts";
 import { checkJoinedChatMember } from "@/src/route/chats/chat/chat_membership.ts";
 import {
@@ -38,6 +40,14 @@ export default new OpenAPIHono().openapi(
       [STATUS_CODE.Created]: {
         description: "The invitation",
         content: jsonContent(CHAT_MEMBERSHIP_RESPONSE),
+      },
+      // Keine Einladung, sondern der Faden mit der Administration: Bei Admin nimmt niemand an.
+      [STATUS_CODE.OK]: {
+        description:
+          "Writing to the administration: the conversation to use, instead of an invitation",
+        content: jsonContent(
+          z.object({ chatGroupId: CHAT_GROUP_SCHEMA.shape.id }),
+        ),
       },
       [STATUS_CODE.Unauthorized]: {
         description: "No valid session",
@@ -114,6 +124,41 @@ export default new OpenAPIHono().openapi(
     if (chat?.isFromAdministration === true) {
       return c.json(
         { error: "Zu einer Rundmail lässt sich niemand einladen." },
+        STATUS_CODE.Forbidden,
+      );
+    }
+
+    /**
+     * **Bei Admin nimmt niemand an, also wird aus der Einladung keine.**
+     *
+     * Das Konto der Administration existiert und wird angeschrieben, aber es meldet sich kaum
+     * jemand darin an — eine Einladung bliebe für immer offen, und die Nachricht käme nie an.
+     * Wer Admin benennt, sagt damit „ich will der Administration schreiben", und die Antwort
+     * darauf ist der Faden, der diese Unterhaltung *ist*. Liegen dort schon Rundmails, liegen sie
+     * gleich mit darin.
+     *
+     * Für das Mitglied ändert sich nichts: Es legt ein Gespräch an und benennt Admin wie jedes
+     * andere Konto. Die Umleitung passiert hier, nicht in seinem Kopf.
+     *
+     * Wer die Administration in einen Raum holen will, in dem schon jemand sitzt oder geschrieben
+     * wurde, bekommt ein Nein — siehe `isTheAdministration`.
+     */
+    if (await isTheAdministration(userId)) {
+      const opened = await AdminInboxService.openThreadInsteadOfInviting(
+        user.id,
+        chatId,
+      );
+
+      if (opened.ok) {
+        return c.json({ chatGroupId: opened.chatGroupId }, STATUS_CODE.OK);
+      }
+
+      return c.json(
+        {
+          error: opened.reason === "not_a_fresh_chat"
+            ? "Admin lässt sich nicht in ein Gespräch holen. Leg ein neues an, um der Administration zu schreiben."
+            : "Die Administration ist gerade nicht erreichbar.",
+        },
         STATUS_CODE.Forbidden,
       );
     }

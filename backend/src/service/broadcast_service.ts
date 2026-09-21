@@ -3,6 +3,7 @@ import { Mailer } from "@/src/mail/mailer.ts";
 import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
 import { generate as generateUuidV7 } from "@std/uuid/v7";
+import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 import {
@@ -336,76 +337,14 @@ async function deliverToInbox(
 
     const recipientsPresent = present.map((recipient) => recipient.id);
 
-    // **Gefunden statt angelegt, wo es das Gespräch schon gibt.**
-    //
-    // Bis hierher legte jede Rundmail für jeden Empfänger einen neuen Faden an: Zehn Ankündigungen
-    // waren zehn Gespräche mit je einer Nachricht. Jetzt sammelt sich alles in einem — je Mitglied
-    // *und* Absender, denn eine Kunstfigur ist ein anderer Gesprächspartner, und der Name darf
-    // mitten im Verlauf nicht wechseln.
-    // **Ohne Absender wird nichts wiederverwendet.**
-    //
-    // `resolveSender` liefert leer, wenn es gerade keinen Ur-Admin gibt — im laufenden Betrieb nie,
-    // im Testlauf für die Dauer der Hochfahr-Tests. „Leer" ist dann aber kein Absender, sondern das
-    // Fehlen eines Namens, und zwei Fäden ohne Namen sind nicht derselbe Gesprächspartner. Wer sie
-    // zusammenlegt, hängt seine Ankündigung in den Faden einer fremden Kunstfigur — genau das ist
-    // passiert, und es kam als zwei rote Tests in zwei Dateien an, deren eigener Code stimmte.
-    const existing = sender === null ? [] : await transaction
-      .selectFrom("chatGroup")
-      .select(["id", "administrationPartnerId"])
-      .where("addressedToAdministration", "=", true)
-      .where("administrationPartnerId", "in", recipientsPresent)
-      .where("createdBy", "=", sender.id)
-      .execute();
-
-    const chatByRecipient = new Map(
-      existing.flatMap((chat) =>
-        chat.administrationPartnerId === null
-          ? []
-          : [[chat.administrationPartnerId, chat.id] as const]
-      ),
+    // **Gefunden statt angelegt, wo es den Faden schon gibt** — und durch dieselbe Funktion, die
+    // auch ein Mitglied benutzt, das die Administration von sich aus anschreibt. Beide meinen
+    // denselben Faden; zwei Fassungen davon wären zwei, die auseinanderlaufen.
+    const chatByRecipient = await AdminInboxService.findOrCreateThreads(
+      transaction,
+      sender,
+      recipientsPresent,
     );
-
-    // **Die Kennungen entstehen hier, nicht in der Datenbank.** Mitgliedschaft und Nachricht hängen
-    // an ihnen, und sie aus einem `RETURNING` zurückzulesen hieße, sich auf eine Reihenfolge zu
-    // verlassen, die PostgreSQL nirgends zusagt. Version 7, wie die Vorgabewerte der Tabellen: Die
-    // Kennung trägt ihre Entstehungszeit, und darauf beruht die Sortierung der Nachrichten.
-    const fresh = recipientsPresent
-      .filter((recipientId) => !chatByRecipient.has(recipientId))
-      .map((recipientId) => ({ id: generateUuidV7(), recipientId }));
-
-    if (fresh.length > 0) {
-      await transaction
-        .insertInto("chatGroup")
-        .values(fresh.map((chat) => ({
-          id: chat.id,
-          // Der Name, unter dem geschrieben wird — nicht mehr der Betreff, denn ein Faden kann
-          // nicht zehn tragen. Bleibt stehen, wenn die Kunstfigur später umbenannt wird: selten,
-          // und beim nächsten Blick zu sehen, während ein Titel, der sich still ändert, niemandem
-          // auffällt.
-          title: sender?.username ?? "Administration",
-          createdBy: sender?.id ?? null,
-          administrationPartnerId: chat.recipientId,
-          // **Was hier zurückkommt, geht an die Administration.** Die Marke wird beim Entstehen
-          // gesetzt und nicht später abgeleitet: Die Plattformseite sitzt mit Absicht nicht im
-          // Gespräch, und „wer sitzt drin" änderte sich ohnehin, sobald jemand austritt.
-          addressedToAdministration: true,
-        })))
-        .execute();
-
-      await transaction
-        .insertInto("userInChatGroup")
-        .values(fresh.map((chat) => ({
-          chatGroupId: chat.id,
-          userId: chat.recipientId,
-          status: "joined" as const,
-          joinedAt: now,
-        })))
-        .execute();
-
-      for (const chat of fresh) {
-        chatByRecipient.set(chat.recipientId, chat.id);
-      }
-    }
 
     const chats = recipientsPresent.flatMap((recipientId) => {
       const id = chatByRecipient.get(recipientId);

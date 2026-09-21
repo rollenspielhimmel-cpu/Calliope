@@ -11,6 +11,16 @@ import UserPicker from '@/components/user/UserPicker.vue'
 
 const props = defineProps<{ chatGroupId: string; memberIds: string[] }>()
 
+/**
+ * Statt einer Einladung kam der Faden mit der Administration zurück.
+ *
+ * **Bei Admin nimmt niemand an**, also wird aus der Einladung keine: Der Server gibt das Gespräch
+ * zurück, das die Unterhaltung mit der Administration *ist*, und der Dialog schlägt es auf. Für das
+ * Mitglied ist das derselbe Handgriff wie bei jedem anderen Konto — es merkt nur, dass es nicht auf
+ * eine Zusage warten muss.
+ */
+const emit = defineEmits<{ opened: [chatGroupId: string] }>()
+
 const queryClient = useQueryClient()
 
 const picker = useTemplateRef('picker')
@@ -33,7 +43,18 @@ async function invite(user: ListUsers200ResultsItem) {
   formError.value = undefined
 
   try {
-    await inviteToChat({ chatId: props.chatGroupId, data: { userId: user.id } })
+    const response = await inviteToChat({
+      chatId: props.chatGroupId,
+      data: { userId: user.id },
+    })
+
+    // Keine Einladung, sondern der Faden mit der Administration — siehe oben.
+    if (response.status === 200) {
+      picker.value?.reset()
+      open.value = false
+      emit('opened', response.data.chatGroupId)
+      return
+    }
   } catch (error) {
     // 403 is final, so it must not read as "try again". It is deliberately the same sentence for
     // every reason the API refuses contact — a block, a ban, or a Blind-Date running between these

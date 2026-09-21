@@ -47,7 +47,7 @@ const props = defineProps<{
   isFromAdministration: boolean
 }>()
 
-const emit = defineEmits<{ favouriteChanged: [] }>()
+const emit = defineEmits<{ favouriteChanged: []; opened: [chatGroupId: string] }>()
 
 const { savingFavourite, favouriteError, changeFavourite } = useFavourite()
 
@@ -285,6 +285,7 @@ async function submit() {
           v-if="!isFromAdministration"
           :chat-group-id="chatGroupId"
           :member-ids="memberIds"
+          @opened="emit('opened', $event)"
         />
         <!-- A raw button like the ones beside it: this row is text actions on one baseline, not
              buttons. The wording still comes from `favouriteToggle`. -->

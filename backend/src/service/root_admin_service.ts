@@ -87,3 +87,37 @@ export async function ensureRootAdmin(): Promise<void> {
     username: ROOT_ADMIN_USERNAME,
   });
 }
+
+/**
+ * Das Konto, unter dem die Plattform spricht — oder nichts, wenn es gerade keines gibt.
+ *
+ * **Die eine Stelle, an der „wer ist die Administration" beantwortet wird.** Es hängt am Merkmal,
+ * nicht am Namen: Das Konto lässt sich umbenennen, und eine Prüfung gegen „Admin" wäre am Tag der
+ * Umbenennung still falsch.
+ *
+ * Leer ist es nur in einer Aufstellung ohne hochgefahrenes Konto und für die Dauer der
+ * Hochfahr-Tests. Wer darauf trifft, weist ab, statt weiterzumachen: Ein Gespräch mit der
+ * Administration braucht einen Namen, unter dem geantwortet wird.
+ */
+export async function theAdministration(): Promise<
+  { id: string; username: string } | undefined
+> {
+  return await db
+    .selectFrom("user")
+    .select(["id", "username"])
+    .where("isPrimordialAdmin", "=", true)
+    .executeTakeFirst();
+}
+
+/**
+ * Ist dieses Konto die Administration — also niemand, den man in ein Gespräch einlädt?
+ *
+ * **Admin ist eine Adresse, kein Teilnehmer.** Wer die Administration anschreibt, schreibt in
+ * seinen einen Faden mit ihr; wer sie in einen Raum holte, gäbe allen darin den Verlauf zu lesen,
+ * und für das Team sähe das Postfach plötzlich aus wie ein Gruppenchat. Deshalb geht jeder Weg,
+ * der jemanden zum Mitglied eines Gesprächs macht, hier vorbei — die Einladung wie das Anlegen mit
+ * Teilnehmern.
+ */
+export async function isTheAdministration(userId: string): Promise<boolean> {
+  return (await theAdministration())?.id === userId;
+}

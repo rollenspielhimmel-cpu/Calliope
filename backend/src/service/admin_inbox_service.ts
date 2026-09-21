@@ -1,9 +1,11 @@
-import { db } from "@/src/database/client.ts";
+import { generate as generateUuidV7 } from "@std/uuid/v7";
+import { db, type Transaction } from "@/src/database/client.ts";
 import {
   type ChatMessage,
   ChatMessageService,
 } from "@/src/service/chat_message_service.ts";
 import { ChatGroupService } from "@/src/service/chat_group_service.ts";
+import { theAdministration } from "@/src/service/root_admin_service.ts";
 
 /**
  * Das Postfach der Administration: ein Ort für alles, was an sie gerichtet ist.
@@ -310,4 +312,169 @@ async function reply(
   };
 }
 
-export const AdminInboxService = { listConversations, readConversation, reply };
+/**
+ * Die Fäden dieser Mitglieder mit diesem Absender — gefunden, wo es sie gibt, sonst angelegt.
+ *
+ * **Eine Stelle, zwei Wege.** Hier kommt die Zustellung einer Rundmail herein, und hier kommt das
+ * Mitglied herein, das die Administration von sich aus anschreibt. Beide meinen denselben Faden,
+ * und das ist der ganze Punkt: Wer erst schreibt und später eine Rundmail bekommt, hat nicht zwei
+ * Gespräche. Zweimal geschrieben wäre es zweimal zu pflegen, und beim nächsten Umbau stimmte eines
+ * davon nicht mehr.
+ *
+ * **Ohne Absender wird nichts wiederverwendet.** `resolveSender` liefert leer, wenn es gerade
+ * keinen Ur-Admin gibt — im laufenden Betrieb nie, im Testlauf für die Dauer der Hochfahr-Tests.
+ * „Leer" ist dann aber kein Absender, sondern das Fehlen eines Namens, und zwei Fäden ohne Namen
+ * sind nicht derselbe Gesprächspartner. Wer sie zusammenlegt, hängt seine Ankündigung in den Faden
+ * einer fremden Kunstfigur — genau das ist passiert, und es kam als zwei rote Tests in zwei
+ * Dateien an, deren eigener Code stimmte.
+ *
+ * Läuft in der Transaktion des Aufrufers: Bei einer Rundmail hängt die Zustellung daran, und ein
+ * Faden ohne die Nachricht darin wäre schlimmer als keiner.
+ */
+async function findOrCreateThreads(
+  transaction: Transaction,
+  sender: { id: string; username: string } | null,
+  memberIds: ReadonlyArray<string>,
+): Promise<Map<string, string>> {
+  if (memberIds.length === 0) {
+    return new Map();
+  }
+
+  const existing = sender === null ? [] : await transaction
+    .selectFrom("chatGroup")
+    .select(["id", "administrationPartnerId"])
+    .where("addressedToAdministration", "=", true)
+    .where("administrationPartnerId", "in", memberIds)
+    .where("createdBy", "=", sender.id)
+    .execute();
+
+  const byMember = new Map(
+    existing.flatMap((chat) =>
+      chat.administrationPartnerId === null
+        ? []
+        : [[chat.administrationPartnerId, chat.id] as const]
+    ),
+  );
+
+  // **Die Kennungen entstehen hier, nicht in der Datenbank.** Mitgliedschaft und Nachricht hängen
+  // an ihnen, und sie aus einem `RETURNING` zurückzulesen hieße, sich auf eine Reihenfolge zu
+  // verlassen, die PostgreSQL nirgends zusagt.
+  const fresh = memberIds
+    .filter((memberId) => !byMember.has(memberId))
+    .map((memberId) => ({ id: generateUuidV7(), memberId }));
+
+  if (fresh.length === 0) {
+    return byMember;
+  }
+
+  await transaction
+    .insertInto("chatGroup")
+    .values(fresh.map((chat) => ({
+      id: chat.id,
+      // Der Name, unter dem geschrieben wird — nicht der Betreff, denn ein Faden kann nicht zehn
+      // tragen. Bleibt stehen, wenn die Kunstfigur später umbenannt wird: selten, und beim
+      // nächsten Blick zu sehen, während ein Titel, der sich still ändert, niemandem auffällt.
+      title: sender?.username ?? "Administration",
+      createdBy: sender?.id ?? null,
+      administrationPartnerId: chat.memberId,
+      // **Was hier hineingeschrieben wird, geht an die Administration.** Die Marke wird beim
+      // Entstehen gesetzt und nicht später abgeleitet: Die Plattformseite sitzt mit Absicht nicht
+      // im Gespräch, und „wer sitzt drin" änderte sich ohnehin, sobald jemand austritt.
+      addressedToAdministration: true,
+    })))
+    .execute();
+
+  // **Beigetreten, nicht eingeladen** — und das ist es, was den Weg des Mitglieds überhaupt
+  // möglich macht. Bei Admin nimmt niemand an; hier gibt es nichts anzunehmen, weil das Mitglied
+  // von Anfang an drin sitzt. Die Nachrichtenroute prüft `joined` und braucht dafür keine Zeile
+  // Sonderbehandlung.
+  await transaction
+    .insertInto("userInChatGroup")
+    .values(fresh.map((chat) => ({
+      chatGroupId: chat.id,
+      userId: chat.memberId,
+      status: "joined" as const,
+      joinedAt: new Date().toISOString(),
+    })))
+    .execute();
+
+  for (const chat of fresh) {
+    byMember.set(chat.memberId, chat.id);
+  }
+
+  return byMember;
+}
+
+export type OpenedThread =
+  | { ok: true; chatGroupId: string }
+  | { ok: false; reason: "no_administration" | "not_a_fresh_chat" };
+
+/**
+ * Der Faden dieses Mitglieds mit der Administration, aufgeschlagen — und die leere Hülle weg.
+ *
+ * **Das ist der Weg, den ein Mitglied nimmt, ohne es zu merken.** Für es ändert sich nichts: Es
+ * legt ein Gespräch an und benennt Admin, wie bei jedem anderen Konto auch. Nur nimmt bei Admin
+ * niemand an — dort meldet sich niemand an. Also wird aus der Einladung keine Einladung, sondern
+ * der Faden, der die Unterhaltung mit der Administration *ist*. Liegen dort schon Rundmails, liegen
+ * sie gleich mit darin.
+ *
+ * **Die Hülle geht in derselben Transaktion mit.** Das Gespräch, das Sekunden vorher entstand, hat
+ * ein einziges Mitglied und keine Nachricht; bliebe es liegen, hätte das Mitglied einen leeren
+ * Faden mit einem Titel, der nirgends hinführt. Geprüft wird beides vorher — der Aufrufer allein
+ * darin, nichts geschrieben —, sonst wird gar nicht erst weitergeleitet.
+ */
+async function openThreadInsteadOfInviting(
+  memberId: string,
+  huskId: string,
+): Promise<OpenedThread> {
+  const administration = await theAdministration();
+
+  if (administration === undefined) {
+    return { ok: false, reason: "no_administration" };
+  }
+
+  return await db.transaction().execute(async (transaction) => {
+    // **Nur eine frische, leere Hülle wird weitergeleitet.** Steht schon jemand anderes darin oder
+    // wurde darin geschrieben, ist es ein Raum und keine angefangene Nachricht — dann wird
+    // abgewiesen statt umgeleitet, und der Aufrufer behält, was er hat.
+    const others = await transaction
+      .selectFrom("userInChatGroup")
+      .select("userId")
+      .where("chatGroupId", "=", huskId)
+      .where("userId", "!=", memberId)
+      .executeTakeFirst();
+
+    const written = await transaction
+      .selectFrom("chatMessage")
+      .select("id")
+      .where("chatGroupId", "=", huskId)
+      .executeTakeFirst();
+
+    if (others !== undefined || written !== undefined) {
+      return { ok: false, reason: "not_a_fresh_chat" } as const;
+    }
+
+    const threads = await findOrCreateThreads(transaction, administration, [
+      memberId,
+    ]);
+
+    const chatGroupId = threads.get(memberId);
+
+    if (chatGroupId === undefined) {
+      return { ok: false, reason: "no_administration" } as const;
+    }
+
+    await transaction.deleteFrom("chatGroup").where("id", "=", huskId)
+      .execute();
+
+    return { ok: true, chatGroupId } as const;
+  });
+}
+
+export const AdminInboxService = {
+  listConversations,
+  readConversation,
+  reply,
+  findOrCreateThreads,
+  openThreadInsteadOfInviting,
+};
