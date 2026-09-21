@@ -851,6 +851,53 @@ Deno.test("namentlich Genannte kommen zu den Rollen hinzu", async () => {
   }
 });
 
+/**
+ * Eine Rundmail nur an Namen, ohne jede Rolle.
+ *
+ * **Genau dieser Weg gab einen 500.** Die Schnittstelle sagte „Rollen oder Namen", die Datenbank
+ * verlangte eine Rolle — `broadcast_has_an_audience` war beim Nachrüsten der Namen nicht mitgezogen
+ * worden. Die Oberfläche verlangte zufällig dieselbe Rolle und verdeckte es.
+ *
+ * Geprüft wird hier auch, dass **nur** die Genannten sie bekommen: Eine Rundmail an zwei Leute, die
+ * über eine vergessene Rolle an alle Administratoren ginge, wäre schlimmer als eine, die gar nicht
+ * rausgeht.
+ */
+Deno.test("eine Rundmail nur an Namen geht an genau die", async () => {
+  const cookies = await fixture();
+
+  try {
+    const member = await getUserId(MEMBER);
+
+    const response = await submit(cookies.root, {
+      audienceRoles: [],
+      memberIds: [member],
+    });
+
+    assertEquals(response.status, STATUS_CODE.Created);
+
+    const broadcast = await theBroadcast();
+
+    const reached = await db
+      .selectFrom("chatGroup")
+      .innerJoin(
+        "userInChatGroup",
+        "userInChatGroup.chatGroupId",
+        "chatGroup.id",
+      )
+      .innerJoin("user", "user.id", "userInChatGroup.userId")
+      .select("user.username")
+      .where("chatGroup.id", "in", chatsOf(broadcast.id))
+      .execute();
+
+    // Genau einer, und genau der. SECOND ist Administrator und stünde über eine Rolle drin — dass
+    // er fehlt, ist der Beleg, dass keine Rolle mitgelaufen ist.
+    assertEquals(reached.map((row) => row.username), [MEMBER]);
+    assertEquals(broadcast.recipientCount, 1);
+  } finally {
+    await cleanUp();
+  }
+});
+
 Deno.test("wer über Rolle und Namen drinsteht, bekommt sie einmal", async () => {
   const cookies = await fixture();
 

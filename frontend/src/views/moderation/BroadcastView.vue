@@ -259,7 +259,10 @@ const { mutateAsync: editBroadcast, isPending: isSavingEdit } = useEditBroadcast
 
 const isComplete = computed<boolean>(
   () =>
-    chosen.value.length > 0 &&
+    // **Rollen oder Namen**, wie Schnittstelle und Datenbank. Hier stand „mindestens eine Rolle",
+    // und das machte die Rundmail an genau zwei Genannte unmöglich, die beide anderen Ebenen
+    // erlaubten — der Knopf blieb grau, ohne zu sagen warum.
+    (chosen.value.length > 0 || namedRecipients.value.length > 0) &&
     subject.value.trim().length > 0 &&
     body.value.trim().length > 0 &&
     // Irgendwo ankommen muss sie. Die Datenbank sagt dasselbe und hat das letzte Wort; hier steht
@@ -520,8 +523,28 @@ const ROLE_LABELS: Record<string, string> = {
   member: 'Mitglieder ohne Rolle',
 }
 
-function rolesOf(roles: string[]): string {
-  return roles.map((role) => ROLE_LABELS[role] ?? role).join(', ')
+/**
+ * Wen eine Rundmail erreicht, in einer Zeile: die Rollen und die Namen.
+ *
+ * **Vorher standen hier nur die Rollen**, und das war richtig, solange es nur Rollen gab. Seit eine
+ * Rundmail an Namen allein gehen darf, stünde sonst „An · Als Admin" da — ein Wort, das ins Leere
+ * zeigt. Und die Namen fehlten in der Liste auch schon neben einer Rolle: Wer „an die Moderation"
+ * las, sah nicht, dass zwei Mitglieder sie zusätzlich bekommen.
+ *
+ * **Leer wird es nur auf einem Weg:** eine Rundmail an Namen, deren Konten alle gelöscht sind. Die
+ * Zeilen in `broadcast_recipient` gehen mit dem Konto, und dann steht dort wirklich niemand mehr.
+ * Das zu sagen ist ehrlicher als eine leere Stelle, und wer freigeben soll, muss es wissen.
+ */
+function audienceOf(entry: {
+  audienceRoles: string[]
+  namedRecipients: Array<{ username: string }>
+}): string {
+  const reached = [
+    ...entry.audienceRoles.map((role) => ROLE_LABELS[role] ?? role),
+    ...entry.namedRecipients.map((member) => member.username),
+  ]
+
+  return reached.length > 0 ? reached.join(', ') : 'niemanden mehr'
 }
 </script>
 
@@ -853,7 +876,7 @@ function rolesOf(roles: string[]): string {
               {{ entry.body }}
             </p>
             <p class="mt-2 text-[12px] text-ink-6">
-              An {{ rolesOf(entry.audienceRoles)
+              An {{ audienceOf(entry)
               }}<template v-if="entry.includeUnverified">, auch an unbestätigte Adressen</template>
               · Als {{ entry.sendAsUsername ?? 'Admin' }} · Von
               {{ entry.writtenByUsername ?? 'einem gelöschten Konto' }},
@@ -912,7 +935,7 @@ function rolesOf(roles: string[]): string {
                 {{ entry.body }}
               </p>
               <p class="mt-2 text-[12px] text-ink-6">
-                An {{ rolesOf(entry.audienceRoles)
+                An {{ audienceOf(entry)
                 }}<template v-if="entry.includeUnverified"
                   >, auch an unbestätigte Adressen</template
                 >
