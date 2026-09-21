@@ -22,10 +22,14 @@ Was davon bleibt: Jedes `migrate:down` muss sein `migrate:up` wirklich zurückne
 Enum-Typen und Auslöserfunktionen, und der Hin- und Rückweg wird gegen eine Wegwerf-Datenbank
 durchgespielt, nicht gegen die, in der gearbeitet wird.
 
-## Datenbank und `schema_migrations` laufen auseinander
+## Datenbank und `migration.schema_migration` laufen auseinander
 
 In beide Richtungen: eine Migration, die angewandt ist und nicht eingetragen, und ein Eintrag ohne
 die Änderung dahinter.
+
+**Die Tabelle heißt hier `migration.schema_migration`**, nicht `schema_migrations` wie bei dbmate
+vorgegeben — `DBMATE_MIGRATIONS_TABLE` legt das fest. Wer nach dem Vorgabenamen fragt, bekommt
+„gibt es nicht" zurück, und das liest sich wie ein Befund. Genau so stand der Name einmal hier.
 
 **Eine unerwartete Meldung über Migrationen ist nie Rauschen.** Sagt ein Deploy oder ein Testlauf
 etwas, das nicht zum erwarteten Stand passt, wird zuerst nachgesehen, was tatsächlich in der
