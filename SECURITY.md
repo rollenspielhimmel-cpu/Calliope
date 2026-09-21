@@ -26,7 +26,7 @@ Exploit, und du musst nichts beweisen, indem du es an echten Konten vorführst.
 
 ## Was wir zusagen
 
-Wir melden uns **innerhalb von drei Tagen**, dass dein Bericht angekommen ist — auch dann, wenn
+Wir melden uns **innerhalb von 14 Tagen**, dass dein Bericht angekommen ist — auch dann, wenn
 wir noch nichts dazu sagen können. Danach sagen wir dir, was wir davon halten und wann wir es
 angehen. Wenn wir etwas nicht beheben, sagen wir dir warum, statt zu schweigen.
 
