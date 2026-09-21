@@ -4,43 +4,44 @@ Postgres 18, migrated with [dbmate](https://github.com/amacneil/dbmate), typed w
 `kysely-codegen`. Tasks are `deno task …` — see the root [AGENTS.md](../AGENTS.md) for the
 conventions shared with the other projects.
 
-## Migrations may be edited in place until a staging or production instance exists
+## Eine angewandte Migration wird nicht mehr angefasst
 
-The rule hangs on the environments, not on a feeling about how finished the product is.
-`ENVIRONMENT` is one of `development`, `testing`, `staging` or `production`, and a `testing`
-instance is one whose database is reset when a migration calls for it — that is what the word
-means here, and it is written into `.example.deploy.env`.
+Auch nicht um eine Zeile. Was sich ändern soll, kommt als neue Migration nach.
 
-**While the only deployed instance is `testing`**, a schema change is made **by editing the
-migration that created the table** rather than by stacking an `ALTER` on top. The files stay
-readable as one definition per table, which is worth more right now than a history nobody will
-ever replay. Today that is where Calliope is.
+**Der Grund steht im Deploy-Skript, nicht im Geschmack.** Es vergleicht die angewandten Dateien
+mit denen im Verzeichnis und baut die Datenbank neu, sobald eine abweicht — auf `testing` ohne
+Rückfrage. Einmal hätte das die Beta samt aller Inhalte gelöscht, und die Sicherung, die das
+aufgefangen hätte, lag zu dem Zeitpunkt selbst noch undeployt.
 
-**The day a `staging` or `production` instance runs, this stops.** Neither is reset for a
-migration, so from then on a schema change is a new migration, `migrate:down` matters, and an
-applied file is never touched again.
+Hier stand vorher das Gegenteil: Solange nur `testing` läuft, dürfe man die Migration bearbeiten,
+die die Tabelle angelegt hat; die Dateien blieben dann als eine Definition je Tabelle lesbar, und
+der Preis sei ein Neubau der Datenbank. Der Preis war falsch beziffert. Lesbarkeit wiegt nichts
+gegen die Inhalte einer laufenden Instanz.
 
-dbmate records a migration by version and will not re-run an edited one, so an edited file means
-the database has to be rebuilt — that is the cost, and it is the whole cost:
+Was davon bleibt: Jedes `migrate:down` muss sein `migrate:up` wirklich zurücknehmen, samt
+Enum-Typen und Auslöserfunktionen, und der Hin- und Rückweg wird gegen eine Wegwerf-Datenbank
+durchgespielt, nicht gegen die, in der gearbeitet wird.
 
-```bash
-cd database && deno task db:reset
-deno task types:generate && cd ../backend && deno task db:seed
-```
+## Datenbank und `schema_migrations` laufen auseinander
 
-It drops **everything**, hand-made test accounts and rows included, so say so before doing it to
-somebody else's database. A deployed instance is dropped the same way — `deployment/deploy.sh`
-detects an edited migration and does it, but only on `testing`, and refuses elsewhere. Stop the
-backend first or open connections block the drop.
+In beide Richtungen: eine Migration, die angewandt ist und nicht eingetragen, und ein Eintrag ohne
+die Änderung dahinter.
 
-**Editing in place is permission, not obligation.** A change that adds something new rather than
-altering something existing is clearer as its own migration even while editing is still allowed:
-nothing has to be rebuilt, and the file reads as the feature it belongs to. Prefer a new
-migration whenever the change is purely additive.
+**Eine unerwartete Meldung über Migrationen ist nie Rauschen.** Sagt ein Deploy oder ein Testlauf
+etwas, das nicht zum erwarteten Stand passt, wird zuerst nachgesehen, was tatsächlich in der
+Datenbank steht — Tabellen, Spalten, Auslöser, eingefügte Texte im Wortlaut. Gehandelt wird danach.
 
-Every `migrate:down` must actually reverse its `migrate:up`, including dropping enum types
-and trigger functions. Test the round trip against a throwaway database rather than the one
-you are working in.
+Ein Eintrag wird nur nachgetragen, nachdem einzeln geprüft ist, dass genau diese Migration wirklich
+angewandt wurde. „Sieht aus, als wäre sie durch" ist keine Prüfung.
+
+## Vor einer Migration, die Daten bewegt, eine frische Sicherung
+
+Nicht die automatische von gestern — eine, die jetzt gezogen wurde. Gemeint ist jede Migration, die
+Zeilen verschiebt, zusammenführt oder löscht; eine, die eine Spalte hinzufügt, braucht das nicht.
+
+Der Rückweg einer solchen Migration stellt die Spalten wieder her, aber nicht den Zustand:
+`20260907090000` verschmilzt Gespräche und kann sie nicht wieder trennen. Was dann noch hilft, ist
+die Sicherung.
 
 ## `json` and `jsonb` generate as `unknown`
 

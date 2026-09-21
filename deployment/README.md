@@ -115,6 +115,10 @@ The sections below are what it automates, and what to do when it refuses.
 
 Migrations run automatically as part of `up`.
 
+**A migration that moves data wants a fresh backup before the deploy, not last night's.** The rule
+and what counts as moving data are in [database/AGENTS.md](../database/AGENTS.md); the backups
+themselves are at the end of this file.
+
 ### After a migration was edited rather than added
 
 `deploy.sh` detects this and **refuses, on every environment**, pointing here. It used to do it
@@ -127,9 +131,15 @@ migrations touched between the deployed commit and the new one against the versi
 a migration added and then edited between two deploys is an ordinary deploy. Renames count —
 three in this repository's history kept their version prefix while rewriting the body.
 
-Pre-release, a schema change edits the migration that created the table (see
-[database/AGENTS.md](../database/AGENTS.md)), and dbmate will not re-run a version it has already
-recorded — so the database has to be rebuilt. **This deletes every row, every account included.**
+**Reaching this section means a rule was broken, not that a step was reached.** An applied
+migration is never edited — see [database/AGENTS.md](../database/AGENTS.md); a change comes as a
+new migration. This paragraph used to say the opposite, because editing in place was the
+pre-release convention, and it was that convention that put the beta one automatic rebuild away
+from being emptied.
+
+If it has happened anyway: dbmate will not re-run a version it has already recorded, so the
+database has to be rebuilt. **This deletes every row, every account included.** Take a fresh
+backup first — the one from last night is not the one you want.
 
 ```bash
 cd /opt/calliope && git pull

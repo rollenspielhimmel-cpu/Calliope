@@ -1292,3 +1292,12 @@ Ihn einem Halter wegzunehmen wäre genau der Diebstahl, gegen den die Sperre exi
 Bewegung, die drei grüne Dateien zu fünf roten gemacht hat, als eine dritte den Platz wollte. Eine
 tote Hand von einer lebenden zu unterscheiden, kann die Datenbank nicht; ein Mensch kann es in fünf
 Sekunden.
+
+### Ein Test für eine Sicherung wird aus dem Code abgeleitet, nicht aus einer Liste
+
+Bekannte Fälle abzuklopfen reicht überall sonst. Bei einer Sicherung nicht: Dort ist die Frage
+nicht, ob die geprüften Stellen halten, sondern ob es eine ungeprüfte gibt.
+
+Abgeleitet heißt aus `open-api.json` — jede Antwort, jedes Feld —, nicht aus einer von Hand
+gepflegten Aufzählung. Genau daran ist ein Datenleck vorbeigelaufen: Die Testkulisse hat den lecken
+Pfad nie berührt, und die Aufzählung kannte ihn nicht.

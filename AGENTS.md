@@ -34,6 +34,13 @@ Each project carries its own conventions; read the one you are working in:
 - **`type`, never `interface`.**
 - **Imports use each project's `@/` alias** rather than climbing out of deep directories.
   The two differ: in the backend it points at the project root, in the frontend at `src/`.
+- **Gemessen, nicht gelesen.** Eine Aussage über das laufende Verhalten — „das leckt", „das ist
+  abgedeckt", „das wird nie aufgerufen" — gilt erst, wenn sie ausgeführt wurde. Ging das nicht,
+  wird sie ausdrücklich als aus dem Code gelesen gekennzeichnet und als Vermutung behandelt, nicht
+  als Befund.
+- **Zu jeder neuen Zusicherung gehört die Gegenprobe.** Ein grüner Test beweist nichts, solange
+  nicht gezeigt ist, dass er rot werden kann: die Sicherung absichtlich brechen, den Test rot
+  sehen, zurücknehmen.
 - Run `validate:check` in whichever project you changed before considering anything done.
 
 ## The issue tracker
