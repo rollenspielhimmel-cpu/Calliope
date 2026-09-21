@@ -110,7 +110,12 @@ export async function theAdministration(): Promise<
 }
 
 /**
- * Ist dieses Konto die Administration — also niemand, den man in ein Gespräch einlädt?
+ * Ist dies *das Konto* der Administration — also niemand, den man in ein Gespräch einlädt?
+ *
+ * **Das Konto, nicht die Rolle.** Es hängt an `is_primordial_admin`: Ein gewöhnlicher Administrator
+ * wie jeder andere Teamer wird ganz normal eingeladen. Hinge es an der Rolle, wäre die halbe
+ * Administration aus den Gespräche der Mitglieder ausgesperrt, und die Absage sähe aus wie die
+ * richtige.
  *
  * **Admin ist eine Adresse, kein Teilnehmer.** Wer die Administration anschreibt, schreibt in
  * seinen einen Faden mit ihr; wer sie in einen Raum holte, gäbe allen darin den Verlauf zu lesen,
@@ -118,6 +123,8 @@ export async function theAdministration(): Promise<
  * der jemanden zum Mitglied eines Gesprächs macht, hier vorbei — die Einladung wie das Anlegen mit
  * Teilnehmern.
  */
-export async function isTheAdministration(userId: string): Promise<boolean> {
+export async function isTheAdministrationAccount(
+  userId: string,
+): Promise<boolean> {
   return (await theAdministration())?.id === userId;
 }

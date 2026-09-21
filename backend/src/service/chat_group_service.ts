@@ -191,7 +191,7 @@ async function selectChatGroup(
  *
  * **Die Administration wird hier niemals Teilnehmerin**, und das steht als Abbruch da, nicht als
  * höfliche Absage: Dies ist die eine Stelle, durch die jedes Anlegen mit Teilnehmern geht. Wer
- * einen freundlichen Satz will, fragt vorher `isTheAdministration` — so macht es die Einladung,
+ * einen freundlichen Satz will, fragt vorher `isTheAdministrationAccount` — so macht es die Einladung,
  * die stattdessen den Faden mit der Administration aufschlägt. Wer es hier trifft, hat einen Weg
  * gebaut, der die Frage nicht gestellt hat.
  */
@@ -206,7 +206,7 @@ async function insertChatGroup(
     administration !== undefined && inviteeIds.includes(administration.id)
   ) {
     throw new Error(
-      "Die Administration wird nicht in ein Gespräch eingeladen — siehe isTheAdministration",
+      "Die Administration wird nicht in ein Gespräch eingeladen — siehe isTheAdministrationAccount",
     );
   }
 

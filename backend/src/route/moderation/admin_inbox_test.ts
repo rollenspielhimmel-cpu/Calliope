@@ -654,3 +654,29 @@ Deno.test("in einen Raum, in dem schon jemand sitzt, kommt Admin nicht", async (
     await cleanUp();
   }
 });
+
+Deno.test("ein gewöhnlicher Administrator wird ganz normal eingeladen", async () => {
+  const cookies = await fixture();
+
+  try {
+    const created = await request("POST", "/api/chats", cookies.member, {
+      title: "Zu zweit",
+    });
+    const room = await created.json();
+
+    const invited = await request(
+      "POST",
+      `/api/chats/${room.id}/memberships`,
+      cookies.member,
+      { userId: await getUserId(SILENT) },
+    );
+
+    // **Die Sperre hängt am Konto, nicht an der Rolle.** SILENT ist Administrator wie der Ur-Admin
+    // auch — nur hält er den Platz nicht. Hinge sie an der Rolle, wäre die halbe Administration aus
+    // den Gesprächen der Mitglieder ausgesperrt, ohne dass es jemandem auffiele: Die Absage sähe aus
+    // wie die richtige.
+    assertEquals(invited.status, STATUS_CODE.Created);
+  } finally {
+    await cleanUp();
+  }
+});

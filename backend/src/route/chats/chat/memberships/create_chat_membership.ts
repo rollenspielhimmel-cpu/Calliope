@@ -8,7 +8,7 @@ import { BlockService } from "@/src/service/block_service.ts";
 import { UserInChatGroupService } from "@/src/service/user_in_chat_group_service.ts";
 import { ChatGroupService } from "@/src/service/chat_group_service.ts";
 import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
-import { isTheAdministration } from "@/src/service/root_admin_service.ts";
+import { isTheAdministrationAccount } from "@/src/service/root_admin_service.ts";
 import { userExists } from "@/src/service/user_in_writing_group_service.ts";
 import { checkJoinedChatMember } from "@/src/route/chats/chat/chat_membership.ts";
 import {
@@ -141,9 +141,9 @@ export default new OpenAPIHono().openapi(
      * andere Konto. Die Umleitung passiert hier, nicht in seinem Kopf.
      *
      * Wer die Administration in einen Raum holen will, in dem schon jemand sitzt oder geschrieben
-     * wurde, bekommt ein Nein — siehe `isTheAdministration`.
+     * wurde, bekommt ein Nein — siehe `isTheAdministrationAccount`.
      */
-    if (await isTheAdministration(userId)) {
+    if (await isTheAdministrationAccount(userId)) {
       const opened = await AdminInboxService.openThreadInsteadOfInviting(
         user.id,
         chatId,

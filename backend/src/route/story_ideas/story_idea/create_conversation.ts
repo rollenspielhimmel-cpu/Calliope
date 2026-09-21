@@ -5,7 +5,7 @@ import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { StoryIdeaService } from "@/src/service/story_idea_service.ts";
 import { ChatGroupService } from "@/src/service/chat_group_service.ts";
-import { isTheAdministration } from "@/src/service/root_admin_service.ts";
+import { isTheAdministrationAccount } from "@/src/service/root_admin_service.ts";
 import { BanService } from "@/src/service/ban_service.ts";
 import { BlockService } from "@/src/service/block_service.ts";
 import { conversationTitle } from "@/src/util/conversation_title.ts";
@@ -82,7 +82,7 @@ export default new OpenAPIHono().openapi(
 
     // Dieselbe Frage wie bei der Einladung: Die Administration wird nicht Teilnehmerin. Hier
     // beantwortet sie sich höflich, damit der Abbruch in `insertChatGroup` niemanden trifft.
-    if (await isTheAdministration(idea.createdBy)) {
+    if (await isTheAdministrationAccount(idea.createdBy)) {
       return c.json(
         { error: "Contact is not possible" },
         STATUS_CODE.Forbidden,
