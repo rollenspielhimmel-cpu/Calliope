@@ -151,3 +151,53 @@ describe('BroadcastView', () => {
     expect(next.attributes('disabled')).toBeUndefined()
   })
 })
+
+/** Holt eine Rundmail aus der Warteschlange ins Formular — der Weg, auf dem es sie wirklich gibt. */
+async function editing(broadcast: ReturnType<typeof entry>) {
+  queue.value.data = [broadcast]
+  const wrapper = broadcastView()
+  await openQueue(wrapper)
+
+  const edit = wrapper.findAll('button').find((button) => button.text() === 'Bearbeiten')
+  if (edit === undefined) {
+    throw new Error('kein „Bearbeiten" an der wartenden Rundmail')
+  }
+  await edit.trigger('click')
+  await flushPromises()
+
+  return wrapper
+}
+
+/**
+ * Der Satz über das Forum.
+ *
+ * **Er stand immer da und war doppelt falsch.** Bei einer Rundmail an Namen kommt sie gar nicht ins
+ * Forum, und „darf beantwortet werden" stimmte nie — der Archiv-Faden steht für Mitglieder auf
+ * `read`, und der Backend-Test dazu bekommt beim Versuch 403.
+ */
+describe('BroadcastView, der Satz über das Forum', () => {
+  const FORUM = 'Im Forum steht sie zum Nachlesen'
+
+  it('fehlt bei einer Rundmail an Namen, und statt seiner steht, warum', async () => {
+    const wrapper = await editing(NAMES_ONLY)
+
+    expect(wrapper.text()).not.toContain(FORUM)
+    expect(wrapper.text()).toContain('kommt deshalb nicht ins Archiv')
+  })
+
+  it('steht da, wenn sie ins Forum geht', async () => {
+    const wrapper = await editing(entry({ audienceRoles: ['member'], publishInArchive: true }))
+
+    expect(wrapper.text()).toContain(FORUM)
+    // Geantwortet wird im Postfach. Der alte Satz versprach das Gegenteil.
+    expect(wrapper.text()).toContain('Antworten gehen ins Postfach')
+    expect(wrapper.text()).not.toContain('beantwortet werden')
+  })
+
+  it('fehlt, wenn der Haken nicht gesetzt ist', async () => {
+    // Auch dort stimmt er nicht: Ohne Haken kommt sie nicht ins Forum.
+    const wrapper = await editing(entry({ audienceRoles: ['member'], publishInArchive: false }))
+
+    expect(wrapper.text()).not.toContain(FORUM)
+  })
+})

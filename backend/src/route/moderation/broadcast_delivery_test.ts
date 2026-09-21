@@ -532,6 +532,7 @@ Deno.test("im Archiv wird nicht geantwortet", async () => {
       .selectFrom("writingThread")
       .innerJoin("writingFolder", "writingFolder.id", "writingThread.folderId")
       .select([
+        "writingThread.id",
         "writingThread.memberPermission as threadPermission",
         "writingFolder.memberPermission as folderPermission",
       ])
@@ -542,6 +543,29 @@ Deno.test("im Archiv wird nicht geantwortet", async () => {
     // Reihenfolge zerreißen, die sie lesbar macht.
     assertEquals(archive.threadPermission, "read");
     assertEquals(archive.folderPermission, "read");
+
+    // **Und dann der Versuch selbst.** Die beiden Zeilen darüber lesen nur Spalten; sie blieben grün,
+    // wenn die Berechtigung irgendwo anders aufgehoben würde. Der Satz im Formular hat einmal
+    // behauptet, man dürfe hier antworten — das hier sagt, ob ein Mitglied es kann.
+    //
+    // Nur für Mitglieder: Die Administration darf überall schreiben (`isOperator` geht in
+    // `mayActInForum` allem vor), damit sie im Archiv auch etwas richtigstellen kann.
+    const reply = await request(
+      "POST",
+      `/api/forum/threads/${archive.id}/posts`,
+      cookies.member,
+      {
+        document: {
+          type: "doc",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Eine Antwort." }],
+          }],
+        },
+      },
+    );
+
+    assertEquals(reply.status, STATUS_CODE.Forbidden);
   } finally {
     await cleanUp();
   }

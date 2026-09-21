@@ -690,9 +690,17 @@ function audienceOf(entry: {
                 </p>
               </div>
 
-              <p class="text-control text-ink-5">
-                Im Forum steht sie zum Nachlesen und darf beantwortet werden — unabhängig davon, wie
-                sie zugestellt wird.
+              <!-- **Gehört zum Haken, nicht zum Abschnitt.** Hier stand der Satz einmal immer, auch
+                   bei einer Rundmail an Namen, die gar nicht ins Forum kommt — und auch bei nicht
+                   gesetztem Haken, wo er genauso wenig stimmt. Jetzt nur, wenn sie wirklich dorthin
+                   geht; an Namen sagt der Satz im Kasten darüber, warum nicht.
+
+                   Und er behauptete, sie „darf beantwortet werden". Das stimmte nie: Der Archiv-
+                   Faden steht für Mitglieder auf `read`, und `broadcast_delivery_test.ts` versucht
+                   es und bekommt 403. Geantwortet wird im Postfach. -->
+              <p v-if="mayPublishInArchive && publishInArchive" class="text-control text-ink-5">
+                Im Forum steht sie zum Nachlesen, unabhängig davon, wie sie zugestellt wird.
+                Antworten gehen ins Postfach, nicht ins Forum.
               </p>
             </Field>
 
