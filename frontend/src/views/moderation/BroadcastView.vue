@@ -73,8 +73,8 @@ const ROLES: ReadonlyArray<{ value: Role; label: string }> = [
  * Standen alle drei Haken, ging eine Rundmail, die an die Administration gedacht war, an alle —
  * genau so passiert, beim ersten Durchklicken auf der Beta. Eine Voreinstellung, die im
  * Zweifelsfall die größtmögliche Reichweite wählt, ist bei etwas Unwiderruflichem die falsche
- * Richtung: Wer an alle schreiben will, setzt drei Haken; wer sich vertut, erreicht niemanden
- * statt jeden.
+ * Richtung: Wer an alle schreiben will, wählt „An alle Mitglieder"; wer sich vertut, erreicht
+ * niemanden statt jeden.
  */
 const chosen = ref<Role[]>([])
 
@@ -94,10 +94,47 @@ const namedRecipients = ref<Array<{ id: string; username: string }>>([])
 const memberIds = computed<string[]>(() => namedRecipients.value.map((member) => member.id))
 
 /**
- * Sobald jemand namentlich genannt ist, ist es keine Ankündigung mehr — dann verschwindet der
- * Archiv-Haken, und was vielleicht schon gesetzt war, geht mit.
+ * Geht sie an alle? Alle drei Rollen und kein Name — dieselbe Regel wie `isToEveryone` im Backend
+ * und `broadcast_archive_only_to_everyone` in der Datenbank.
+ *
+ * **Abgeleitet, kein eigener Zustand.** Die Auswahl „An alle Mitglieder" setzt genau das, und wer
+ * die dritte Rolle einzeln anhakt, landet von selbst hier. Ein eigener Merker könnte dem
+ * Empfängerkreis widersprechen, den er beschreiben soll; so gibt es einen Weg zu „alle" und eine
+ * Wahrheit darüber.
  */
-const mayPublishInArchive = computed<boolean>(() => memberIds.value.length === 0)
+const toEveryone = computed<boolean>(
+  () =>
+    ROLES.every((role) => chosen.value.includes(role.value)) && namedRecipients.value.length === 0,
+)
+
+/**
+ * Ins Archiv darf nur eine Rundmail an alle.
+ *
+ * Vorher hieß das „keine Namen", und eine Rundmail allein an die Moderation durfte hinein — eine
+ * Notiz ans Team stand dann für alle im Forum. Auf der Beta ist genau das einmal passiert.
+ */
+const mayPublishInArchive = computed<boolean>(() => toEveryone.value)
+
+/**
+ * „An alle Mitglieder" an- oder abwählen.
+ *
+ * **An** setzt alle Rollen und nimmt die Namen heraus — sie fügen niemanden hinzu — und setzt den
+ * Archiv-Haken, weil eine Ankündigung an alle dorthin gehört, solange niemand widerspricht.
+ * **Ab** fängt von vorn an, statt die drei Rollen stehen zu lassen: Sonst stünde gleich wieder
+ * „an alle" da, und der Schalter täte nichts.
+ *
+ * Der Archiv-Haken wird hier gesetzt und nicht über einen Beobachter: Beim Bearbeiten käme der
+ * sonst nach dem gespeicherten Stand und überschriebe ein bewusstes „nicht ins Archiv".
+ */
+function setToEveryone(on: boolean) {
+  if (on) {
+    chosen.value = ROLES.map((role) => role.value)
+    namedRecipients.value = []
+    publishInArchive.value = true
+  } else {
+    chosen.value = []
+  }
+}
 
 function addRecipient(member: { id: string; username: string }) {
   if (memberIds.value.includes(member.id)) {
@@ -112,7 +149,8 @@ function removeRecipient(id: string) {
 }
 
 /**
- * Nimmt den Archiv-Haken zurück, sobald jemand namentlich dazukommt.
+ * Nimmt den Archiv-Haken zurück, sobald sie nicht mehr an alle geht — durch einen Namen oder weil
+ * „An alle Mitglieder" abgewählt wurde.
  *
  * Sonst bliebe er gesetzt, verschwände nur aus dem Blick, und der Server wiese das Absenden ab —
  * mit einer Meldung über einen Haken, den man gar nicht mehr sieht.
@@ -138,15 +176,16 @@ const includeUnverified = ref<boolean>(false)
  * Mitglied nachliest und die Hälfte fehlt. Genau dafür gibt es den Faden. Fünf Rundmails auf der
  * Beta sind so vorbeigelaufen, bevor es auffiel.
  *
- * Der Haken bleibt: Eine interne Notiz an die Administration gehört nicht ins Archiv. Das ist aber
- * die seltenere Entscheidung und gehört deshalb auf die aktive Seite.
+ * **Voreingestellt heißt seitdem: sobald „An alle Mitglieder" gewählt ist.** Nur dann darf sie ins
+ * Archiv, und nur dann erscheint der Haken. Vorher steht er aus, weil noch niemand gewählt ist —
+ * und eine Notiz an die Administration gehört ohnehin nicht dorthin.
  *
  * Dass mindestens einer gesetzt sein muss, prüft am Ende die Datenbank. Hier stumpft es nur den
  * Knopf ab, damit niemand erst nach dem Absenden erfährt, dass er nichts ausgewählt hat.
  */
 const deliverToInbox = ref<boolean>(true)
 const deliverByEmail = ref<boolean>(false)
-const publishInArchive = ref<boolean>(true)
+const publishInArchive = ref<boolean>(false)
 const subject = ref<string>('')
 const body = ref<string>('')
 /**
@@ -196,6 +235,12 @@ const error = ref<string | undefined>(undefined)
 
 function toggleRole(role: Role, on: boolean) {
   chosen.value = on ? [...chosen.value, role] : chosen.value.filter((value) => value !== role)
+
+  // **Die dritte Rolle einzeln angehakt ist „an alle".** Dann springt die Auswahl um, statt zwei
+  // Wege zum selben Empfängerkreis stehen zu lassen, die sich verschieden verhielten.
+  if (on && ROLES.every((each) => chosen.value.includes(each.value))) {
+    setToEveryone(true)
+  }
 }
 
 const { data } = useCountBroadcastRecipients(
@@ -337,7 +382,7 @@ function resetForm() {
   includeUnverified.value = false
   deliverToInbox.value = true
   deliverByEmail.value = false
-  publishInArchive.value = true
+  publishInArchive.value = false
 }
 
 async function submit() {
@@ -539,6 +584,15 @@ function audienceOf(entry: {
   audienceRoles: string[]
   namedRecipients: Array<{ username: string }>
 }): string {
+  // Dasselbe Wort wie im Formular. Die drei Rollennamen hintereinander sagen dasselbe, aber man
+  // muss nachzählen, um es zu merken.
+  if (
+    ROLES.every((role) => entry.audienceRoles.includes(role.value)) &&
+    entry.namedRecipients.length === 0
+  ) {
+    return 'alle Mitglieder'
+  }
+
   const reached = [
     ...entry.audienceRoles.map((role) => ROLE_LABELS[role] ?? role),
     ...entry.namedRecipients.map((member) => member.username),
@@ -578,21 +632,36 @@ function audienceOf(entry: {
             <Field>
               <FieldLabel>Empfängerkreis</FieldLabel>
               <div class="flex flex-col gap-1">
+                <!-- **Ausschließlich.** Ist sie gewählt, verschwinden Rollen und Namen: Dazunehmen
+                     lässt sich nichts, es sind ohnehin alle dabei. Nur dann erscheint unten der
+                     Archiv-Haken. -->
                 <label
-                  v-for="role in ROLES"
-                  :key="role.value"
-                  class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
+                  class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-3 md:min-h-0 md:py-1"
                 >
                   <Checkbox
-                    :model-value="chosen.includes(role.value)"
-                    @update:model-value="(on) => toggleRole(role.value, on === true)"
+                    :model-value="toEveryone"
+                    @update:model-value="(on) => setToEveryone(on === true)"
                   />
-                  {{ role.label }}
+                  An alle Mitglieder
                 </label>
+
+                <template v-if="!toEveryone">
+                  <label
+                    v-for="role in ROLES"
+                    :key="role.value"
+                    class="flex min-h-11 items-center gap-2.5 text-[12.5px] text-ink-4 md:min-h-0 md:py-1"
+                  >
+                    <Checkbox
+                      :model-value="chosen.includes(role.value)"
+                      @update:model-value="(on) => toggleRole(role.value, on === true)"
+                    />
+                    {{ role.label }}
+                  </label>
+                </template>
 
                 <!-- **Namen neben den Rollen, nicht statt ihrer.** Wer die Moderation wählt und
                      zwei Namen nennt, erreicht beide; wer nur Namen nennt, schreibt an genau die. -->
-                <div class="mt-1 border-t border-line-3 pt-2">
+                <div v-if="!toEveryone" class="mt-1 border-t border-line-3 pt-2">
                   <UserPicker
                     :exclude-ids="memberIds"
                     label="Einzelne Mitglieder"
@@ -686,7 +755,10 @@ function audienceOf(entry: {
                 </label>
 
                 <p v-else class="mt-1 border-t border-line-3 pt-2 text-[12px] text-ink-6">
-                  Sie geht an namentlich genannte Mitglieder und kommt deshalb nicht ins Archiv.
+                  <template v-if="namedRecipients.length > 0">
+                    Sie geht an namentlich genannte Mitglieder und kommt deshalb nicht ins Archiv.
+                  </template>
+                  <template v-else>Nur Rundmails an alle Mitglieder kommen ins Archiv.</template>
                 </p>
               </div>
 

@@ -42,6 +42,7 @@ async function writeBroadcast(
   subject: string,
   roles: string[],
   recipientIds: string[],
+  archive = false,
 ): Promise<string> {
   await client.query("BEGIN");
 
@@ -56,9 +57,9 @@ async function writeBroadcast(
       (await client.query<{ id: string }>(
         `INSERT INTO public.broadcast
            (publication_id, subject, body, audience_roles, deliver_to_inbox, publish_in_archive)
-         VALUES ($1, $2, 'Text', $3, true, false)
+         VALUES ($1, $2, 'Text', $3, true, $4)
          RETURNING id`,
-        [publication.id, `${TEST_PREFIX}${subject}`, roles],
+        [publication.id, `${TEST_PREFIX}${subject}`, roles, archive],
       )).rows,
     );
 
@@ -147,5 +148,63 @@ Deno.test("recording the reach of a broadcast whose names are gone still works",
   await client.query(
     `UPDATE public.broadcast SET recipient_count = 0 WHERE id = $1`,
     [broadcastId],
+  );
+});
+
+/**
+ * Ins Archiv kommt nur eine Rundmail an alle: alle drei Rollen und kein Name.
+ *
+ * Wie oben an der Route vorbei -- die prueft dasselbe mit Zod, und ein Test ueber sie bliebe gruen,
+ * auch wenn `broadcast_archive_only_to_everyone` gar nicht da waere.
+ */
+const EVERYONE = ["administrator", "moderator", "member"];
+
+Deno.test("a broadcast to one role is refused the archive", async () => {
+  const failure = await assertRejects(() =>
+    writeBroadcast("archiv-rolle", ["moderator"], [], true)
+  ) as { code?: string; constraint?: string };
+
+  assertEquals(failure.code, "23514");
+  assertEquals(failure.constraint, "broadcast_archive_only_to_everyone");
+});
+
+Deno.test("a broadcast to everyone may go to the archive", async () => {
+  await writeBroadcast("archiv-alle", EVERYONE, [], true);
+});
+
+Deno.test("naming somebody on top of everyone is refused the archive", async () => {
+  // Fuegt niemanden hinzu -- aber "an alle" heisst in der Regel auch "kein Name", damit sie ohne
+  // die Oberflaeche dasselbe sagt wie mit ihr.
+  const extra = await insertUser("archive-extra");
+
+  await assertRejects(() =>
+    writeBroadcast("archiv-alle-und-name", EVERYONE, [extra], true)
+  );
+});
+
+Deno.test("switching the archive on later is refused for one role", async () => {
+  const broadcastId = await writeBroadcast("archiv-spaeter", ["moderator"], []);
+
+  await assertRejects(() =>
+    client.query(
+      `UPDATE public.broadcast SET publish_in_archive = true WHERE id = $1`,
+      [broadcastId],
+    )
+  );
+});
+
+Deno.test("taking a role away from an archived broadcast is refused", async () => {
+  const broadcastId = await writeBroadcast(
+    "archiv-rolle-weg",
+    EVERYONE,
+    [],
+    true,
+  );
+
+  await assertRejects(() =>
+    client.query(
+      `UPDATE public.broadcast SET audience_roles = '{administrator,moderator}' WHERE id = $1`,
+      [broadcastId],
+    )
   );
 });

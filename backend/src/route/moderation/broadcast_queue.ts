@@ -5,6 +5,7 @@ import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastQueueService } from "@/src/service/broadcast_queue_service.ts";
+import { isToEveryone } from "@/src/service/broadcast_service.ts";
 import { assertUnreachable } from "@/src/util/assert_unreachable.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
 import {
@@ -86,6 +87,25 @@ const BROADCAST_BODY = z.object({
     {
       error:
         "Eine Rundmail an namentlich genannte Mitglieder gehört nicht ins Archiv.",
+      path: ["publishInArchive"],
+    },
+  )
+  /**
+   * **Ins Archiv kommt nur eine Rundmail an alle Mitglieder.**
+   *
+   * Die Prüfung darüber fing nur die Namen. Eine Rundmail allein an die Moderation durfte ins
+   * Archiv, und damit stand eine Notiz ans Team für alle im Forum — auf der Beta genau einmal
+   * passiert. Die Datenbank sagt dasselbe (`broadcast_archive_only_to_everyone`); hier steht es,
+   * damit die Absage ein Satz ist und kein 500.
+   *
+   * Die Prüfung für Namen bleibt davor stehen, weil ihre Meldung genauer ist.
+   */
+  .refine(
+    (broadcast) =>
+      !broadcast.publishInArchive ||
+      isToEveryone(broadcast.audienceRoles, broadcast.memberIds),
+    {
+      error: "Ins Archiv kommt nur eine Rundmail an alle Mitglieder.",
       path: ["publishInArchive"],
     },
   );

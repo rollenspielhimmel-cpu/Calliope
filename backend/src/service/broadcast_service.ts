@@ -37,6 +37,28 @@ import {
  */
 export type BroadcastRole = "administrator" | "moderator" | "member";
 
+/** Alle drei Rollen zusammen — das ist „an alle Mitglieder". */
+export const EVERYONE: ReadonlyArray<BroadcastRole> = [
+  "administrator",
+  "moderator",
+  "member",
+];
+
+/**
+ * Geht sie an alle? Alle drei Rollen und **kein** Name.
+ *
+ * Namen neben allen Rollen fügen niemanden hinzu, und die Oberfläche lässt sie dann gar nicht zu.
+ * Verlangt wird es trotzdem, damit die Regel ohne die Oberfläche dasselbe sagt wie mit ihr — und
+ * dasselbe wie `broadcast_archive_only_to_everyone` in der Datenbank.
+ */
+export function isToEveryone(
+  roles: ReadonlyArray<string>,
+  memberIds: ReadonlyArray<string>,
+): boolean {
+  return EVERYONE.every((role) => roles.includes(role)) &&
+    memberIds.length === 0;
+}
+
 export type BroadcastAudience = {
   roles: BroadcastRole[];
   /**

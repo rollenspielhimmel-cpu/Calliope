@@ -44,6 +44,9 @@ function entry(overrides: Record<string, unknown>) {
   }
 }
 
+/** Alle drei Rollen — das ist „an alle Mitglieder". */
+const EVERYONE = ['administrator', 'moderator', 'member']
+
 const NAMES_ONLY = entry({
   memberIds: ['01900000-0000-7000-8000-00000000000a', '01900000-0000-7000-8000-00000000000b'],
   namedRecipients: [
@@ -186,7 +189,7 @@ describe('BroadcastView, der Satz über das Forum', () => {
   })
 
   it('steht da, wenn sie ins Forum geht', async () => {
-    const wrapper = await editing(entry({ audienceRoles: ['member'], publishInArchive: true }))
+    const wrapper = await editing(entry({ audienceRoles: EVERYONE, publishInArchive: true }))
 
     expect(wrapper.text()).toContain(FORUM)
     // Geantwortet wird im Postfach. Der alte Satz versprach das Gegenteil.
@@ -196,8 +199,91 @@ describe('BroadcastView, der Satz über das Forum', () => {
 
   it('fehlt, wenn der Haken nicht gesetzt ist', async () => {
     // Auch dort stimmt er nicht: Ohne Haken kommt sie nicht ins Forum.
-    const wrapper = await editing(entry({ audienceRoles: ['member'], publishInArchive: false }))
+    const wrapper = await editing(entry({ audienceRoles: EVERYONE, publishInArchive: false }))
 
     expect(wrapper.text()).not.toContain(FORUM)
+  })
+})
+
+/** Der Haken an der Zeile, die `text` trägt — so, wie jemand ihn sieht und klickt. */
+function checkbox(wrapper: ReturnType<typeof broadcastView>, text: string) {
+  const label = wrapper.findAll('label').find((each) => each.text().trim() === text)
+  if (label === undefined) {
+    throw new Error(`keine Zeile „${text}"`)
+  }
+  return label.find('[role="checkbox"]')
+}
+
+function hasLabel(wrapper: ReturnType<typeof broadcastView>, text: string): boolean {
+  return wrapper.findAll('label').some((each) => each.text().trim() === text)
+}
+
+/**
+ * Ins Archiv kommt nur eine Rundmail an alle Mitglieder.
+ *
+ * **Der Haken war auch bei einer Rundmail allein an die Moderation anklickbar** — und dann stand eine
+ * Notiz ans Team für alle im Forum. Auf der Beta ist genau das einmal passiert. Server und Datenbank
+ * weisen es inzwischen ab; hier geht es darum, dass das Formular es gar nicht erst anbietet.
+ */
+describe('BroadcastView, an alle und das Archiv', () => {
+  it('bietet das Archiv bei einer einzelnen Rolle nicht an und sagt warum', async () => {
+    const wrapper = broadcastView()
+
+    await checkbox(wrapper, 'Moderation').trigger('click')
+    await flushPromises()
+
+    expect(hasLabel(wrapper, 'Auch im Forum ablegen')).toBe(false)
+    expect(wrapper.text()).toContain('Nur Rundmails an alle Mitglieder kommen ins Archiv.')
+  })
+
+  it('„An alle Mitglieder" blendet Rollen und Namen aus und setzt den Archiv-Haken', async () => {
+    const wrapper = broadcastView()
+
+    await checkbox(wrapper, 'An alle Mitglieder').trigger('click')
+    await flushPromises()
+
+    // Ausschließlich: Dazunehmen lässt sich nichts, es sind ohnehin alle dabei.
+    expect(hasLabel(wrapper, 'Moderation')).toBe(false)
+    expect(wrapper.findComponent({ name: 'UserPicker' }).exists()).toBe(false)
+
+    // Nur hier erscheint der Haken, und zwar gesetzt.
+    expect(checkbox(wrapper, 'Auch im Forum ablegen').attributes('data-state')).toBe('checked')
+  })
+
+  it('springt auf „An alle Mitglieder" um, wenn alle drei Rollen einzeln angehakt sind', async () => {
+    const wrapper = broadcastView()
+
+    for (const role of ['Administration', 'Moderation', 'Mitglieder ohne Rolle']) {
+      // eslint-disable-next-line no-await-in-loop -- ein Klick nach dem anderen, wie ein Mensch
+      await checkbox(wrapper, role).trigger('click')
+      // eslint-disable-next-line no-await-in-loop
+      await flushPromises()
+    }
+
+    // Ein Weg zu „alle", nicht zwei, die sich verschieden verhalten.
+    expect(checkbox(wrapper, 'An alle Mitglieder').attributes('data-state')).toBe('checked')
+    expect(hasLabel(wrapper, 'Moderation')).toBe(false)
+    expect(checkbox(wrapper, 'Auch im Forum ablegen').attributes('data-state')).toBe('checked')
+  })
+
+  it('fängt beim Abwählen von vorn an und nimmt das Archiv mit', async () => {
+    const wrapper = broadcastView()
+
+    await checkbox(wrapper, 'An alle Mitglieder').trigger('click')
+    await flushPromises()
+    await checkbox(wrapper, 'An alle Mitglieder').trigger('click')
+    await flushPromises()
+
+    // Blieben die drei Rollen stehen, stünde sofort wieder „an alle" da.
+    expect(checkbox(wrapper, 'Moderation').attributes('data-state')).toBe('unchecked')
+    expect(hasLabel(wrapper, 'Auch im Forum ablegen')).toBe(false)
+  })
+
+  it('nennt eine Rundmail an alle in der Warteschlange auch so', async () => {
+    queue.value.data = [entry({ audienceRoles: EVERYONE, publishInArchive: true })]
+    const wrapper = broadcastView()
+    await openQueue(wrapper)
+
+    expect(wrapper.text()).toContain('An alle Mitglieder')
   })
 })

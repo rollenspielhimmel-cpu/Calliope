@@ -50,6 +50,21 @@ const BROADCAST = {
   scheduledFor: null,
 };
 
+/**
+ * Eine Rundmail fürs Archiv: an alle, denn nur die darf dorthin — und **ohne Postfach-Weg**.
+ *
+ * Nicht aus Bequemlichkeit. Eine Rundmail an alle mit Postfach schriebe im parallelen Testlauf
+ * einen Faden in das Postfach jedes Kontos jeder anderen Datei, die gerade läuft, und deren Tests
+ * zählen ihre eigenen Gespräche. So ist schon einmal ein fremder Test rot geworden, damals durch
+ * eine Rundmail an alle Administratoren. Das Archiv hängt am Postfach nicht; wer beides zusammen
+ * prüfen will, braucht einen eigenen Grund dafür.
+ */
+const TO_THE_ARCHIVE = {
+  audienceRoles: ["administrator", "moderator", "member"],
+  deliverToInbox: false,
+  publishInArchive: true,
+};
+
 async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
@@ -387,10 +402,7 @@ Deno.test("ohne Postfach-Weg entsteht keine Zeile im Postfach", async () => {
   const cookies = await fixture();
 
   try {
-    await submit(cookies.root, {
-      deliverToInbox: false,
-      publishInArchive: true,
-    });
+    await submit(cookies.root, TO_THE_ARCHIVE);
 
     const broadcast = await theBroadcast();
 
@@ -471,7 +483,7 @@ Deno.test("der Archiv-Haken hängt einen Beitrag an den einen Faden", async () =
       .where("writingThread.isBroadcastArchive", "=", true)
       .execute();
 
-    await submit(cookies.root, { publishInArchive: true });
+    await submit(cookies.root, TO_THE_ARCHIVE);
 
     const broadcast = await theBroadcast();
     assert(broadcast.archivePostId !== null);
@@ -526,7 +538,7 @@ Deno.test("im Archiv wird nicht geantwortet", async () => {
   const cookies = await fixture();
 
   try {
-    await submit(cookies.root, { publishInArchive: true });
+    await submit(cookies.root, TO_THE_ARCHIVE);
 
     const archive = await db
       .selectFrom("writingThread")
@@ -809,7 +821,7 @@ Deno.test("der Archiv-Beitrag ist ein Dokument, keine Zeichenkette", async () =>
   const cookies = await fixture();
 
   try {
-    await submit(cookies.root, { publishInArchive: true });
+    await submit(cookies.root, TO_THE_ARCHIVE);
 
     const broadcast = await theBroadcast();
     assertExists(broadcast.archivePostId);
@@ -974,6 +986,53 @@ Deno.test("namentlich Genannte und das Archiv schließen sich aus", async () => 
     // zeigen — und das Archiv ist der Ort, an dem nachgelesen wird, was je *angekündigt* wurde.
     // Das Formular bietet den Haken dort nicht an; verbindlich ist diese Absage.
     assertEquals(response.status, STATUS_CODE.BadRequest);
+  } finally {
+    await cleanUp();
+  }
+});
+
+/**
+ * **Ins Archiv kommt nur eine Rundmail an alle Mitglieder.**
+ *
+ * Geprüft wurden vorher nur die Namen; eine Rundmail allein an die Moderation durfte hinein, und
+ * damit stand eine Notiz ans Team für alle im Forum. Auf der Beta ist genau das einmal passiert.
+ */
+Deno.test("eine Rundmail an einzelne Rollen kommt nicht ins Archiv", async () => {
+  const cookies = await fixture();
+
+  try {
+    const response = await submit(cookies.root, {
+      ...TO_THE_ARCHIVE,
+      audienceRoles: ["administrator", "moderator"],
+    });
+
+    assertEquals(response.status, STATUS_CODE.BadRequest);
+    assert(
+      (await response.text()).includes(
+        "Ins Archiv kommt nur eine Rundmail an alle Mitglieder.",
+      ),
+      "die Absage sagt, warum",
+    );
+
+    // Und abgewiesen heißt: nichts geschrieben, auch nicht halb.
+    assertEquals(await ourBroadcasts(), []);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("eine Rundmail an alle darf ins Archiv", async () => {
+  const cookies = await fixture();
+
+  try {
+    const response = await submit(cookies.root, TO_THE_ARCHIVE);
+
+    // Die Gegenseite der Absage darüber: Sonst bestünde die auch eine Regel, die gar nichts mehr
+    // ins Archiv ließe.
+    assertEquals(response.status, STATUS_CODE.Created);
+
+    const broadcast = await theBroadcast();
+    assert(broadcast.archivePostId !== null);
   } finally {
     await cleanUp();
   }
