@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import type { DocumentNode } from "@/src/document/document_schema.ts";
 import {
   DOCUMENT_SCHEMA,
@@ -641,4 +641,41 @@ Deno.test("the schema accepts nothing the fixture does not carry", () => {
 
   assertEquals(DOCUMENT_VOCABULARY.nodes, [...used.nodes].toSorted());
   assertEquals(DOCUMENT_VOCABULARY.marks, [...used.marks].toSorted());
+});
+
+/**
+ * Ein eigener `__proto__`-Schlüssel kommt nicht durch.
+ *
+ * **Warum das eine eigene Zeile wert ist:** `z.strictObject` weist jeden unbekannten Schlüssel ab,
+ * also deckt das den Fall ohnehin ab — aber nur, solange es strikt bleibt. Wird eine dieser
+ * Angaben je auf `z.object` oder `passthrough` gelockert, fällt genau dieser Schlüssel still
+ * hindurch, und still ist er auch danach: `Object.keys` zeigt ihn nicht, `for…in` sehr wohl.
+ *
+ * **Was dahinter stand, gemessen und nicht gelesen.** In `@tiptap/core` 3.30.3 verwandelte
+ * `mergeAttributes()` einen eigenen `__proto__`-Schlüssel in einen geerbten: Der Prototyp des
+ * Ergebnisses wurde ausgetauscht, und `for…in` — womit ein Renderer Attribute durchgeht — sah ein
+ * `onclick`, das in `Object.keys` nicht auftaucht. Das Mittel dagegen ist die neue Fassung; dies
+ * hier ist der zweite Riegel, und zwar der, der uns gehört.
+ *
+ * `JSON.parse` und kein Objektliteral: Nur so entsteht `__proto__` als *eigene* Eigenschaft. Ein
+ * Literal löst den Setter aus, und dann prüfte dieser Test etwas anderes als das, was über die
+ * Schnittstelle hereinkommt.
+ */
+Deno.test("an own __proto__ key in a node's attributes is refused", () => {
+  const hostile = JSON.parse(`{
+    "type": "doc",
+    "content": [{
+      "type": "heading",
+      "attrs": { "level": 2, "textAlign": null, "__proto__": { "onclick": "alert(1)" } },
+      "content": [{ "type": "text", "text": "Harmlos" }]
+    }]
+  }`);
+
+  // Die Gegenprobe zur Gegenprobe: Käme der Schlüssel gar nicht erst als eigener an, prüfte der
+  // Test unter sich selbst weg und bliebe grün, ohne etwas zu belegen.
+  assert(Object.hasOwn(hostile.content[0].attrs, "__proto__"));
+
+  const parsed = DOCUMENT_SCHEMA.safeParse(hostile);
+
+  assertEquals(parsed.success, false);
 });
