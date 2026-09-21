@@ -248,6 +248,60 @@ Deno.test("bloß zugestellt ist nicht dasselbe wie gemeldet", async () => {
   }
 });
 
+/**
+ * **Eine Rundmail ist keine Antwort.**
+ *
+ * „Offen" hieß: Die jüngste Nachricht des Mitglieds ist die letzte im Faden. Gezählt wurde dabei
+ * jede Nachricht, auch eine Rundmail — und die landet im selben Faden. Eine offene Frage stand
+ * deshalb still als beantwortet da, sobald dieselbe Person die nächste Ankündigung bekam, ohne dass
+ * je jemand geantwortet hätte. Auf der Beta mit echten Rundmails so gemessen. Genau die Frage wäre
+ * untergegangen, für die es das Postfach gibt.
+ */
+Deno.test("eine Rundmail beantwortet keine offene Frage", async () => {
+  const cookies = await fixture();
+
+  try {
+    const broadcastId = await sendBroadcast(cookies.root);
+    await write(cookies.member, await chatOf(broadcastId, MEMBER), REPLY);
+
+    const [before] = ours((await (await inbox(cookies.root)).json()).results);
+    assertExists(before);
+    assertEquals(before.awaitingReply, true);
+
+    await sendBroadcast(cookies.root, SECOND_SUBJECT);
+
+    const [after] = ours((await (await inbox(cookies.root)).json()).results);
+    assertExists(after);
+    assertEquals(after.awaitingReply, true);
+  } finally {
+    await cleanUp();
+  }
+});
+
+/**
+ * Die Gegenseite: Eine echte Antwort schließt die Frage weiterhin, auch wenn danach eine Rundmail
+ * kommt. Sonst erfüllte auch eine Korrektur den Test darüber, die gar nichts mehr als beantwortet
+ * gelten ließe.
+ */
+Deno.test("eine Antwort bleibt eine Antwort, auch wenn danach eine Rundmail kommt", async () => {
+  const cookies = await fixture();
+
+  try {
+    const broadcastId = await sendBroadcast(cookies.root);
+    const chatGroupId = await chatOf(broadcastId, MEMBER);
+
+    await write(cookies.member, chatGroupId, REPLY);
+    await answer(cookies.silent, chatGroupId, ANSWER);
+    await sendBroadcast(cookies.root, SECOND_SUBJECT);
+
+    const [after] = ours((await (await inbox(cookies.root)).json()).results);
+    assertExists(after);
+    assertEquals(after.awaitingReply, false);
+  } finally {
+    await cleanUp();
+  }
+});
+
 Deno.test("offen heißt: die letzte Nachricht ist noch vom Mitglied", async () => {
   const cookies = await fixture();
 

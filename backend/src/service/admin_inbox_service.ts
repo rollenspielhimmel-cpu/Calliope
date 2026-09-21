@@ -123,13 +123,19 @@ async function listConversations(): Promise<InboxConversation[]> {
     return [];
   }
 
-  // Die jeweils allerletzte Nachricht — gleich von welcher Seite. Nur so ist zu sagen, ob schon
-  // geantwortet wurde: Stimmt sie mit der des Mitglieds überein, ist das Gespräch offen.
+  // Die jeweils letzte Nachricht, die etwas beantworten kann — gleich von welcher Seite. Stimmt sie
+  // mit der des Mitglieds überein, ist das Gespräch offen.
+  //
+  // **Ohne Rundmails.** Hier stand „die allerletzte Nachricht", und eine Rundmail landet im selben
+  // Faden: Eine offene Frage stand still als beantwortet da, sobald dieselbe Person die nächste
+  // Ankündigung bekam. Auf der Beta mit echten Rundmails gemessen. Eine Ankündigung an alle ist
+  // keine Antwort an einen.
   const latest = await db
     .selectFrom("chatMessage")
     .select(["chatGroupId", "id"])
     .distinctOn("chatGroupId")
     .where("chatGroupId", "in", [...newest.keys()])
+    .where("broadcastId", "is", null)
     .orderBy("chatGroupId")
     .orderBy("id", "desc")
     .execute();
