@@ -480,25 +480,39 @@ Deno.test("eine Kunstfigur bekommt ihren eigenen Faden", async () => {
     await sendBroadcast(cookies.root);
     await sendBroadcast(cookies.root, SECOND_SUBJECT, await getUserId(PERSONA));
 
-    const chats = await db
-      .selectFrom("chatGroup")
-      .leftJoin("user as sender", "sender.id", "chatGroup.createdBy")
-      .select("sender.username as senderUsername")
-      .where("chatGroup.addressedToAdministration", "=", true)
-      .where(
-        "chatGroup.administrationPartnerId",
-        "=",
-        db.selectFrom("user").select("id").where("username", "=", MEMBER),
-      )
-      .execute();
+    // **Nur die beiden eigenen Absender, nicht alle Fäden des Mitglieds.**
+    //
+    // Hier stand einmal ein Vergleich mit der vollständigen Liste, und der wurde rot, ohne dass an
+    // der Regel etwas falsch war: `ai-member` ist in dieser Vorrichtung Administrator, und eine
+    // Rundmail an die Administration aus einer nebenher laufenden Datei landet deshalb ebenfalls in
+    // seinem Postfach. Deren Absenderkonto wird danach gelöscht, `created_by` fällt auf null — und
+    // die Liste hat einen dritten Eintrag, den dieser Test nie angelegt hat.
+    const threadOf = (sender: string) =>
+      db
+        .selectFrom("chatGroup")
+        .select("chatGroup.id")
+        .where("chatGroup.addressedToAdministration", "=", true)
+        .where(
+          "chatGroup.administrationPartnerId",
+          "=",
+          db.selectFrom("user").select("id").where("username", "=", MEMBER),
+        )
+        .where(
+          "chatGroup.createdBy",
+          "=",
+          db.selectFrom("user").select("id").where("username", "=", sender),
+        )
+        .executeTakeFirst();
+
+    const fromRoot = await threadOf(ROOT);
+    const fromPersona = await threadOf(PERSONA);
 
     // **Nicht alles in einen Topf.** Liefe die Kunstfigur in denselben Faden, wechselte für das
     // Mitglied mitten im Verlauf der Gesprächspartner — und die Regel „der Absender wird vom
     // Gespräch abgelesen" wäre nicht mehr haltbar.
-    assertEquals(
-      chats.map((chat) => chat.senderUsername).toSorted(),
-      [PERSONA, ROOT].toSorted(),
-    );
+    assertExists(fromRoot);
+    assertExists(fromPersona);
+    assertNotEquals(fromRoot.id, fromPersona.id);
   } finally {
     await cleanUp();
   }
@@ -639,11 +653,21 @@ Deno.test("in einen Raum, in dem schon jemand sitzt, kommt Admin nicht", async (
       STATUS_CODE.Created,
     );
 
+    // **Wer den Platz gerade hält, wird gefragt, nicht angenommen.** ROOT leiht ihn sich in der
+    // Vorrichtung — aber unter `--parallel` repariert die Platz-Vorrichtung ihn manchmal
+    // zwischendurch, und dann stand hier ein Konto, das die Administration gerade nicht ist. Der
+    // Test wurde rot, obwohl die Regel hielt. Sie gilt für den Platz, also fragt er den Platz.
+    const administration = await db
+      .selectFrom("user")
+      .select("id")
+      .where("isPrimordialAdmin", "=", true)
+      .executeTakeFirstOrThrow();
+
     const invited = await request(
       "POST",
       `/api/chats/${room.id}/memberships`,
       cookies.member,
-      { userId: await getUserId(ROOT) },
+      { userId: administration.id },
     );
 
     // **Admin ist eine Adresse, kein Teilnehmer.** Die anderen im Raum haben der Administration

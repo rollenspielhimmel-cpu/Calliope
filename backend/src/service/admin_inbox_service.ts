@@ -367,7 +367,16 @@ async function findOrCreateThreads(
     return byMember;
   }
 
-  await transaction
+  // **`DO NOTHING`, weil Suchen und Anlegen zusammen nicht atomar sind.**
+  //
+  // Zwischen der Abfrage oben und dieser Anweisung kann eine zweite Zustellung mit demselben
+  // Absender denselben Faden angelegt haben — beide sehen „gibt es nicht", beide legen an, und eine
+  // fliegt in den Eindeutigkeits-Index. Im Testlauf ist es prompt passiert; im Betrieb reichen zwei
+  // Rundmails, die der Zeitgeber im selben Moment freigibt.
+  //
+  // Der Index ist teilweise, also muss seine Bedingung hier mitstehen: Ohne sie weiß PostgreSQL
+  // nicht, welchen Konflikt es übergehen soll.
+  const created = await transaction
     .insertInto("chatGroup")
     .values(fresh.map((chat) => ({
       id: chat.id,
@@ -382,24 +391,51 @@ async function findOrCreateThreads(
       // im Gespräch, und „wer sitzt drin" änderte sich ohnehin, sobald jemand austritt.
       addressedToAdministration: true,
     })))
+    .onConflict((conflict) =>
+      conflict
+        .columns(["administrationPartnerId", "createdBy"])
+        .where("addressedToAdministration", "=", true)
+        .where("administrationPartnerId", "is not", null)
+        .doNothing()
+    )
+    .returning(["id", "administrationPartnerId"])
     .execute();
 
   // **Beigetreten, nicht eingeladen** — und das ist es, was den Weg des Mitglieds überhaupt
   // möglich macht. Bei Admin nimmt niemand an; hier gibt es nichts anzunehmen, weil das Mitglied
   // von Anfang an drin sitzt. Die Nachrichtenroute prüft `joined` und braucht dafür keine Zeile
   // Sonderbehandlung.
-  await transaction
-    .insertInto("userInChatGroup")
-    .values(fresh.map((chat) => ({
-      chatGroupId: chat.id,
-      userId: chat.memberId,
-      status: "joined" as const,
-      joinedAt: new Date().toISOString(),
-    })))
+  //
+  // Nur für die Fäden, die wirklich aus *dieser* Anweisung stammen: Wer an einem Konflikt
+  // vorbeigegangen ist, hat seine Mitgliedschaft schon.
+  if (created.length > 0) {
+    await transaction
+      .insertInto("userInChatGroup")
+      .values(created.map((chat) => ({
+        chatGroupId: chat.id,
+        userId: chat.administrationPartnerId as string,
+        status: "joined" as const,
+        joinedAt: new Date().toISOString(),
+      })))
+      .execute();
+  }
+
+  // **Noch einmal nachsehen statt anzunehmen.** Was der Konflikt übergangen hat, steht jetzt in der
+  // Datenbank — angelegt von der anderen Zustellung —, und nur eine zweite Abfrage weiß, unter
+  // welcher Kennung. Sich hier auf die selbst erzeugten Kennungen zu verlassen hiesse, die Nachricht
+  // in einen Faden zu schreiben, den es nicht gibt.
+  const all = sender === null ? created : await transaction
+    .selectFrom("chatGroup")
+    .select(["id", "administrationPartnerId"])
+    .where("addressedToAdministration", "=", true)
+    .where("administrationPartnerId", "in", memberIds)
+    .where("createdBy", "=", sender.id)
     .execute();
 
-  for (const chat of fresh) {
-    byMember.set(chat.memberId, chat.id);
+  for (const chat of all) {
+    if (chat.administrationPartnerId !== null) {
+      byMember.set(chat.administrationPartnerId, chat.id);
+    }
   }
 
   return byMember;
