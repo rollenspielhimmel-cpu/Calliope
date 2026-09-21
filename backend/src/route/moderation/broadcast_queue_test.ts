@@ -32,9 +32,9 @@ const SUBJECT = "Warteschlangen-Test";
 const BROADCAST = {
   subject: SUBJECT,
   body: "Ein Text, der an alle ginge.",
-  // Nur die Administration: Der Testlauf soll keine Post an erfundene Saatkonten auslösen.
-  audienceRoles: ["administrator"],
-  memberIds: [],
+  // Keine Rolle: Gerichtet wird namentlich an das eigene Konto, siehe `broadcastBody`.
+  audienceRoles: [] as string[],
+  memberIds: [] as string[],
   includeUnverified: false,
   // Nur ins Postfach: Der Testlauf soll keine Post an erfundene Saatkonten auslösen, und ohne
   // Archiv-Haken legt er auch keine Fäden im Forum an, die hinterher jemand wegräumen müsste.
@@ -43,7 +43,31 @@ const BROADCAST = {
   publishInArchive: false,
   sendAsUserId: null,
   scheduledFor: null,
-} as const;
+};
+
+/**
+ * Die Vorgabe, **namentlich an ein Konto dieser Datei** gerichtet statt an die Rolle.
+ *
+ * Hier stand „an die Administration", und das hieß: an alle Administratoren des ganzen Laufs,
+ * auch an die Konten jeder anderen Datei, die gerade läuft. Zwei Dinge sind daran schiefgegangen,
+ * beide gemessen:
+ *
+ * - Die meisten Tests hier leihen sich den Ur-Admin-Platz nicht (siehe `fixtureAsRoot`). Der
+ *   Absender „Ur-Admin" wird aber erst beim Versand aufgelöst — zu dem Konto, das den Platz gerade
+ *   hält, oft dem einer anderen Datei. Die Rundmail landete dann in deren Fäden, und
+ *   `admin_inbox_test.ts` fand „Ein Text, der an alle ginge." mitten in seinem Verlauf.
+ * - Ein fremdes Konto, das zwischen Lesen und Schreiben gelöscht wurde, ließ die Freigabe mit 500
+ *   scheitern.
+ *
+ * An einen Namen allein geht eine Rundmail erst, seit die Datenbank „Rollen oder Namen" sagt.
+ */
+async function broadcastBody(overrides: Record<string, unknown> = {}) {
+  return {
+    ...BROADCAST,
+    memberIds: [await getUserId(SECOND)],
+    ...overrides,
+  };
+}
 
 async function setRole(
   username: string,
@@ -106,11 +130,13 @@ async function fixtureAsRoot() {
 
 Deno.test.afterEach(data.cleanUp);
 
-const submit = (cookie: string, body: Record<string, unknown> = {}) =>
-  request("POST", "/api/moderation/broadcast/queue", cookie, {
-    ...BROADCAST,
-    ...body,
-  });
+const submit = async (cookie: string, body: Record<string, unknown> = {}) =>
+  request(
+    "POST",
+    "/api/moderation/broadcast/queue",
+    cookie,
+    await broadcastBody(body),
+  );
 
 const queue = (cookie: string) =>
   request("GET", "/api/moderation/broadcast/queue", cookie);
@@ -269,7 +295,7 @@ Deno.test("changing the audience takes back an approval", async () => {
     "PUT",
     `/api/moderation/broadcast/queue/${created.publicationId}`,
     cookies.author,
-    { ...BROADCAST, audienceRoles: ["administrator", "member"] },
+    await broadcastBody({ audienceRoles: ["administrator", "member"] }),
   );
   assertEquals(changed.status, STATUS_CODE.OK);
 
@@ -289,7 +315,7 @@ Deno.test("what has gone out cannot be edited or discarded", async () => {
       "PUT",
       `/api/moderation/broadcast/queue/${created.publicationId}`,
       cookies.root,
-      { ...BROADCAST, subject: "Nachträglich anders" },
+      await broadcastBody({ subject: "Nachträglich anders" }),
     )).status,
     STATUS_CODE.Conflict,
   );
@@ -497,7 +523,7 @@ Deno.test("editing a scheduled broadcast takes its approval back", async () => {
       "PUT",
       `/api/moderation/broadcast/queue/${created.publicationId}`,
       cookies.author,
-      { ...BROADCAST, scheduledFor: anHourAgo() },
+      await broadcastBody({ scheduledFor: anHourAgo() }),
     )).status,
     STATUS_CODE.OK,
   );
@@ -558,7 +584,7 @@ Deno.test("editing cannot smuggle in an unreleased sender", async () => {
       "PUT",
       `/api/moderation/broadcast/queue/${created.publicationId}`,
       cookies.author,
-      { ...BROADCAST, sendAsUserId: await getUserId(MODERATOR) },
+      await broadcastBody({ sendAsUserId: await getUserId(MODERATOR) }),
     )).status,
     STATUS_CODE.Forbidden,
   );
@@ -576,7 +602,7 @@ Deno.test("eine Bearbeitung nennt den Bearbeiter, ohne den Verfasser zu löschen
       "PUT",
       `/api/moderation/broadcast/queue/${created.publicationId}`,
       cookies.second,
-      { ...BROADCAST, body: "Entschärft." },
+      await broadcastBody({ body: "Entschärft." }),
     )).status,
     STATUS_CODE.OK,
   );
