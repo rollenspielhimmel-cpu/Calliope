@@ -1153,6 +1153,28 @@ used rather than unknown.
 Answer a spent, expired or unknown token identically. Which of the three it was is only ever
 useful to somebody guessing.
 
+## Ein Deploy tauscht das Backend aus, nicht die offenen Browser
+
+Wer die Seite offen hat, behält das JavaScript, mit dem er sie geladen hat — eine
+Einseiten-Anwendung lädt sich nicht selbst nach. Nach einem Deploy sprechen also für Stunden
+**neues Backend und alter Client** miteinander, und nach dem Start werden daraus Tage.
+
+**Eine geänderte Antwortform trifft deshalb die Leute, die gerade da sind**, nicht erst den
+nächsten Besucher. Beim Umleiten der Einladung an Admin war es genau so: Der Server antwortete
+mit `200` und dem Faden, der alte Client kannte nur `201`, fiel durch seinen Erfolgspfad und
+erneuerte die Mitgliederliste eines Gesprächs, das der Server soeben gelöscht hatte. Nichts
+stürzte ab; es tat still etwas Falsches, und der zweite Versuch meldete einen Fehler, der mit der
+Ursache nichts zu tun hatte.
+
+Daraus folgt beim Ändern einer Route:
+
+- **Hinzufügen statt ersetzen.** Ein neuer Statuscode oder ein neues Feld lässt den alten Client
+  weiterlaufen; eine geänderte Bedeutung nicht.
+- **Was der alte Client dann tut, ist Teil der Änderung** — nachsehen, nicht hoffen. „Er kennt den
+  Fall nicht" heißt nicht „er tut nichts".
+- **Geht es nicht verträglich**, ist der Versionshinweis die Brücke: Frontend und Backend tragen
+  beide den Commit aus `deploy.sh`, und weichen sie voneinander ab, sagt die Oberfläche es.
+
 ## Tests
 
 Co-located as `<module>_test.ts` beside the code, one positive and one negative case per

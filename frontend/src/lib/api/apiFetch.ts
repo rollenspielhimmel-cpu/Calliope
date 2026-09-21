@@ -1,3 +1,4 @@
+import { noteRelease } from '@/lib/api/release'
 /**
  * The one error shape the API uses for every failure. Declared here rather than imported,
  * because Orval emits a separate copy of it per operation and status (`LoginUser401`,
@@ -58,6 +59,10 @@ type ApiResponse = { data: unknown; status: number; headers: Headers }
  */
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
+
+  // Vor der Auswertung, damit auch eine Absage zählt: Wer nach einem Deploy in eine Ablehnung
+  // läuft, die sein Stand nicht kennt, soll genau daraus erfahren, dass er neu laden muss.
+  noteRelease(response.headers)
 
   // Mirrors the generated client: these statuses carry no body to parse.
   const body = [204, 205, 304].includes(response.status) ? null : await response.text()

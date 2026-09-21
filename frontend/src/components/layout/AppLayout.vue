@@ -5,6 +5,7 @@ import { useMediaQuery } from '@vueuse/core'
 import type { GetCurrentUser200 } from '@/api/models'
 import { useGetCurrentUser } from '@/api/auth/auth'
 import TopBar from '@/components/layout/TopBar.vue'
+import NewVersionNotice from '@/components/layout/NewVersionNotice.vue'
 import RailLabel from '@/components/layout/RailLabel.vue'
 import RailToggle from '@/components/layout/RailToggle.vue'
 import ContextSheet from '@/components/layout/ContextSheet.vue'
@@ -100,6 +101,10 @@ const railSlack = computed<Record<string, string>>(() => ({
 
 <template>
   <div class="flex h-svh flex-col bg-paper-1">
+    <!-- Ganz oben und über allem: Wer weiterarbeitet, ohne neu zu laden, spricht mit einem Server,
+         den sein Stand nicht kennt. Erscheint nur, wenn das wirklich so ist. -->
+    <NewVersionNotice />
+
     <TopBar v-if="user" :user="user" />
 
     <div class="flex min-h-0 flex-1 items-stretch" :style="railSlack">

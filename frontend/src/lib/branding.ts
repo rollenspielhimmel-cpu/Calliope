@@ -37,7 +37,7 @@ export const SOURCE_URL: string = import.meta.env.VITE_SOURCE_URL
  *
  * The shape of the path is GitHub's. A fork moved elsewhere has to revisit this line.
  */
-const COMMIT: string = import.meta.env.VITE_COMMIT ?? 'unknown'
+export const COMMIT: string = import.meta.env.VITE_COMMIT ?? 'unknown'
 
 const COMMIT_IS_ADDRESSABLE = /^[0-9a-f]{7,40}$/u.test(COMMIT)
 

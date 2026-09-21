@@ -3,6 +3,7 @@ import { structuredLogger } from "@hono/structured-logger";
 import { STATUS_CODE, STATUS_TEXT } from "@std/http/status";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
+import { RELEASE, releaseHeader } from "@/src/release.ts";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import { methodNotAllowed } from "hono/method-not-allowed";
@@ -149,6 +150,17 @@ app.use((c, next) =>
       ),
   })(c, next)
 );
+/**
+ * Der Stand dieses Backends an jeder Antwort — daran merkt ein offener Browser, dass er veraltet
+ * ist. Warum als Kopfzeile und nicht als Abfrage, steht in `release.ts`.
+ *
+ * Vor allem anderen, damit auch eine Absage sie trägt: Wer nach einem Deploy in eine Ablehnung
+ * läuft, die sein alter Stand nicht kennt, soll genau daraus erfahren, dass er neu laden muss.
+ */
+if (RELEASE !== undefined) {
+  app.use(releaseHeader(RELEASE));
+}
+
 app.use(secureHeaders());
 app.use(cors(corsOptions));
 app.use(methodNotAllowed({ app }));
