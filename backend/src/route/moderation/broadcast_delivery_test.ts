@@ -1,11 +1,17 @@
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
+import { sql } from "kysely";
 import { db } from "@/src/database/client.ts";
 import {
   type ChatEvent,
   subscribeToChatEvents,
 } from "@/src/event/chat_events.ts";
-import { registerUser, request, scopedTestData } from "@/src/test/support.ts";
+import {
+  getUserId,
+  registerUser,
+  request,
+  scopedTestData,
+} from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
 /**
@@ -913,6 +919,219 @@ Deno.test("ohne Rolle und ohne Namen wird abgelehnt", async () => {
 
     assertEquals(response.status, STATUS_CODE.BadRequest);
   } finally {
+    await cleanUp();
+  }
+});
+
+/**
+ * Wartet, bis etwas eingetreten ist, statt eine Dauer zu raten.
+ *
+ * **Eine Pause fester Länge wäre hier die falsche Sicherung.** Zu kurz, und der Test prüft einen
+ * Zustand, der noch gar nicht erreicht ist — er ginge grün, ohne etwas gesehen zu haben. Zu lang,
+ * und jeder Lauf zahlt dafür. Gewartet wird deshalb auf die Bedingung selbst; bleibt sie aus, sagt
+ * der Fehler, welche es war.
+ */
+async function until<T>(
+  what: string,
+  look: () => Promise<T | undefined>,
+): Promise<T> {
+  for (let attempt = 0; attempt < 600; attempt++) {
+    // deno-lint-ignore no-await-in-loop -- ein Blick nach dem anderen, das ist das Warten
+    const found = await look();
+
+    if (found !== undefined) {
+      return found;
+    }
+
+    // deno-lint-ignore no-await-in-loop -- die Pause zwischen zwei Blicken
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error(`${what}: nicht eingetreten`);
+}
+
+/**
+ * Hält jemand diese Zeile gerade in einer Transaktion?
+ *
+ * `FOR UPDATE NOWAIT` ist die einzige ehrliche Antwort darauf: Es sperrt oder es sagt sofort, dass
+ * es nicht kann. Nur `55P03` gilt als Ja — jeder andere Fehler fliegt weiter, sonst hielte ein
+ * Tippfehler in der Abfrage den Test für bestanden.
+ */
+async function isLocked(publicationId: string): Promise<true | undefined> {
+  try {
+    await sql`select 1 from publication where id = ${publicationId} for update nowait`
+      .execute(db);
+
+    return undefined;
+  } catch (failure) {
+    if ((failure as { code?: string }).code === "55P03") {
+      return true;
+    }
+
+    throw failure;
+  }
+}
+
+/**
+ * Hat die Freigabe ihr `UPDATE … WHERE status = 'approved'` hinter sich?
+ *
+ * **Zwei Gesichter, weil die Antwort nicht voraussetzen darf, was sie prüfen soll.** Läuft das
+ * Buchen in der Transaktion, ist es daran zu erkennen, dass die Zeile gehalten wird; läuft es
+ * daneben, ist es längst festgeschrieben und die Zeile frei. Nur nach der Sperre zu sehen hieße,
+ * den Treffpunkt an die richtige Bauweise zu knüpfen — die Gegenprobe wäre dann zwar rot, aber am
+ * Warten und nicht an der Behauptung, und die Fehlermeldung zeigte auf die falsche Stelle.
+ */
+async function hasClaimed(publicationId: string): Promise<true | undefined> {
+  if (await isLocked(publicationId)) {
+    return true;
+  }
+
+  const publication = await db
+    .selectFrom("publication")
+    .select("status")
+    .where("id", "=", publicationId)
+    .executeTakeFirstOrThrow();
+
+  return publication.status === "released" ? true : undefined;
+}
+
+/**
+ * Keine Rundmail gilt als versendet, die nicht zugestellt ist.
+ *
+ * **Warum das eine eigene Zusage braucht:** Das Buchen auf `released` und das Zustellen waren
+ * einmal zwei Schritte, und dazwischen lag ein Fehlerfall, der als Preis ausdrücklich in Kauf
+ * genommen war — bricht der Versand nach dem Buchen ab, steht die Rundmail als „raus" da und liegt
+ * in keinem Postfach. Das fällt niemandem auf: Der Absender sieht sie unter „Gesendete", der
+ * Empfänger sieht nichts, und niemand vergleicht die beiden Ansichten.
+ *
+ * **Wie weit die Zusage reicht: genau so weit wie die Datenbank.** Postfach und Archiv stehen darin
+ * und fallen mit der Freigabe zurück; das Mailrelais kennt keine Transaktion, und eine übergebene
+ * Mail holt niemand zurück. Deshalb läuft der Mailweg erst nach dem Festschreiben — damit
+ * wenigstens nie eine Mail zu einer Rundmail hinausgeht, die danach wieder als unversendet
+ * dasteht. Eine reine E-Mail-Rundmail ist von dieser Zusage also nicht gedeckt, und das ist keine
+ * Nachlässigkeit, sondern die Grenze des Mittels.
+ *
+ * **Gemessen wird an der Sichtbarkeit, nicht an einem nachgestellten Absturz.** Ein erfundener
+ * Fehler prüfte, was der Test selbst hineingelegt hat. Stattdessen wird die Zustellung an einer
+ * echten Stelle angehalten — eine zweite Verbindung hält den Faden, den sie anlegen will —, und
+ * dann sieht eine dritte nach, wie die Rundmail in diesem Moment dasteht. Läge das Buchen außerhalb
+ * der Transaktion, stünde dort `released`, während noch nichts zugestellt ist. Genau das ist der
+ * Zustand, den es nicht geben darf.
+ */
+Deno.test("was nicht zugestellt ist, gilt nicht als versendet", async () => {
+  const cookies = await fixture();
+
+  // Damit `finally` auch dann loslässt, wenn eine Behauptung vorher umfällt — sonst hinge die
+  // haltende Transaktion bis zum `statement_timeout` und der ganze Lauf wartete darauf.
+  let letGo: () => void = () => {};
+
+  try {
+    const [second, root] = [await getUserId(SECOND), await getUserId(ROOT)];
+
+    const blocking = Promise.withResolvers<void>();
+    const blocked = new Promise<void>((resolve) => {
+      letGo = resolve;
+    });
+
+    // **Der Faden, den die Zustellung gleich anlegen will — schon da, aber noch nicht
+    // festgeschrieben.** `INSERT … ON CONFLICT` wartet in PostgreSQL auf den, der gerade dabei
+    // ist, dieselbe Zeile zu schreiben. Das ist der Haltepunkt, und er liegt an einer Stelle, die
+    // es wirklich gibt: Genau dieser Eindeutigkeits-Index stand im Protokoll des Laufs, der diese
+    // Frage aufgeworfen hat.
+    const holding = db.transaction().execute(async (transaction) => {
+      await transaction
+        .insertInto("chatGroup")
+        .values({
+          title: ROOT,
+          createdBy: root,
+          administrationPartnerId: second,
+          addressedToAdministration: true,
+        })
+        .execute();
+
+      blocking.resolve();
+      await blocked;
+
+      // Zurückrollen statt festschreiben: Der Faden war die Bremse, nicht das Ziel.
+      throw new Error("den blockierenden Faden wieder hergeben");
+    }).catch(() => {});
+
+    await blocking.promise;
+
+    // Nicht abgewartet: Die Antwort kommt erst, wenn die Zustellung durch ist, und bis dahin soll
+    // hier gemessen werden.
+    const sending = submit(cookies.root);
+
+    const publication = await until(
+      "die Rundmail steht in der Warteschlange",
+      async () =>
+        await db
+          .selectFrom("broadcast")
+          .select("publicationId")
+          .where("subject", "=", SUBJECT)
+          .executeTakeFirst(),
+    );
+
+    // Erst wenn die Freigabe gebucht hat, ist die Frage überhaupt gestellt. Vorher zu messen hieße,
+    // den Zustand vor dem Buchen für den Zustand danach zu halten — und der Test ginge grün, ohne
+    // etwas gesehen zu haben.
+    await until(
+      "die Freigabe hat gebucht",
+      () => hasClaimed(publication.publicationId),
+    );
+
+    const midway = await db
+      .selectFrom("publication")
+      .select("status")
+      .where("id", "=", publication.publicationId)
+      .executeTakeFirstOrThrow();
+
+    const messagesMidway = await db
+      .selectFrom("chatMessage")
+      .select("id")
+      .where(
+        "broadcastId",
+        "in",
+        db.selectFrom("broadcast").select("id").where("subject", "=", SUBJECT),
+      )
+      .execute();
+
+    // **Die Zusage, in zwei Zeilen.** Zugestellt ist noch nichts — also gilt sie auch noch nicht
+    // als versendet.
+    assertEquals(messagesMidway.length, 0);
+    assertEquals(midway.status, "approved");
+
+    letGo();
+    await holding;
+
+    assertEquals((await sending).status, STATUS_CODE.Created);
+
+    const afterwards = await db
+      .selectFrom("publication")
+      .select(["status", "releasedAt"])
+      .where("id", "=", publication.publicationId)
+      .executeTakeFirstOrThrow();
+
+    const broadcast = await theBroadcast();
+
+    const delivered = await db
+      .selectFrom("chatMessage")
+      .innerJoin("chatGroup", "chatGroup.id", "chatMessage.chatGroupId")
+      .select("chatMessage.id")
+      .where("chatMessage.broadcastId", "=", broadcast.id)
+      .where("chatGroup.administrationPartnerId", "=", second)
+      .execute();
+
+    // Und die andere Hälfte: Sobald zugestellt ist, gilt sie auch als versendet. Eine Zusage, die
+    // nur das eine prüft, wäre auch von einer Rundmail erfüllt, die nie rausgeht.
+    //
+    // Gezählt wird beim einen Empfänger, dessen Faden die Bremse war, und nicht insgesamt: Wie
+    // viele Administratoren dieser Lauf gerade hat, entscheiden die anderen Dateien.
+    assertEquals(afterwards.status, "released");
+    assertExists(afterwards.releasedAt);
+    assertEquals(delivered.length, 1);
+  } finally {
+    letGo();
     await cleanUp();
   }
 });

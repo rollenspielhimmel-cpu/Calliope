@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { type Database, db, type Transaction } from "@/src/database/client.ts";
 import { Mailer } from "@/src/mail/mailer.ts";
 import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
@@ -84,6 +84,34 @@ export type BroadcastReach = {
 export type BroadcastResult = BroadcastReach;
 
 /**
+ * Wer die Abfrage ausführt: die Verbindung selbst oder eine offene Transaktion.
+ *
+ * **Weil die Zustellung inzwischen in der Transaktion der Freigabe läuft** und das Zählen davor
+ * nicht. Dieselbe Abfrage bedient beide; sie auf `db` festzunageln hieße, aus der Transaktion
+ * heraus an ihr vorbeizulesen.
+ */
+type Executor = Database | Transaction;
+
+/**
+ * Was der Versand zurückgibt: die Reichweite, und das, was erst **nach** dem Festschreiben laufen
+ * darf.
+ *
+ * **Weil nicht alles zurückzunehmen ist.** Die Postfachzeilen stehen in derselben Transaktion wie
+ * die Freigabe und fallen mit ihr; ein abgeschickter Strom-Anstoß und eine übergebene E-Mail
+ * fallen nicht. Beides vor dem Festschreiben zu tun hieße, offenen Fenstern eine Nachricht zu
+ * zeigen, die es nach einem Rückzieher nicht gibt, und Mails zu einer Rundmail zu verschicken, die
+ * danach wieder als unversendet dasteht und ein zweites Mal rausginge.
+ *
+ * Also sammelt der Versand es ein und gibt es dem Aufrufer in die Hand, der weiß, wann die
+ * Transaktion durch ist.
+ */
+export type BroadcastDispatch = {
+  reach: BroadcastReach;
+  /** Erst aufrufen, wenn die Transaktion festgeschrieben ist. */
+  announce: () => void;
+};
+
+/**
  * Was beim Zustellen ins Postfach entstanden ist — genug, um es den offenen Fenstern zu sagen.
  *
  * Die Kennungen der Nachrichten stehen darin, weil sie beim Anlegen erzeugt werden und nicht aus
@@ -104,11 +132,14 @@ type Delivered = {
  * ungeprüft ist — zwei Dinge, die nichts miteinander zu tun haben. Also trennt erst
  * `mayReceiveEmail` weiter unten.
  */
-async function selectRecipients(audience: BroadcastAudience) {
+async function selectRecipients(
+  executor: Executor,
+  audience: BroadcastAudience,
+) {
   const roles = audience.roles.filter((role) => role !== "member");
   const includeOrdinaryMembers = audience.roles.includes("member");
 
-  return await db
+  return await executor
     .selectFrom("user")
     .select(["id", "emailAddress", "emailAddressVerifiedAt"])
     .where("bannedAt", "is", null)
@@ -153,7 +184,7 @@ function mayReceiveEmail(
 async function countRecipients(
   audience: BroadcastAudience,
 ): Promise<BroadcastReach> {
-  const recipients = await selectRecipients(audience);
+  const recipients = await selectRecipients(db, audience);
 
   return {
     inbox: recipients.length,
@@ -212,11 +243,12 @@ function documentOf(subject: string, body: string): PostDocument {
  * Administration vorbehalten.
  */
 async function publishInArchive(
+  transaction: Transaction,
   subject: string,
   body: string,
   sendAsUserId: string | null,
 ): Promise<string | null> {
-  const thread = await db
+  const thread = await transaction
     .selectFrom("writingThread")
     .select("id")
     .where("isBroadcastArchive", "=", true)
@@ -231,10 +263,10 @@ async function publishInArchive(
 
   // Aufgelöst wie im Postfach: Ein Beitrag ohne Verfasser sähe im Forum aus, als hätte ihn niemand
   // geschrieben, während dieselbe Rundmail in der Nachricht den Absender trägt.
-  const sender = await resolveSender(sendAsUserId);
+  const sender = await resolveSender(transaction, sendAsUserId);
   const document = documentOf(subject, body);
 
-  const post = await db
+  const post = await transaction
     .insertInto("writingPost")
     .values({
       writingThreadId: thread.id,
@@ -265,9 +297,10 @@ async function publishInArchive(
  * also wird hier aufgelöst.
  */
 async function resolveSender(
+  executor: Executor,
   sendAsUserId: string | null,
 ): Promise<{ id: string; username: string } | null> {
-  const sender = await db
+  const sender = await executor
     .selectFrom("user")
     .select(["id", "username"])
     .$if(sendAsUserId !== null, (query) =>
@@ -303,228 +336,218 @@ async function resolveSender(
  * über eine Spalte zu umgehen, die nie jemand ansieht.
  */
 async function deliverToInbox(
+  transaction: Transaction,
   broadcastId: string,
   subject: string,
   body: string,
   sendAsUserId: string | null,
   recipientIds: string[],
 ): Promise<Delivered> {
-  const sender = await resolveSender(sendAsUserId);
+  const sender = await resolveSender(transaction, sendAsUserId);
   const now = new Date().toISOString();
 
-  return await db.transaction().execute(async (transaction) => {
-    // **Die Empfänger werden hier noch einmal gelesen.**
-    //
-    // Zwischen dem Ermitteln des Empfängerkreises und dem Anlegen der Gespräche kann ein Konto
-    // verschwinden — jemand löscht sich, oder die Moderation entfernt es. Die Mitgliedschaftszeile
-    // liefe dann in ihren Fremdschlüssel, der ganze Versand bräche ab, und zwar **nachdem** die
-    // Rundmail bereits als „raus" gebucht ist: Sie wäre für alle verloren, nicht nur für den einen.
-    //
-    // **Ohne `FOR SHARE`, obwohl das die dichtere Lösung wäre.** Die Sperre hielte jede Zeile bis
-    // zum Ende der Transaktion und ließe jeden warten, der gerade ein Konto löscht — bei einer
-    // Rundmail an alle sind das alle Konten der Plattform. Der Testlauf, der nebenher ständig
-    // Konten anlegt und löscht, verklemmte sich daran prompt. Das Fenster ist stattdessen so klein
-    // wie möglich gemacht, und `sendToInbox` wiederholt einmal, falls es doch jemanden erwischt.
-    const present = await transaction
-      .selectFrom("user")
-      .select("id")
-      .where("id", "in", recipientIds)
-      .execute();
-
-    if (present.length === 0) {
-      return { sender, chats: [], at: now };
-    }
-
-    const recipientsPresent = present.map((recipient) => recipient.id);
-
-    // **Gefunden statt angelegt, wo es den Faden schon gibt** — und durch dieselbe Funktion, die
-    // auch ein Mitglied benutzt, das die Administration von sich aus anschreibt. Beide meinen
-    // denselben Faden; zwei Fassungen davon wären zwei, die auseinanderlaufen.
-    const chatByRecipient = await AdminInboxService.findOrCreateThreads(
-      transaction,
-      sender,
-      recipientsPresent,
-    );
-
-    const chats = recipientsPresent.flatMap((recipientId) => {
-      const id = chatByRecipient.get(recipientId);
-      return id === undefined
-        ? []
-        : [{ id, messageId: generateUuidV7(), recipientId }];
-    });
-
-    await transaction
-      .insertInto("chatMessage")
-      .values(chats.map((chat) => ({
-        chatGroupId: chat.id,
-        text: body,
-        id: chat.messageId,
-        createdBy: sender?.id ?? null,
-        // Die Rundmail hängt jetzt an der Nachricht: Ein Faden trägt viele Ankündigungen, und
-        // „welche Nachricht ist eine" muss ohne die brüchige Regel „die erste im Gespräch"
-        // beantwortbar sein.
-        broadcastId,
-        subject,
-        // Leer, obwohl es eine echte Verfasserin gibt: Die steht auf der Veröffentlichung, und
-        // dieselbe Angabe zweimal zu führen heißt, sie irgendwann an einer Stelle zu vergessen.
-        // Für Antworten der Administration ist die Spalte da — dort gibt es keine Veröffentlichung,
-        // die sie tragen könnte.
-        writtenBy: null,
-      })))
-      .execute();
-
-    // **Die Meldung, wie bei jeder neuen PN.**
-    //
-    // Ein gewöhnliches Gespräch beginnt mit einer Einladung, und die meldet sich. Eine Rundmail
-    // setzt das Mitglied direkt hinein und übersprang damit genau diese Meldung — wer nicht zufällig
-    // ins Postfach sieht, erführe nie, dass eine Ankündigung da ist. Sie zeigt auf das Gespräch,
-    // nicht auf die Rundmail: gelesen wird im Postfach, die Glocke weist nur hin.
-    //
-    // **`actorId` ist der Absender, außer bei ihm selbst.** `notification_actor_is_not_recipient`
-    // verbietet, sich selbst zu benachrichtigen, und wer an alle schreibt, steht fast immer selbst
-    // unter „alle" — genau seine Zeile würde umfallen und mit ihr die ganze Anweisung.
-    await transaction
-      .insertInto("notification")
-      .values(chats.map((chat) => ({
-        recipientId: chat.recipientId,
-        type: "broadcast_received" as const,
-        chatGroupId: chat.id,
-        actorId: chat.recipientId === sender?.id ? null : sender?.id ?? null,
-      })))
-      .execute();
-
-    // Zurückgegeben wird, was wirklich zugestellt wurde — nicht, was vorher gezählt worden war.
-    return { sender, chats, at: now };
-  });
-}
-
-/**
- * Stellt zu, und wenn dabei jemand verschwindet, noch einmal.
- *
- * **Ein zweiter Versuch statt einer Sperre.** Der einzige Grund, warum das Einfügen scheitern kann,
- * ist ein Konto, das zwischen Lesen und Schreiben gelöscht wurde — und beim zweiten Versuch ist es
- * schon beim Lesen weg. Ein dritter brächte deshalb nichts, was der zweite nicht gebracht hätte.
- *
- * Scheitert auch der, fliegt der Fehler weiter: Dann stimmt etwas anderes nicht, und eine Rundmail,
- * die stillschweigend bei niemandem ankommt, wäre das Schlechteste von allem.
- */
-async function sendToInbox(
-  broadcastId: string,
-  subject: string,
-  body: string,
-  sendAsUserId: string | null,
-  recipientIds: string[],
-): Promise<number> {
-  let delivered: Delivered;
-
-  try {
-    delivered = await deliverToInbox(
-      broadcastId,
-      subject,
-      body,
-      sendAsUserId,
-      recipientIds,
-    );
-  } catch (failure) {
-    console.warn("Retrying the inbox delivery of a broadcast", failure);
-
-    delivered = await deliverToInbox(
-      broadcastId,
-      subject,
-      body,
-      sendAsUserId,
-      recipientIds,
-    );
-  }
-
-  // **Dieselbe Bahn, die jede gewöhnliche Nachricht nimmt** — und das war der Fehler: Die
-  // Zustellung schrieb ihre Zeilen direkt in die Datenbank und sagte den offenen Fenstern nichts.
-  // Wer die Seite offen hatte, als die Rundmail kam, behielt eine Chatliste ohne sie; die Glocke
-  // führte dann auf ein Gespräch, das seine Liste nicht kannte, und der Dialog blieb leer.
+  // **Die Empfänger werden hier noch einmal gelesen, und diesmal festgehalten.**
   //
-  // Nach dem Schreiben, nie darin: Ein Strom, der sich nicht beschreiben lässt, darf keine
-  // Zustellung umwerfen, die längst gespeichert ist. Und ohne den Absender selbst — er sieht die
-  // Rundmail dort, wo er sie geschrieben hat.
-  for (const chat of delivered.chats) {
-    if (chat.recipientId === delivered.sender?.id) {
-      continue;
-    }
+  // Zwischen dem Ermitteln des Empfängerkreises und dem Anlegen der Gespräche kann ein Konto
+  // verschwinden — jemand löscht sich, oder die Moderation entfernt es. Die Zeile liefe dann in
+  // ihren Fremdschlüssel, und **die ganze Rundmail bräche ab**, nicht nur die eine Zustellung.
+  //
+  // **`FOR KEY SHARE`, und das ist nicht dasselbe wie `FOR SHARE`.** Hier stand einmal die
+  // Begründung, gar nicht zu sperren: Eine Sperre ließe jeden warten, der ein Konto anfasst, und
+  // bei einer Rundmail an alle sind das alle Konten der Plattform — der Testlauf, der nebenher
+  // ständig Konten anlegt und löscht, verklemmte sich daran prompt. Das stimmt für `FOR SHARE`.
+  // `FOR KEY SHARE` ist die schwächste Sperre, die es gibt: Sie steht **nur** dem Löschen und dem
+  // Ändern des Schlüssels im Weg, nicht dem gewöhnlichen Bearbeiten. Wer während einer Zustellung
+  // seinen Namen ändert, merkt nichts; wer sein Konto löscht, wartet Millisekunden.
+  //
+  // Es ist genau die Sperre, die der Fremdschlüssel beim Einfügen ohnehin nimmt — nur eben schon
+  // hier, wo noch entschieden werden kann, statt erst dort, wo es nur noch krachen kann.
+  //
+  // **Der zweite Versuch in `release` war dafür zu wenig.** Er unterstellt, dass beim zweiten Mal
+  // dasselbe Konto schon beim Lesen fehlt. Bei einer Rundmail an Hunderte kann beim zweiten Anlauf
+  // aber ein *anderes* verschwinden, und dann fällt sie wieder um. Er bleibt als Netz für alles
+  // Übrige, aber diesen Fall fängt er nicht mehr, weil es ihn nicht mehr gibt.
+  const present = await transaction
+    .selectFrom("user")
+    .select("id")
+    .where("id", "in", recipientIds)
+    .forKeyShare()
+    .execute();
 
-    publishChatEvent([chat.recipientId], {
-      chatGroupId: chat.id,
-      message: {
-        id: chat.messageId,
-        text: body,
-        createdAt: delivered.at,
-        createdBy: delivered.sender?.id ?? null,
-        createdByUsername: delivered.sender?.username ?? null,
-      },
-    });
+  if (present.length === 0) {
+    return { sender, chats: [], at: now };
   }
 
-  return delivered.chats.length;
+  const recipientsPresent = present.map((recipient) => recipient.id);
+
+  // **Gefunden statt angelegt, wo es den Faden schon gibt** — und durch dieselbe Funktion, die
+  // auch ein Mitglied benutzt, das die Administration von sich aus anschreibt. Beide meinen
+  // denselben Faden; zwei Fassungen davon wären zwei, die auseinanderlaufen.
+  const chatByRecipient = await AdminInboxService.findOrCreateThreads(
+    transaction,
+    sender,
+    recipientsPresent,
+  );
+
+  const chats = recipientsPresent.flatMap((recipientId) => {
+    const id = chatByRecipient.get(recipientId);
+    return id === undefined
+      ? []
+      : [{ id, messageId: generateUuidV7(), recipientId }];
+  });
+
+  await transaction
+    .insertInto("chatMessage")
+    .values(chats.map((chat) => ({
+      chatGroupId: chat.id,
+      text: body,
+      id: chat.messageId,
+      createdBy: sender?.id ?? null,
+      // Die Rundmail hängt jetzt an der Nachricht: Ein Faden trägt viele Ankündigungen, und
+      // „welche Nachricht ist eine" muss ohne die brüchige Regel „die erste im Gespräch"
+      // beantwortbar sein.
+      broadcastId,
+      subject,
+      // Leer, obwohl es eine echte Verfasserin gibt: Die steht auf der Veröffentlichung, und
+      // dieselbe Angabe zweimal zu führen heißt, sie irgendwann an einer Stelle zu vergessen.
+      // Für Antworten der Administration ist die Spalte da — dort gibt es keine Veröffentlichung,
+      // die sie tragen könnte.
+      writtenBy: null,
+    })))
+    .execute();
+
+  // **Die Meldung, wie bei jeder neuen PN.**
+  //
+  // Ein gewöhnliches Gespräch beginnt mit einer Einladung, und die meldet sich. Eine Rundmail
+  // setzt das Mitglied direkt hinein und übersprang damit genau diese Meldung — wer nicht zufällig
+  // ins Postfach sieht, erführe nie, dass eine Ankündigung da ist. Sie zeigt auf das Gespräch,
+  // nicht auf die Rundmail: gelesen wird im Postfach, die Glocke weist nur hin.
+  //
+  // **`actorId` ist der Absender, außer bei ihm selbst.** `notification_actor_is_not_recipient`
+  // verbietet, sich selbst zu benachrichtigen, und wer an alle schreibt, steht fast immer selbst
+  // unter „alle" — genau seine Zeile würde umfallen und mit ihr die ganze Anweisung.
+  await transaction
+    .insertInto("notification")
+    .values(chats.map((chat) => ({
+      recipientId: chat.recipientId,
+      type: "broadcast_received" as const,
+      chatGroupId: chat.id,
+      actorId: chat.recipientId === sender?.id ? null : sender?.id ?? null,
+    })))
+    .execute();
+
+  // Zurückgegeben wird, was wirklich zugestellt wurde — nicht, was vorher gezählt worden war.
+  return { sender, chats, at: now };
 }
 
 /**
- * Returns as soon as the recipients are known, and sends afterwards. The handler never awaits a
- * send — see AGENTS.md — and with hundreds of them the request would otherwise stay open for as
- * long as the relay takes for all of them together.
+ * Stellt zu und sammelt ein, was danach noch zu tun ist.
  *
- * One message per recipient rather than one with everybody in bcc: a relay that rejects the
- * batch loses all of it, and one address visible to the rest would be a real disclosure.
+ * **In der Transaktion des Aufrufers, nicht in einer eigenen.** Freigabe und Zustellung gehören
+ * zusammen: Eine Rundmail, die als „raus" gebucht ist und in keinem Postfach steht, ist still
+ * verloren, und niemand merkt es — weder der, der sie geschrieben hat, noch der, der sie bekommen
+ * sollte. Fällt hier etwas um, fällt die Freigabe mit um, die Rundmail steht wieder auf
+ * `approved`, und der Taktgeber holt sie im nächsten Takt.
  *
- * **Das Postfach wird vor der Rückkehr geschrieben, die Mails danach.** Die Postfachzeilen sind
- * eine einzige Anweisung und in Millisekunden erledigt; sie in den Hintergrund zu schieben hieße
- * nur, dass die Antwort eine Reichweite meldet, die noch nirgends steht. Der Mailversand dagegen
- * hängt am Relais und gehört dorthin, wo niemand auf ihn wartet.
+ * **Kein zweiter Versuch mehr an dieser Stelle.** Eine Anweisung, die scheitert, bricht die ganze
+ * Transaktion ab; hier weiterzumachen ginge gar nicht. Der zweite Versuch liegt jetzt eine Ebene
+ * höher, um die ganze Transaktion herum — und zwar sauberer als vorher, weil der erste Versuch
+ * dann wirklich nichts hinterlassen hat.
+ *
+ * **Die Mails und die Strom-Anstöße bleiben draußen.** Beides ist nicht zurückzunehmen: Ein
+ * Browser, dem eine Nachricht angekündigt wurde, die es nach dem Rückzieher nicht gibt, zeigt eine
+ * Lücke; eine Mail, die raus ist, während die Rundmail wieder als unversendet dasteht, kommt beim
+ * nächsten Takt ein zweites Mal. Deshalb kommen sie als `announce` zurück, statt hier zu laufen.
  */
 async function send(
+  transaction: Transaction,
   broadcastId: string,
   audience: BroadcastAudience,
   delivery: BroadcastDelivery,
   subject: string,
   body: string,
   sendAsUserId: string | null,
-): Promise<BroadcastResult> {
-  const recipients = await selectRecipients(audience);
+): Promise<BroadcastDispatch> {
+  const recipients = await selectRecipients(transaction, audience);
   const byEmail = recipients.filter((recipient) =>
     mayReceiveEmail(recipient, audience)
   );
 
-  const delivered = delivery.toInbox && recipients.length > 0
-    ? await sendToInbox(
+  const delivered: Delivered = delivery.toInbox && recipients.length > 0
+    ? await deliverToInbox(
+      transaction,
       broadcastId,
       subject,
       body,
       sendAsUserId,
       recipients.map((recipient) => recipient.id),
     )
-    : 0;
-
-  if (delivery.byEmail) {
-    runInBackground(
-      `Sending a broadcast to ${byEmail.length} members`,
-      () => {
-        for (const recipient of byEmail) {
-          Mailer.sendInBackground(
-            broadcastMail({
-              emailAddress: recipient.emailAddress,
-              subject,
-              body,
-            }),
-          );
-        }
-
-        return Promise.resolve();
-      },
-    );
-  }
+    : { sender: null, chats: [], at: new Date().toISOString() };
 
   return {
-    // Was zugestellt wurde, nicht was gezählt worden war: Wer sich zwischen beidem löscht, ist
-    // kein Empfänger mehr, und die festgehaltene Zahl soll die Wirklichkeit beschreiben.
-    inbox: delivered,
-    email: delivery.byEmail ? byEmail.length : 0,
+    reach: {
+      // Was zugestellt wurde, nicht was gezählt worden war: Wer sich zwischen beidem löscht, ist
+      // kein Empfänger mehr, und die festgehaltene Zahl soll die Wirklichkeit beschreiben.
+      inbox: delivered.chats.length,
+      email: delivery.byEmail ? byEmail.length : 0,
+    },
+    announce: () => {
+      // **Dieselbe Bahn, die jede gewöhnliche Nachricht nimmt** — und das war der Fehler: Die
+      // Zustellung schrieb ihre Zeilen direkt in die Datenbank und sagte den offenen Fenstern
+      // nichts. Wer die Seite offen hatte, als die Rundmail kam, behielt eine Chatliste ohne sie;
+      // die Glocke führte dann auf ein Gespräch, das seine Liste nicht kannte, und der Dialog blieb
+      // leer.
+      //
+      // Ohne den Absender selbst — er sieht die Rundmail dort, wo er sie geschrieben hat.
+      for (const chat of delivered.chats) {
+        if (chat.recipientId === delivered.sender?.id) {
+          continue;
+        }
+
+        publishChatEvent([chat.recipientId], {
+          chatGroupId: chat.id,
+          message: {
+            id: chat.messageId,
+            text: body,
+            createdAt: delivered.at,
+            createdBy: delivered.sender?.id ?? null,
+            createdByUsername: delivered.sender?.username ?? null,
+          },
+        });
+      }
+
+      // One message per recipient rather than one with everybody in bcc: a relay that rejects the
+      // batch loses all of it, and one address visible to the rest would be a real disclosure.
+      //
+      // Im Hintergrund, weil kein Aufrufer darauf warten darf — siehe AGENTS.md: Bei Hunderten
+      // Adressen bliebe die Anfrage so lange offen, wie das Relais für alle zusammen braucht.
+      //
+      // **Das Relais kennt keine Transaktion.** Eine übergebene Mail ist draußen, und keine
+      // Datenbank holt sie zurück. Die Zusage „was als versendet gilt, ist zugestellt" reicht
+      // deshalb genau so weit wie die Datenbank: Postfach und Archiv stehen darin, der Mailweg
+      // nicht. Er läuft erst, wenn das Übrige festgeschrieben ist, damit wenigstens nie eine Mail
+      // zu einer Rundmail hinausgeht, die danach wieder als unversendet dasteht.
+      if (!delivery.byEmail) {
+        return;
+      }
+
+      runInBackground(
+        `Sending a broadcast to ${byEmail.length} members`,
+        () => {
+          for (const recipient of byEmail) {
+            Mailer.sendInBackground(
+              broadcastMail({
+                emailAddress: recipient.emailAddress,
+                subject,
+                body,
+              }),
+            );
+          }
+
+          return Promise.resolve();
+        },
+      );
+    },
   };
 }
 

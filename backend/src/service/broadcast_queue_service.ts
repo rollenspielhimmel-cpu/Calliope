@@ -319,15 +319,30 @@ async function submit(
 /**
  * Verschickt und hält fest, an wie viele.
  *
- * **Erst den Zustand nehmen, dann senden** — nicht umgekehrt. Seit der Taktgeber danebensteht,
- * können zwei Wege gleichzeitig dieselbe Rundmail freigeben wollen: die Freigabe von Hand und der
- * Lauf, der Fälliges einsammelt. Das `WHERE status = 'approved'` ist die Stelle, an der genau einer
- * gewinnt; wer keine Zeile trifft, sendet nicht. Andersherum — senden und dann buchen — hätten
- * beide gesendet und beide gebucht, und Hunderte Leute hätten die Mail zweimal.
+ * **Keine Rundmail gilt als versendet, die nicht zugestellt ist.** Das Buchen auf `released` und
+ * die Zustellung stehen in **einer** Transaktion; bricht das Zustellen ab, fällt die Buchung mit
+ * um, die Rundmail steht wieder auf `approved` und geht im nächsten Takt erneut raus. Vorher waren
+ * es zwei Schritte, und der Fehlerfall dazwischen war als Preis ausdrücklich in Kauf genommen: Ein
+ * abgebrochener Versand hinterließ eine Rundmail, die als „raus" dastand und in keinem Postfach
+ * lag — still verloren, unbemerkt von beiden Seiten.
  *
- * Der Preis ist der andere Fehlerfall: Bricht der Versand nach dem Buchen ab, steht `released` da,
- * ohne dass alles draußen ist. Das ist die bessere Hälfte des Tauschs — eine Mail, die einmal zu
- * wenig ankommt, ist ein Ärgernis; eine, die zweimal ankommt, ist ein Vertrauensschaden.
+ * **Das `WHERE status = 'approved'` bleibt der Punkt, an dem genau einer gewinnt.** Seit der
+ * Taktgeber danebensteht, können zwei Wege gleichzeitig freigeben wollen: die Freigabe von Hand
+ * und der Lauf, der Fälliges einsammelt. Die Bedingung wirkt in der Transaktion genauso — wer
+ * zweiter ist, wartet auf der Zeilensperre und prüft danach neu: Ist der erste durchgekommen,
+ * steht dort `released` und die Bedingung trifft nichts; hat er zurückgezogen, steht wieder
+ * `approved` und der zweite darf, weil der erste eben *nicht* zugestellt hat. Die Transaktion
+ * kostet den Schutz vor doppeltem Versand also nicht, sie schärft ihn.
+ *
+ * **Nicht alles passt hinein.** Das Relais kennt keine Transaktion, und ein Strom-Anstoß an einen
+ * offenen Browser auch nicht. Beides läuft deshalb erst nach dem Festschreiben, als `announce` —
+ * siehe `BroadcastService.send`. Für den reinen E-Mail-Weg heißt das, dass die Zusage nur so weit
+ * reicht wie die Datenbank; für Postfach und Archiv gilt sie ganz.
+ *
+ * **Ein zweiter Versuch um das Ganze herum.** Er stand früher innen, um die Postfachzustellung, für
+ * den einen Fall, der sie umwerfen kann: ein Konto, das zwischen Lesen und Schreiben gelöscht
+ * wurde. Innen ginge er jetzt nicht mehr — eine gescheiterte Anweisung bricht die Transaktion ab —,
+ * und außen ist er ohnehin richtiger: Der erste Versuch hat dann wirklich nichts hinterlassen.
  *
  * Die Empfängerzahl wird beim Versand festgehalten und nicht später gezählt: Wer die Liste
  * hinterher neu abfragt, zählt die Mitglieder von heute und nicht die, die sie bekommen haben.
@@ -336,55 +351,80 @@ async function release(
   publicationId: string,
   input: BroadcastInput,
 ): Promise<boolean> {
-  const claimed = await db
-    .updateTable("publication")
-    .set({ status: "released", releasedAt: new Date().toISOString() })
-    .where("id", "=", publicationId)
-    .where("status", "=", "approved")
-    .returning("id")
-    .executeTakeFirst();
+  try {
+    return await releaseOnce(publicationId, input);
+  } catch (failure) {
+    console.warn("Retrying the release of a broadcast", failure);
 
-  if (claimed === undefined) {
-    return false;
+    return await releaseOnce(publicationId, input);
   }
+}
 
-  const broadcast = await db
-    .selectFrom("broadcast")
-    .select("id")
-    .where("publicationId", "=", publicationId)
-    .executeTakeFirstOrThrow();
+async function releaseOnce(
+  publicationId: string,
+  input: BroadcastInput,
+): Promise<boolean> {
+  const dispatch = await db.transaction().execute(async (transaction) => {
+    const claimed = await transaction
+      .updateTable("publication")
+      .set({ status: "released", releasedAt: new Date().toISOString() })
+      .where("id", "=", publicationId)
+      .where("status", "=", "approved")
+      .returning("id")
+      .executeTakeFirst();
 
-  const delivery = deliveryOf(input);
+    if (claimed === undefined) {
+      return undefined;
+    }
 
-  // **Zuerst ins Archiv, dann zustellen.** Nicht mehr, weil etwas darauf verwiese — das Postfach
-  // trägt den ganzen Text und zeigt nirgendwo hin —, sondern weil das Ablegen die kleinere und
-  // sicherere Hälfte ist: Schlägt sie fehl, ist noch nichts an Hunderte zugestellt.
-  const archivePostId = delivery.toArchive
-    ? await BroadcastService.publishInArchive(
+    const broadcast = await transaction
+      .selectFrom("broadcast")
+      .select("id")
+      .where("publicationId", "=", publicationId)
+      .executeTakeFirstOrThrow();
+
+    const delivery = deliveryOf(input);
+
+    // **Zuerst ins Archiv, dann zustellen.** Nicht mehr, weil etwas darauf verwiese — das Postfach
+    // trägt den ganzen Text und zeigt nirgendwo hin —, sondern weil das Ablegen die kleinere
+    // Hälfte ist und die Reihenfolge den Fehler früh sichtbar macht.
+    const archivePostId = delivery.toArchive
+      ? await BroadcastService.publishInArchive(
+        transaction,
+        input.subject,
+        input.body,
+        input.sendAsUserId,
+      )
+      : null;
+
+    const sent = await BroadcastService.send(
+      transaction,
+      broadcast.id,
+      audienceOf(input),
+      delivery,
       input.subject,
       input.body,
       input.sendAsUserId,
-    )
-    : null;
+    );
 
-  const reach = await BroadcastService.send(
-    broadcast.id,
-    audienceOf(input),
-    delivery,
-    input.subject,
-    input.body,
-    input.sendAsUserId,
-  );
+    await transaction
+      .updateTable("broadcast")
+      .set({
+        recipientCount: delivery.toInbox ? sent.reach.inbox : null,
+        emailRecipientCount: delivery.byEmail ? sent.reach.email : null,
+        archivePostId,
+      })
+      .where("publicationId", "=", publicationId)
+      .execute();
 
-  await db
-    .updateTable("broadcast")
-    .set({
-      recipientCount: delivery.toInbox ? reach.inbox : null,
-      emailRecipientCount: delivery.byEmail ? reach.email : null,
-      archivePostId,
-    })
-    .where("publicationId", "=", publicationId)
-    .execute();
+    return sent;
+  });
+
+  if (dispatch === undefined) {
+    return false;
+  }
+
+  dispatch.announce();
 
   return true;
 }
@@ -417,9 +457,20 @@ async function releaseDue(): Promise<number> {
   // Nacheinander mit Absicht: Jede Rundmail ist Hunderte Zustellungen, und alle Fälligen
   // gleichzeitig loszuschicken hieße, den Mailserver mit dem ersten Takt der Stunde zu überfahren.
   for (const row of due) {
-    // deno-lint-ignore no-await-in-loop -- siehe darüber
-    if (await release(row.publicationId, toQueued(row))) {
-      sent++;
+    try {
+      // deno-lint-ignore no-await-in-loop -- siehe darüber
+      if (await release(row.publicationId, toQueued(row))) {
+        sent++;
+      }
+    } catch (failure) {
+      // **Eine, die nicht rauskann, hält die anderen nicht auf.** Vorher riss der Fehler den
+      // ganzen Lauf mit, und alles dahinter blieb liegen — bis zum nächsten Takt, der an derselben
+      // Stelle wieder anschlug. Sie steht nach dem Rückzieher wieder auf `approved` und kommt
+      // beim nächsten Mal von selbst noch einmal dran; verloren ist nichts.
+      console.error(
+        `Releasing broadcast ${row.publicationId} failed; it stays approved and will be tried again`,
+        failure,
+      );
     }
   }
 
