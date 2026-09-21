@@ -1,5 +1,37 @@
-import { db } from "@/src/database/client.ts";
+import { sql } from "kysely";
+import { db, type Transaction } from "@/src/database/client.ts";
 import { ROOT_ADMIN_USERNAME } from "@/src/service/root_admin_service.ts";
+
+/**
+ * Die Sperre, unter der der Platz **mit Absicht leer** steht.
+ *
+ * „Frei" heißt für diese Datei: Das hochgefahrene Konto `Admin` hält den Platz. Das stimmt nur,
+ * solange niemand ein neues `Admin` anlegt — und genau das tut der Rumpf von
+ * `withVacantPrimordialSeat`, denn er prüft das Hochfahren, und das Hochfahren legt ein `Admin` an.
+ * Ein wartender Leiher hielt das für frei, übernahm den Platz mitten im Rumpf und verlor ihn beim
+ * Zurückgeben wieder, ohne es zu merken; sein Test lief dann ohne Platz. Deterministisch
+ * nachgestellt, und im parallelen Lauf zwei von fünf Mal rot.
+ *
+ * Eine Namensregel kann das nicht auseinanderhalten, eine Sperre schon: Wer den Platz leert, hält
+ * sie ausschließlich, und jedes Leihen, Zurückgeben und Reparieren braucht sie geteilt. Solange der
+ * Platz absichtlich leer steht, rührt ihn also niemand an.
+ *
+ * Frei gewählt, nur nicht derselbe wie `CLEAN_UP_LOCK` in `support.ts`.
+ */
+const SEAT_LOCK = 8_142_002;
+
+/**
+ * Nimmt die Sperre geteilt, für die Dauer der Transaktion — oder sagt, dass sie gerade nicht geht.
+ *
+ * Transaktionsweit wie `CLEAN_UP_LOCK`: Sie geht mit der Transaktion, auch wenn die zerbricht.
+ */
+async function mayTouchTheSeat(transaction: Transaction): Promise<boolean> {
+  const { rows } = await sql<{ granted: boolean }>`
+    select pg_try_advisory_xact_lock_shared(${SEAT_LOCK}) as granted
+  `.execute(transaction);
+
+  return rows[0]?.granted === true;
+}
 
 /**
  * Borrowing the one primordial-administrator seat, for tests that need a session holding it.
@@ -68,6 +100,12 @@ const VACANT_UNTIL_ORPHANED = 200;
 async function claim(from: string, to: string): Promise<boolean> {
   try {
     return await db.transaction().execute(async (transaction) => {
+      // Steht der Platz gerade mit Absicht leer, ist nichts zu holen — auch wenn ein frisch
+      // angelegtes `Admin` darauf sitzt. Siehe `SEAT_LOCK`.
+      if (!await mayTouchTheSeat(transaction)) {
+        return false;
+      }
+
       // Freeing first and claiming second: between the two statements nobody holds it, which the
       // partial unique index allows. The other order would have two holders for an instant and
       // fail every time.
@@ -122,10 +160,19 @@ async function holder(): Promise<string | undefined> {
 /** Setzt einen verwaisten Platz auf das hochgefahrene Konto zurück, falls es das gerade gibt. */
 async function repairOrphanedSeat(): Promise<void> {
   await db
-    .updateTable("user")
-    .set({ isPrimordialAdmin: true })
-    .where("username", "=", ROOT_ADMIN_USERNAME)
-    .execute()
+    .transaction()
+    .execute(async (transaction) => {
+      // Ein mit Absicht leerer Platz ist nicht verwaist, egal wie lange er leer steht.
+      if (!await mayTouchTheSeat(transaction)) {
+        return;
+      }
+
+      await transaction
+        .updateTable("user")
+        .set({ isPrimordialAdmin: true })
+        .where("username", "=", ROOT_ADMIN_USERNAME)
+        .execute();
+    })
     .catch(() => {});
 }
 
@@ -290,58 +337,86 @@ export async function withVacantPrimordialSeat<T>(
   restore: () => Promise<void>,
   body: () => Promise<T>,
 ): Promise<T> {
-  // **Auch das Leeren muss ein Vergleichen-und-Tauschen sein, nicht nur das Ausleihen.**
+  // **Auf einer eigenen Verbindung, weil die Sperre länger halten muss als eine Transaktion.**
   //
-  // Hier stand `async () => { await vacate(); return true; }` — der Rumpf des Aufrufers, blind
-  // ausgeführt. `waitForSeat` hat vorher gelesen, dass `Admin` den Platz hält; zwischen diesem
-  // Lesen und dem Schreiben kann eine andere Datei ihn sich aber geholt haben. Ihr `claim` ist ein
-  // Vergleichen-und-Tauschen und gelingt; `vacate` benennt danach ein `Admin` weg, das den Platz
-  // längst nicht mehr hat. Ergebnis: Der Platz ist **nicht** leer, sondern bei der fremden Datei,
-  // und `Admin` gibt es nicht mehr. Das Hochfahren findet dann einen Ur-Admin vor und legt keinen
-  // an — „no administrator was created", ein roter Test, dessen eigener Code stimmt.
-  //
-  // Also erst den Platz an niemanden vergeben, in einer Anweisung mit Bedingung, und den Rumpf des
-  // Aufrufers nur ausführen, wenn das gelungen ist.
-  await waitForSeat(async () => {
-    const emptied = await db
-      .updateTable("user")
-      .set({ isPrimordialAdmin: false })
-      .where("username", "=", ROOT_ADMIN_USERNAME)
-      .where("isPrimordialAdmin", "=", true)
-      .returning("id")
-      .executeTakeFirst()
-      .catch(() => undefined);
+  // Hausregel ist sonst die transaktionsweite Sperre (siehe `CLEAN_UP_LOCK`): Eine sitzungsweite
+  // auf einer Vorratsverbindung kann dort hängen bleiben. Hier geht es aber um den ganzen Rumpf,
+  // und der schreibt über viele Anweisungen auf anderen Verbindungen. Deshalb eine reservierte
+  // Verbindung, die die Sperre hält und sie im `finally` wieder hergibt. Stirbt der Prozess, geht
+  // die Verbindung zu, und PostgreSQL gibt die Sperre von selbst frei.
+  return await db.connection().execute(async (connection) => {
+    let locked = false;
 
-    if (emptied === undefined) {
-      return false;
+    // **Auch das Leeren muss ein Vergleichen-und-Tauschen sein, nicht nur das Ausleihen.**
+    //
+    // Hier stand `async () => { await vacate(); return true; }` — der Rumpf des Aufrufers, blind
+    // ausgeführt. `waitForSeat` hat vorher gelesen, dass `Admin` den Platz hält; zwischen diesem
+    // Lesen und dem Schreiben kann eine andere Datei ihn sich aber geholt haben. Ihr `claim` ist
+    // ein Vergleichen-und-Tauschen und gelingt; `vacate` benennt danach ein `Admin` weg, das den
+    // Platz längst nicht mehr hat. Ergebnis: Der Platz ist **nicht** leer, sondern bei der fremden
+    // Datei, und `Admin` gibt es nicht mehr. Das Hochfahren findet dann einen Ur-Admin vor und legt
+    // keinen an — „no administrator was created", ein roter Test, dessen eigener Code stimmt.
+    //
+    // Also erst die Sperre, dann den Platz an niemanden vergeben, in einer Anweisung mit Bedingung,
+    // und den Rumpf des Aufrufers nur ausführen, wenn beides gelungen ist. Die Sperre zuerst: Wer
+    // gerade leiht oder zurückgibt, hält sie geteilt, und dann wird es eben der nächste Versuch.
+    try {
+      await waitForSeat(async () => {
+        const { rows } = await sql<{ granted: boolean }>`
+          select pg_try_advisory_lock(${SEAT_LOCK}) as granted
+        `.execute(connection);
+
+        if (rows[0]?.granted !== true) {
+          return false;
+        }
+
+        const emptied = await db
+          .updateTable("user")
+          .set({ isPrimordialAdmin: false })
+          .where("username", "=", ROOT_ADMIN_USERNAME)
+          .where("isPrimordialAdmin", "=", true)
+          .returning("id")
+          .executeTakeFirst()
+          .catch(() => undefined);
+
+        if (emptied === undefined) {
+          await sql`select pg_advisory_unlock(${SEAT_LOCK})`.execute(
+            connection,
+          );
+          return false;
+        }
+
+        locked = true;
+        await vacate();
+        return true;
+      }, "emptying it for the bootstrap tests");
+
+      try {
+        return await body();
+      } finally {
+        // **Erst den Platz freiräumen, dann zurückgeben.**
+        //
+        // Wer hier steht, hat ihn im Rumpf bekommen — in den Tests des Hochfahrens ist das das
+        // neu angelegte `Admin`. Niemand sonst: Die Sperre hält, solange der Rumpf läuft.
+        //
+        // **Das stand hier schon einmal, und es stimmte nicht.** Damals gab es keine Sperre, nur
+        // die Namensregel „frei heißt: `Admin` hält ihn". Das neu angelegte `Admin` war für jeden
+        // Wartenden frei; er übernahm den Platz mitten im Rumpf, und dieses Freiräumen nahm ihn ihm
+        // wieder weg, ohne dass er es merkte. Deterministisch nachgestellt in
+        // `primordial_seat_test.ts`.
+        await db
+          .updateTable("user")
+          .set({ isPrimordialAdmin: false })
+          .where("isPrimordialAdmin", "=", true)
+          .execute()
+          .catch(() => {});
+
+        await restore();
+      }
+    } finally {
+      if (locked) {
+        await sql`select pg_advisory_unlock(${SEAT_LOCK})`.execute(connection);
+      }
     }
-
-    await vacate();
-    return true;
-  }, "emptying it for the bootstrap tests");
-
-  try {
-    return await body();
-  } finally {
-    // **Erst den Platz freiräumen, dann zurückgeben.**
-    //
-    // Während dieser Rumpf läuft, ist der Platz mit Absicht leer — und für jeden, der nebenher
-    // wartet, sieht das aus wie ein verwaister Platz. Dauert der Rumpf länger als
-    // `VACANT_UNTIL_ORPHANED`, repariert einer von ihnen ihn auf das hochgefahrene Konto, und
-    // `restore` läuft danach gegen `user_one_primordial_admin_idx`. Der Fehler fliegt aus dem
-    // `finally` heraus, das Konto bleibt unter seinem Ersatznamen stehen — und weil das
-    // hochgefahrene Konto dann nicht existiert, kann keine andere Datei ihren Platz zurückgeben.
-    // Vier rote Tests in zwei Dateien, deren eigener Code in Ordnung war.
-    //
-    // Wer hier steht, steht durch eine Reparatur da und nicht durch ein Ausleihen: Die Sperre oben
-    // hält, solange dieser Rumpf läuft. Ihn wegzuräumen nimmt also niemandem etwas weg.
-    await db
-      .updateTable("user")
-      .set({ isPrimordialAdmin: false })
-      .where("isPrimordialAdmin", "=", true)
-      .execute()
-      .catch(() => {});
-
-    await restore();
-  }
+  });
 }
