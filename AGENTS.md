@@ -60,6 +60,21 @@ Impressum, das den falschen Betreiber nennt, ist rechtlich falsch. Am Rahmen dar
 den Angaben nicht. Beide Dateien tragen denselben Satz oben: „Bewusste Abweichung von upstream —
 nicht angleichen."
 
+## Unsere Stimme in Texten an Mitglieder
+
+**Was ein Mitglied liest, ist in unserer Stimme geschrieben.** Von upstream übernehmen wir die
+*Auskunft*, nicht den *Wortlaut*: Wenn dort etwas steht, das unsere Texte nicht sagen — ein
+Hinweis, eine Ursache, ein nächster Schritt —, dann fehlt uns diese Auskunft, und wir schreiben sie
+in unseren eigenen Worten dazu. Seinen Absatz darüberzulegen wäre bequemer und würde unsere Texte
+Stück für Stück durch fremde ersetzen.
+
+So geschehen bei den Einmal-Links (b9ab613): Der Gedanke „ein neu angeforderter Link macht den
+vorherigen ungültig" kam von upstream, die Sätze sind unsere. Ein Cherry-Pick hätte in allen fünf
+Ansichten kollidiert — das ist kein Ärgernis, sondern die Regel, die sich selbst meldet.
+
+Gilt für alles, was im Browser sichtbar ist, für E-Mails an Mitglieder und für Texte, die nur eine
+Vorlesehilfe hört. Nicht für Code, Kommentare und Entwicklerdokumentation.
+
 ## The issue tracker
 
 Work is tracked as GitHub issues, and **a milestone means accepted**: `status: proposed` and a

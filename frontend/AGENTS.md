@@ -11,6 +11,8 @@ client. Linted by `oxlint`, formatted by `oxfmt`. Tasks are `npm run …` — se
   `computed<GetGroup200 | undefined>(…)`.
 - **Route paths are English, everything a member reads is German**: `/groups/:groupId`
   renders "Meine Gruppen".
+- **Texte an Mitglieder bleiben in unserer Stimme.** Von upstream kommt die Auskunft, nicht der
+  Wortlaut — siehe [AGENTS.md](../AGENTS.md).
 - **Navigate through `useRouter()`, never `$router`.** The global property works in a template,
   but it is the pre-Composition-API idiom and it hides the dependency from the script. A named
   handler beside it also lets the returned promise be `void`ed, which a template expression
