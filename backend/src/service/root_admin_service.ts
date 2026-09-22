@@ -21,7 +21,7 @@ export const ROOT_ADMIN_USERNAME = "Admin";
  *
  * The account never verifies it — see below — so nothing is ever sent there.
  */
-const ROOT_ADMIN_EMAIL_ADDRESS = "admin@rollenspielhimmel.invalid";
+export const ROOT_ADMIN_EMAIL_ADDRESS = "admin@rollenspielhimmel.invalid";
 
 /**
  * Creates the account if there is none. Idempotent: every later start finds it and does nothing,

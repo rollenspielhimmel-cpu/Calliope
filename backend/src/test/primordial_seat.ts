@@ -1,6 +1,11 @@
 import { sql } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
-import { ROOT_ADMIN_USERNAME } from "@/src/service/root_admin_service.ts";
+import {
+  ROOT_ADMIN_EMAIL_ADDRESS,
+  ROOT_ADMIN_USERNAME,
+} from "@/src/service/root_admin_service.ts";
+import { hashPassword } from "@/src/util/password.ts";
+import { generateToken } from "@/src/util/token.ts";
 
 /**
  * Die Sperre, unter der der Platz **mit Absicht leer** steht.
@@ -157,8 +162,22 @@ async function holder(): Promise<string | undefined> {
   return row?.username;
 }
 
-/** Setzt einen verwaisten Platz auf das hochgefahrene Konto zurück, falls es das gerade gibt. */
+/**
+ * Setzt einen verwaisten Platz auf das hochgefahrene Konto zurück — und legt das Konto an, wenn es
+ * gar keines gibt.
+ *
+ * **Die zweite Hälfte fehlte, und die Pipeline war deshalb nie grün.** Das Konto `Admin` legt
+ * `main.ts` beim Start an; die Tests starten `main.ts` nicht. Auf jedem Rechner, auf dem einmal ein
+ * Server lief, gibt es es längst — in der frischen Datenbank der Pipeline nie. Dort wartete jeder
+ * Test, der sich den Platz leiht, eine volle Minute auf ein Konto, das nicht kommen konnte, und
+ * der Lauf hing länger, als jemand zusah.
+ *
+ * Angelegt wie in `ensureRootAdmin`, aber mit einem Passwort, das niemand kennt: Die Tests melden
+ * sich mit ihren eigenen Konten an, nie mit diesem.
+ */
 async function repairOrphanedSeat(): Promise<void> {
+  const password = await hashPassword(generateToken());
+
   await db
     .transaction()
     .execute(async (transaction) => {
@@ -167,13 +186,42 @@ async function repairOrphanedSeat(): Promise<void> {
         return;
       }
 
-      await transaction
+      const reseated = await transaction
         .updateTable("user")
         .set({ isPrimordialAdmin: true })
         .where("username", "=", ROOT_ADMIN_USERNAME)
+        .returning("id")
+        .executeTakeFirst();
+
+      if (reseated !== undefined) {
+        return;
+      }
+
+      await transaction
+        .insertInto("user")
+        .values({
+          username: ROOT_ADMIN_USERNAME,
+          hashedPassword: password,
+          emailAddress: ROOT_ADMIN_EMAIL_ADDRESS,
+          platformRole: "administrator",
+          isPrimordialAdmin: true,
+          emailAddressVerifiedAt: Temporal.Now.instant().toString(),
+        })
+        .onConflict((conflict) => conflict.doNothing())
         .execute();
     })
     .catch(() => {});
+}
+
+/** Ob es das hochgefahrene Konto überhaupt gibt — in einer frischen Datenbank nicht. */
+async function bootstrappedAccountExists(): Promise<boolean> {
+  const row = await db
+    .selectFrom("user")
+    .select("id")
+    .where("username", "=", ROOT_ADMIN_USERNAME)
+    .executeTakeFirst();
+
+  return row !== undefined;
 }
 
 /**
@@ -241,6 +289,15 @@ async function onePass(
     if (who === undefined) {
       vacant++;
       sameThroughout = false;
+
+      // Gibt es das Konto gar nicht, kommt es auch nicht zurück; darauf zu warten hieße, die volle
+      // Minute für nichts zu warten. Ein mit Absicht leerer Platz hält die Sperre, und dann greift
+      // die Reparatur nicht.
+      // deno-lint-ignore no-await-in-loop -- eine Prüfung je Versuch, wie der Rest der Schleife
+      if (vacant === 1 && !await bootstrappedAccountExists()) {
+        // deno-lint-ignore no-await-in-loop -- dasselbe
+        await repairOrphanedSeat();
+      }
     } else {
       vacant = 0;
 

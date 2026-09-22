@@ -10,6 +10,9 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    # A hanging test should turn red rather than run into GitHub's six-hour limit, which is what
+    # run #51 was heading for. The jobs take a few minutes.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -68,6 +71,9 @@ jobs:
   database:
     name: Database
     runs-on: ubuntu-latest
+    # A hanging test should turn red rather than run into GitHub's six-hour limit, which is what
+    # run #51 was heading for. The jobs take a few minutes.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: database
@@ -135,6 +141,9 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    # A hanging test should turn red rather than run into GitHub's six-hour limit, which is what
+    # run #51 was heading for. The jobs take a few minutes.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
