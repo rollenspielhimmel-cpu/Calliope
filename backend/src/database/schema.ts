@@ -58,7 +58,7 @@ export type NotificationType =
   | "role_changed_in_writing_group"
   | "visibility_changed_in_writing_group";
 
-export type PlatformPermission = "prepare_publications";
+export type PlatformPermission = "prepare_publications" | "see_whole_queue";
 
 export type PlatformRole = "administrator" | "moderator";
 
@@ -525,6 +525,7 @@ export interface ProfileQuestionOption {
 }
 
 export interface Publication {
+  administrationOnly: Generated<boolean>;
   approvedAt: string | null;
   approvedBy: string | null;
   editedAt: string | null;
@@ -1202,7 +1203,10 @@ export const REPORT_TARGET_TYPES = [
 ] as const;
 export const REPORT_TARGET_TYPE_SCHEMA = z.enum(REPORT_TARGET_TYPES);
 
-export const PLATFORM_PERMISSIONS = ["prepare_publications"] as const;
+export const PLATFORM_PERMISSIONS = [
+  "prepare_publications",
+  "see_whole_queue",
+] as const;
 export const PLATFORM_PERMISSION_SCHEMA = z.enum(PLATFORM_PERMISSIONS);
 
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
@@ -1453,6 +1457,7 @@ export const PUBLICATION_SCHEMA = z.object({
   editedAt: z.iso.datetime({ offset: true }).nullable(),
   retractedBy: z.uuidv7().nullable(),
   retractedAt: z.iso.datetime({ offset: true }).nullable(),
+  administrationOnly: z.boolean(),
 });
 
 export const REPORT_SCHEMA = z.object({

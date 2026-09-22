@@ -89,6 +89,12 @@ export type BroadcastInput = {
    * freigegeben ist, geht auch dann nicht raus, wenn der Zeitpunkt verstreicht.
    */
   scheduledFor: string | null;
+  /**
+   * Nur die Administration sieht den Eintrag in Warteschlange und „Gesendete" — und wer ihn
+   * geschrieben hat. **Die Rundmail selbst versteckt das nicht**: Sie geht an ihren Empfängerkreis
+   * wie jede andere. Setzen und ändern kann das nur eine Administration; siehe `visibleTo`.
+   */
+  administrationOnly: boolean;
 };
 
 export type QueuedBroadcast = BroadcastInput & {
@@ -201,6 +207,7 @@ function rows(executor: typeof db | Transaction = db) {
       "publication.status",
       "publication.sendAsUserId",
       "publication.scheduledFor",
+      "publication.administrationOnly",
       "sender.username as sendAsUsername",
       "publication.writtenBy",
       "author.username as writtenByUsername",
@@ -249,6 +256,7 @@ function toQueued(row: {
   status: PublicationStatus;
   sendAsUserId: string | null;
   scheduledFor: string | null;
+  administrationOnly: boolean;
   sendAsUsername: string | null;
   writtenBy: string | null;
   writtenByUsername: string | null;
@@ -283,7 +291,9 @@ function toQueued(row: {
   };
 }
 
-export type SubmitRefusal = "sender_not_released";
+export type SubmitRefusal =
+  | "sender_not_released"
+  | "administration_only_is_theirs";
 
 /**
  * Schreibt eine Rundmail in die Warteschlange.
@@ -303,6 +313,12 @@ async function submit(
     return "sender_not_released";
   }
 
+  // Den Haken setzt nur eine Administration: Wer ihn sonst setzen könnte, versteckte das Eigene vor
+  // der Moderation, die es sehen soll.
+  if (input.administrationOnly && !mayAdministerPlatform(author.platformRole)) {
+    return "administration_only_is_theirs";
+  }
+
   const now = new Date().toISOString();
   const givesOwnApproval = mayAdministerPlatform(author.platformRole);
 
@@ -314,6 +330,7 @@ async function submit(
         status: givesOwnApproval ? "approved" : "awaiting_approval",
         sendAsUserId: input.sendAsUserId,
         scheduledFor: input.scheduledFor,
+        administrationOnly: input.administrationOnly,
         writtenBy: author.id,
         writtenAt: now,
         approvedBy: givesOwnApproval ? author.id : null,
@@ -562,7 +579,8 @@ export type EditRefusal =
   | "not_found"
   | "already_out"
   | "not_yours"
-  | "sender_not_released";
+  | "sender_not_released"
+  | "administration_only_is_theirs";
 
 /** Ohne Administration nur das Eigene — beim Bearbeiten wie beim Verwerfen. */
 function mayTouch(
@@ -620,6 +638,15 @@ async function edit(
     return "sender_not_released";
   }
 
+  // Den Haken ändert nur eine Administration — auch nicht zurück: Ein Mod, der sein Eigenes
+  // bearbeitet, das eine Administration verborgen hat, soll es dadurch nicht wieder sichtbar machen.
+  if (
+    input.administrationOnly !== existing.administrationOnly &&
+    !mayAdministerPlatform(editor.platformRole)
+  ) {
+    return "administration_only_is_theirs";
+  }
+
   const approves = mayAdministerPlatform(editor.platformRole);
   const now = new Date().toISOString();
 
@@ -658,6 +685,7 @@ async function applyEdit(
         approvedAt: approves ? now : null,
         sendAsUserId: input.sendAsUserId,
         scheduledFor: input.scheduledFor,
+        administrationOnly: input.administrationOnly,
         // **Neben `written_by`, nicht an dessen Stelle.** Wer eingereicht hat, bleibt stehen: Der
         // Fall, für den die Warteschlange existiert, ist der, dass jemand etwas Grenzwertiges
         // einreicht und eine Administration es entschärft — und dann müssen beide Namen dastehen.
@@ -782,8 +810,62 @@ async function selectOneOrThrow(
  *
  * Die ältesten zuerst, damit nichts unten liegen bleibt.
  */
-async function listWaiting(): Promise<QueuedBroadcast[]> {
+/**
+ * Welche Einträge diese Person in Warteschlange und „Gesendete" sieht.
+ *
+ * - **Eine Administration** sieht alles.
+ * - **Das Eigene** sieht jeder, auch wenn ihm der Absender später entzogen wurde oder eine
+ *   Administration den Haken „nur für die Administration" gesetzt hat — sonst verschwände ein
+ *   Entwurf vor der Person, die ihn geschrieben hat.
+ * - **Was nur für die Administration ist**, sieht sonst niemand, auch die Moderation nicht.
+ * - **Alles Übrige** sieht, wessen Rolle `see_whole_queue` hat (die Moderation), und sonst nur, was
+ *   unter einem der eigenen Absender läuft — über die Rolle oder persönlich. Wer denselben Absender
+ *   hat, sieht die Einträge des anderen darunter, samt Verfasser.
+ *
+ * **Im Backend, als Bedingung der Abfrage**, nicht als Filter danach: Was nicht gelesen wird, kann
+ * auch in keiner Antwort landen.
+ *
+ * Der Absender „Admin" steht auf der Veröffentlichung als null oder als das Ur-Admin-Konto und in
+ * `sender_grant` als null; der `CASE` bringt beides auf null.
+ */
+function visibleTo(user: User) {
+  if (mayAdministerPlatform(user.platformRole)) {
+    return sql<boolean>`true`;
+  }
+
+  const seesWholeQueue = user.permissions.includes("see_whole_queue");
+
+  return sql<boolean>`(
+    publication.written_by = ${user.id}
+    OR (
+      NOT publication.administration_only
+      AND (
+        ${seesWholeQueue}
+        OR EXISTS (
+          SELECT 1
+          FROM sender_grant AS grant_row
+          WHERE grant_row.sender_user_id IS NOT DISTINCT FROM (
+              CASE
+                WHEN publication.send_as_user_id IS NULL
+                  OR EXISTS (
+                    SELECT 1 FROM "user" AS sender_account
+                    WHERE sender_account.id = publication.send_as_user_id
+                      AND sender_account.is_primordial_admin
+                  )
+                THEN NULL
+                ELSE publication.send_as_user_id
+              END
+            )
+            AND (grant_row.user_id = ${user.id} OR grant_row.role = ${user.platformRole})
+        )
+      )
+    )
+  )`;
+}
+
+async function listWaiting(viewer: User): Promise<QueuedBroadcast[]> {
   const found = await rows()
+    .where(visibleTo(viewer))
     .where("publication.status", "in", ["awaiting_approval", "approved"])
     .orderBy("publication.writtenAt", "asc")
     .execute();
@@ -792,8 +874,9 @@ async function listWaiting(): Promise<QueuedBroadcast[]> {
 }
 
 /** Was draußen ist, das Neueste zuerst. */
-async function listReleased(): Promise<QueuedBroadcast[]> {
+async function listReleased(viewer: User): Promise<QueuedBroadcast[]> {
   const found = await rows()
+    .where(visibleTo(viewer))
     .where("publication.status", "=", "released")
     .orderBy("publication.releasedAt", "desc")
     .execute();

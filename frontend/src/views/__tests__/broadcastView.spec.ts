@@ -693,3 +693,49 @@ describe('BroadcastView, der Absender ohne „Admin"', () => {
     })
   })
 })
+
+/**
+ * „Nur für die Administration sichtbar": setzen kann ihn nur eine Administration, und der Satz
+ * daneben sagt, dass er die Vorbereitung versteckt und nicht die Rundmail.
+ */
+describe('BroadcastView, nur für die Administration', () => {
+  afterEach(() => {
+    viewer.platformRole = 'administrator'
+  })
+
+  it('bietet einer Administration den Haken an und schickt ihn mit', async () => {
+    submitBroadcast.mockReset()
+    submitBroadcast.mockResolvedValue({ status: 201, data: entry({ status: 'released' }) })
+    queue.value.data = []
+    const wrapper = broadcastView()
+
+    expect(wrapper.text()).toContain('Die Rundmail selbst versteckt es nicht')
+    await checkbox(wrapper, 'Nur für die Administration sichtbar').trigger('click')
+    await checkbox(wrapper, 'Moderation').trigger('click')
+    await wrapper.find('#broadcastSubject').setValue('Ein Betreff')
+    await wrapper.find('#broadcastBody').setValue('Ein Text.')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    await buttonsLabelled(wrapper, 'Jetzt senden')[0]?.trigger('click')
+    await flushPromises()
+
+    expect(submitBroadcast).toHaveBeenCalledWith({
+      data: expect.objectContaining({ administrationOnly: true }),
+    })
+  })
+
+  it('bietet ihn niemandem ohne Administration an', () => {
+    viewer.platformRole = 'moderator'
+    queue.value.data = []
+
+    expect(broadcastView().text()).not.toContain('Nur für die Administration sichtbar')
+  })
+
+  it('markiert einen verborgenen Eintrag in der Warteschlange', async () => {
+    queue.value.data = [entry({ administrationOnly: true })]
+    const wrapper = broadcastView()
+    await openQueue(wrapper)
+
+    expect(wrapper.text()).toContain('Nur für die Administration sichtbar')
+  })
+})

@@ -33,7 +33,9 @@ type Permission = ListRolePermissions200PermissionsItem
 /** In Worten, die jemand beim Vergeben versteht, nicht im Namen der Spalte. */
 const PERMISSION_LABELS: Record<Permission, string> = {
   prepare_publications:
-    'Offizielle Threads und Rundmails vorbereiten — schreiben, einreichen, die Warteschlange sehen. Freigeben bleibt bei der Administration.',
+    'Offizielle Threads und Rundmails vorbereiten — schreiben und einreichen, unter den Absendern, die die Rolle bekommen hat. Freigeben bleibt bei der Administration.',
+  see_whole_queue:
+    'Die ganze Warteschlange und „Gesendete“ sehen — auch was andere unter anderen Absendern vorbereiten. Ohne das nur, was unter den eigenen Absendern läuft. Was nur für die Administration ist, bleibt verborgen.',
 }
 
 const { data } = useListRolePermissions()

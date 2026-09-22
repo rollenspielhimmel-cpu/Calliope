@@ -46768,6 +46768,10 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
+                      "administrationOnly": {
+                        "type": "boolean",
+                        "default": false
+                      },
                       "publicationId": { "type": "string", "format": "uuid" },
                       "broadcastId": { "type": "string", "format": "uuid" },
                       "status": {
@@ -47065,7 +47069,8 @@
                   "scheduledFor": {
                     "type": ["string", "null"],
                     "format": "date-time"
-                  }
+                  },
+                  "administrationOnly": { "type": "boolean", "default": false }
                 },
                 "required": [
                   "subject",
@@ -47126,6 +47131,10 @@
                     "scheduledFor": {
                       "type": ["string", "null"],
                       "format": "date-time"
+                    },
+                    "administrationOnly": {
+                      "type": "boolean",
+                      "default": false
                     },
                     "publicationId": { "type": "string", "format": "uuid" },
                     "broadcastId": { "type": "string", "format": "uuid" },
@@ -47506,6 +47515,10 @@
                       "scheduledFor": {
                         "type": ["string", "null"],
                         "format": "date-time"
+                      },
+                      "administrationOnly": {
+                        "type": "boolean",
+                        "default": false
                       },
                       "publicationId": { "type": "string", "format": "uuid" },
                       "broadcastId": { "type": "string", "format": "uuid" },
@@ -48079,7 +48092,8 @@
                   "scheduledFor": {
                     "type": ["string", "null"],
                     "format": "date-time"
-                  }
+                  },
+                  "administrationOnly": { "type": "boolean", "default": false }
                 },
                 "required": [
                   "subject",
@@ -48140,6 +48154,10 @@
                     "scheduledFor": {
                       "type": ["string", "null"],
                       "format": "date-time"
+                    },
+                    "administrationOnly": {
+                      "type": "boolean",
+                      "default": false
                     },
                     "publicationId": { "type": "string", "format": "uuid" },
                     "broadcastId": { "type": "string", "format": "uuid" },
@@ -49399,7 +49417,7 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": ["prepare_publications"]
+                        "enum": ["prepare_publications", "see_whole_queue"]
                       }
                     },
                     "granted": {
@@ -49410,7 +49428,7 @@
                           "role": { "type": "string", "enum": ["moderator"] },
                           "permission": {
                             "type": "string",
-                            "enum": ["prepare_publications"]
+                            "enum": ["prepare_publications", "see_whole_queue"]
                           },
                           "grantedByUsername": { "type": ["string", "null"] },
                           "grantedAt": {
@@ -49606,7 +49624,10 @@
             "in": "path"
           },
           {
-            "schema": { "type": "string", "enum": ["prepare_publications"] },
+            "schema": {
+              "type": "string",
+              "enum": ["prepare_publications", "see_whole_queue"]
+            },
             "required": true,
             "name": "permission",
             "in": "path"
@@ -49875,7 +49896,10 @@
             "in": "path"
           },
           {
-            "schema": { "type": "string", "enum": ["prepare_publications"] },
+            "schema": {
+              "type": "string",
+              "enum": ["prepare_publications", "see_whole_queue"]
+            },
             "required": true,
             "name": "permission",
             "in": "path"

@@ -81,7 +81,7 @@ Deno.test("an administrator reads what each role may, and the moderators may pre
 
   // Keine Zeile für Administrationen, und auch keine Rolle, die man ihnen geben könnte.
   assertEquals(list.roles, ["moderator"]);
-  assertEquals(list.permissions, ["prepare_publications"]);
+  assertEquals(list.permissions, ["prepare_publications", "see_whole_queue"]);
   assertEquals(
     grantOf(list)?.role,
     "moderator",

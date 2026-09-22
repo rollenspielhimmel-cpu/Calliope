@@ -178,6 +178,13 @@ watch(mayPublishInArchive, (mayPublish) => {
 const includeUnverified = ref<boolean>(false)
 
 /**
+ * Nur die Administration sieht den Eintrag in Warteschlange und „Gesendete“. Das Formular zeigt den
+ * Haken nur einer Administration; wer ohne sie bearbeitet, schickt den gespeicherten Wert zurück,
+ * den das Backend dann unverändert lässt.
+ */
+const administrationOnly = ref<boolean>(false)
+
+/**
  * Die drei Wege, einzeln zu haben.
  *
  * **Postfach und Archiv sind voreingestellt, die E-Mail nicht.** Eine Rundmail ist eine Mitteilung
@@ -393,6 +400,7 @@ function startEditing(entry: ListBroadcastQueue200Item) {
   // Nur die Kennungen kommen zurueck; die Namen holt der Waehler beim Anzeigen nach.
   namedRecipients.value = [...entry.namedRecipients]
   includeUnverified.value = entry.includeUnverified
+  administrationOnly.value = entry.administrationOnly ?? false
   deliverToInbox.value = entry.deliverToInbox
   deliverByEmail.value = entry.deliverByEmail
   publishInArchive.value = entry.publishInArchive
@@ -418,6 +426,7 @@ function resetForm() {
   chosen.value = []
   namedRecipients.value = []
   includeUnverified.value = false
+  administrationOnly.value = false
   deliverToInbox.value = true
   deliverByEmail.value = false
   publishInArchive.value = false
@@ -442,6 +451,7 @@ async function submit() {
         audienceRoles: chosen.value,
         memberIds: memberIds.value,
         includeUnverified: includeUnverified.value,
+        administrationOnly: administrationOnly.value,
         deliverToInbox: deliverToInbox.value,
         deliverByEmail: deliverByEmail.value,
         publishInArchive: publishInArchive.value,
@@ -571,6 +581,7 @@ async function saveEdit(publicationId: string) {
         audienceRoles: chosen.value,
         memberIds: memberIds.value,
         includeUnverified: includeUnverified.value,
+        administrationOnly: administrationOnly.value,
         deliverToInbox: deliverToInbox.value,
         deliverByEmail: deliverByEmail.value,
         publishInArchive: publishInArchive.value,
@@ -1002,6 +1013,23 @@ function audienceOf(entry: {
               </p>
             </Field>
 
+            <!-- Nur die Administration setzt den Haken. Der Satz darunter sagt, was er versteckt und
+                 was nicht — sonst hielte ihn jemand für eine Einschränkung des Empfängerkreises. -->
+            <div v-if="isAdministrator" class="flex flex-col gap-1">
+              <label class="flex min-h-11 items-center gap-2.5 text-row text-ink-2 md:min-h-0">
+                <Checkbox
+                  :model-value="administrationOnly"
+                  @update:model-value="(on) => (administrationOnly = on === true)"
+                />
+                Nur für die Administration sichtbar
+              </label>
+              <p class="max-w-[62ch] text-control text-ink-5">
+                Versteckt die Vorbereitung in Warteschlange und „Gesendete“ vor allen ohne
+                Administration, auch vor der Moderation. Die Rundmail selbst versteckt es nicht: Sie
+                geht an den gewählten Empfängerkreis wie jede andere.
+              </p>
+            </div>
+
             <Field>
               <FieldLabel for="broadcastSubject">Betreff</FieldLabel>
               <Input
@@ -1182,6 +1210,9 @@ function audienceOf(entry: {
             class="border-b border-line-2 py-4"
           >
             <p class="text-row text-ink-2">{{ entry.subject }}</p>
+            <p v-if="entry.administrationOnly" class="mt-0.5 text-[12px] text-ink-5">
+              Nur für die Administration sichtbar
+            </p>
             <p class="mt-1 max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-4">
               {{ entry.body }}
             </p>
@@ -1263,6 +1294,9 @@ function audienceOf(entry: {
               class="border-b border-line-2 py-4"
             >
               <p class="text-row text-ink-2">{{ entry.subject }}</p>
+              <p v-if="entry.administrationOnly" class="mt-0.5 text-[12px] text-ink-5">
+                Nur für die Administration sichtbar
+              </p>
               <p class="mt-1 max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-4">
                 {{ entry.body }}
               </p>
@@ -1345,6 +1379,9 @@ function audienceOf(entry: {
             class="border-b border-line-2 py-4"
           >
             <p class="text-row text-ink-2">{{ entry.subject }}</p>
+            <p v-if="entry.administrationOnly" class="mt-0.5 text-[12px] text-ink-5">
+              Nur für die Administration sichtbar
+            </p>
             <p class="mt-1 max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-4">
               {{ entry.body }}
             </p>

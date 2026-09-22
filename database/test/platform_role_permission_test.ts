@@ -20,10 +20,11 @@ Deno.test("the migration lets moderators prepare publications", async () => {
     `SELECT role, permission FROM public.platform_role_permission ORDER BY role, permission`,
   )).rows;
 
-  assertEquals(rows, [{
-    role: "moderator",
-    permission: "prepare_publications",
-  }]);
+  assertEquals(rows, [
+    { role: "moderator", permission: "prepare_publications" },
+    // Seit `moderation_sieht_die_warteschlange`: wie bisher alles, jetzt als Berechtigung.
+    { role: "moderator", permission: "see_whole_queue" },
+  ]);
 });
 
 Deno.test("administrators cannot be given a row", async () => {

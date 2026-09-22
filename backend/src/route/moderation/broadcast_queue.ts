@@ -22,8 +22,10 @@ import {
 /**
  * Die Warteschlange der Rundmails: einreichen, freigeben, verwerfen — und nachsehen, was raus ist.
  *
- * Alles hier ist der Administration vorbehalten; die Moderation sieht die Rundmail gar nicht. Wer
- * freigeben darf und warum nicht die eigene Einreichung, steht in `broadcast_queue_service.ts`.
+ * Vorbereiten darf, wer `prepare_publications` hat — eine Rolle, oder eine Person mit einem
+ * persönlichen Absender. Freigeben nur die Administration. **Was jemand in den Listen sieht**, hängt
+ * davon ab, wer er ist; das entscheidet `visibleTo` in `broadcast_queue_service.ts`, zusammen mit
+ * allem Übrigen zur Freigabe.
  */
 
 const BROADCAST_BODY = z.object({
@@ -64,6 +66,13 @@ const BROADCAST_BODY = z.object({
    * bedacht werden muss.
    */
   scheduledFor: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * Nur die Administration sieht den Eintrag in Warteschlange und „Gesendete". Versteckt die
+   * Vorbereitung, nicht die Rundmail. Setzen und ändern darf das nur eine Administration; wer es
+   * nicht darf und nichts schickt, bekommt `false` — oder beim Bearbeiten den gespeicherten Wert
+   * zurück, den die Oberfläche mitschickt.
+   */
+  administrationOnly: z.boolean().default(false),
 })
   .refine(
     (broadcast) =>
@@ -128,10 +137,10 @@ const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   sendAsUsername: z.string().nullable(),
   /**
    * Intern: wer sie geschrieben und wer sie freigegeben hat. Beide echten Namen, auch wenn außen
-   * jemand anderes draufsteht — das ist der Sinn der Sache, und die Liste ist ohnehin nur für die
-   * Administration sichtbar.
+   * jemand anderes draufsteht — das ist der Sinn der Sache. Sehen darf das nur, wer den Eintrag
+   * überhaupt sieht (`visibleTo`). Die Kennung daneben, weil man ohne Administration nur das Eigene
+   * bearbeitet und verwirft.
    */
-  /** Die Kennung neben dem Namen: Ohne Administration bearbeitet und verwirft man nur das Eigene. */
   writtenBy: z.uuidv7().nullable(),
   writtenByUsername: z.string().nullable(),
   writtenAt: z.iso.datetime({ offset: true }),
@@ -177,6 +186,9 @@ const NOT_A_SENDER =
 const NOT_YOURS =
   "Diese Rundmail hat jemand anderes eingereicht. Ändern oder verwerfen kann sie die Administration.";
 
+const ADMINISTRATION_ONLY =
+  "Ob nur die Administration einen Eintrag sieht, legt die Administration fest.";
+
 export default new OpenAPIHono()
   .openapi(
     createRoute({
@@ -198,7 +210,10 @@ export default new OpenAPIHono()
       },
     }),
     async (c) =>
-      c.json(await BroadcastQueueService.listWaiting(), STATUS_CODE.OK),
+      c.json(
+        await BroadcastQueueService.listWaiting(c.get("user")),
+        STATUS_CODE.OK,
+      ),
   )
   .openapi(
     createRoute({
@@ -220,7 +235,10 @@ export default new OpenAPIHono()
       },
     }),
     async (c) =>
-      c.json(await BroadcastQueueService.listReleased(), STATUS_CODE.OK),
+      c.json(
+        await BroadcastQueueService.listReleased(c.get("user")),
+        STATUS_CODE.OK,
+      ),
   )
   .openapi(
     createRoute({
@@ -255,9 +273,13 @@ export default new OpenAPIHono()
         c.req.valid("json"),
       );
 
-      return written === "sender_not_released"
-        ? c.json({ error: NOT_A_SENDER }, STATUS_CODE.Forbidden)
-        : c.json(written, STATUS_CODE.Created);
+      if (written === "sender_not_released") {
+        return c.json({ error: NOT_A_SENDER }, STATUS_CODE.Forbidden);
+      }
+      if (written === "administration_only_is_theirs") {
+        return c.json({ error: ADMINISTRATION_ONLY }, STATUS_CODE.Forbidden);
+      }
+      return c.json(written, STATUS_CODE.Created);
     },
   )
   .openapi(
@@ -373,6 +395,8 @@ export default new OpenAPIHono()
           return c.json({ error: NOT_A_SENDER }, STATUS_CODE.Forbidden);
         case "not_yours":
           return c.json({ error: NOT_YOURS }, STATUS_CODE.Forbidden);
+        case "administration_only_is_theirs":
+          return c.json({ error: ADMINISTRATION_ONLY }, STATUS_CODE.Forbidden);
         default:
           return assertUnreachable(edited);
       }
