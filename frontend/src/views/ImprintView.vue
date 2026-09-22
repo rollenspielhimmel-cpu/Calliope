@@ -2,6 +2,13 @@
 /**
  * Lays out what `lib/imprint.ts` was configured with. German whatever the interface becomes: the
  * language of a legal notice is itself legally meaningful.
+ *
+ * **Bewusste Abweichung von upstream — nicht angleichen.** Diese Seite nennt den Betreiber von
+ * Rollenspielhimmel; die Fassung bei Calliope nennt dessen eigenen. Beide sind richtig, jede für
+ * ihre Instanz. Wer beim nächsten Abgleich die Unterschiede sieht, gleicht sie nicht an: Ein
+ * Impressum, das jemand anderen als den tatsächlichen Betreiber nennt, ist falsch, und zwar im
+ * rechtlichen Sinn. Verbesserungen am Rahmen (Gliederung, Rechtsgrundlagen) darf man übernehmen,
+ * die Angaben nicht.
  */
 import { APP_NAME } from '@/lib/branding'
 import { WEBSITE_OPERATOR, WEBSITE_OPERATOR_ADDRESS } from '@/lib/websiteOperator'

@@ -2,6 +2,9 @@
 /**
  * What this deployment actually does with what people give it.
  *
+ * **Bewusste Abweichung von upstream — nicht angleichen.** Siehe unten: Der Text beschreibt
+ * Rollenspielhimmel, seiner beschreibt Calliope.
+ *
  * **Upstream's version of this page is a general template** — the standard German one, thorough on
  * rights and law and silent on the software. It never mentions an account, a group, a post, a chat
  * or a report, because a template cannot know them. This fork keeps upstream's shell, its route and

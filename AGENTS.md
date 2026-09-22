@@ -49,6 +49,17 @@ Each project carries its own conventions; read the one you are working in:
   Zahl der Tests; springt sie, fehlt etwas.
 - Run `validate:check` in whichever project you changed before considering anything done.
 
+## Bewusste Abweichungen von upstream
+
+Dieser Fork folgt upstream, wo es geht — mit **einer festen Ausnahme: Impressum und
+Datenschutzerklärung** (`frontend/src/views/ImprintView.vue`,
+`frontend/src/views/PrivacyPolicyView.vue`). Sie beschreiben Rollenspielhimmel, upstream
+beschreibt Calliope. Beim Abgleich wird der Abstand also **nicht** kleiner gemacht: Eine
+Datenschutzerklärung taugt nur, wenn sie für die Instanz stimmt, die sie ausliefert, und ein
+Impressum, das den falschen Betreiber nennt, ist rechtlich falsch. Am Rahmen darf man lernen, an
+den Angaben nicht. Beide Dateien tragen denselben Satz oben: „Bewusste Abweichung von upstream —
+nicht angleichen."
+
 ## The issue tracker
 
 Work is tracked as GitHub issues, and **a milestone means accepted**: `status: proposed` and a
