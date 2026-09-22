@@ -69,6 +69,23 @@ export const GROUP_RESPONSE = WRITING_GROUP_SCHEMA
  */
 const IN_GROUP = { writingGroupId: z.uuidv7() };
 
+/**
+ * **Wer einen Beitrag oder Thread offiziell gemacht hat, geht nicht hinaus** — beim Einreichen ist
+ * das der Schreiber selbst, und genau dessen Name soll außen nie stehen. Was hinausgeht, ist der
+ * angezeigte Autor in `createdBy` (siehe `shown_author.ts`) und dieses eine Ja oder Nein. Ob ein
+ * Thread noch auf sein Erscheinen wartet, sieht ohnehin niemand, dem er gezeigt wird.
+ */
+const OFFICIAL_INTERNALS = {
+  shownAsUserId: true,
+  shownAsSetBy: true,
+  shownAsSetAt: true,
+} as const;
+
+const IS_OFFICIAL = {
+  /** Unter einem Absender der Plattform veröffentlicht. Ändern darf ihn nur die Administration. */
+  isOfficial: z.boolean(),
+};
+
 export const THREAD_RESPONSE = WRITING_THREAD_SCHEMA
   // `publicationId` bleibt drinnen: Ob ein Thread aus einer Veröffentlichung entstanden ist, ist
   // Buchführung des Teams und keine Angabe, aus der eine Lesende etwas machen kann. Sichtbar wird
@@ -80,12 +97,16 @@ export const THREAD_RESPONSE = WRITING_THREAD_SCHEMA
     memberPermission: true,
     publicationId: true,
     isBroadcastArchive: true,
+    awaitingRelease: true,
+    ...OFFICIAL_INTERNALS,
   })
   .extend(IN_GROUP)
   .extend(CREATED_BY_USERNAME)
   .extend(OWN_FAVOURITE);
 
-export const POST_RESPONSE = WRITING_POST_SCHEMA.extend(CREATED_BY_USERNAME)
+export const POST_RESPONSE = WRITING_POST_SCHEMA.omit(OFFICIAL_INTERNALS)
+  .extend(CREATED_BY_USERNAME)
+  .extend(IS_OFFICIAL)
   .extend(OWN_FAVOURITE)
   .extend({
     // The generated column is `z.unknown()`, which would reach the client as `unknown`.
@@ -136,8 +157,11 @@ export const FORUM_THREAD_RESPONSE = WRITING_THREAD_SCHEMA
     writingGroupId: true,
     publicationId: true,
     isBroadcastArchive: true,
+    awaitingRelease: true,
+    ...OFFICIAL_INTERNALS,
   })
   .extend(CREATED_BY_USERNAME)
+  .extend(IS_OFFICIAL)
   .extend(OWN_FAVOURITE)
   .extend(FORUM_PERMISSION)
   .extend({ memberPermission: FORUM_PERMISSION_SCHEMA });

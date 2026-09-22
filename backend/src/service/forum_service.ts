@@ -1,3 +1,8 @@
+import {
+  isOfficial,
+  shownAuthorId,
+  shownAuthorName,
+} from "@/src/service/shown_author.ts";
 import type { ExpressionBuilder, NotNull } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
 import type { DB, ForumPermission } from "@/src/database/schema.ts";
@@ -49,11 +54,14 @@ export type ForumThread = Permitted & {
   memberPermission: ForumPermission;
   folderId: string | null;
   title: string;
+  /** Wer außen als Autor steht — bei einem offiziellen Thread der Absender; siehe `shown_author.ts`. */
   createdBy: string | null;
   createdByUsername: string | null;
   createdAt: string;
   lastActivityAt: string;
   isFavourite: boolean;
+  /** Unter einem Absender der Plattform veröffentlicht. */
+  isOfficial: boolean;
 };
 
 export type ForumPageSummary = Permitted & {
@@ -192,20 +200,25 @@ async function listFolders(user: User): Promise<ForumFolder[]> {
 function forumThreads(user: User) {
   return db
     .selectFrom("writingThread")
-    .leftJoin("user", "user.id", "writingThread.createdBy")
     .leftJoin("writingFolder", "writingFolder.id", "writingThread.folderId")
     .select([
       "writingThread.id",
       "writingThread.folderId",
       "writingThread.title",
-      "writingThread.createdBy",
       "writingThread.createdAt",
       "writingThread.lastActivityAt",
       "writingThread.memberPermission",
       "writingFolder.effectiveMemberPermission as folderPermission",
-      "user.username as createdByUsername",
+      shownAuthorId("writing_thread").as("createdBy"),
+      shownAuthorName("writing_thread").as("createdByUsername"),
+      isOfficial("writing_thread").as("isOfficial"),
     ])
     .where("writingThread.writingGroupId", "is", null)
+    // **Ein offizieller Thread vor seinem Termin steht für niemanden im Forum**, auch nicht für
+    // das Team: Er ist in der Warteschlange zu sehen, dort, wo er freigegeben wird. Weil jede
+    // Forum-Ansicht durch diese Abfrage geht — Baum, Einzelansicht, Suche und jede Route, die
+    // einen Thread erst holt —, genügt es, es hier zu sagen.
+    .where("writingThread.awaitingRelease", "=", false)
     .$narrowType<{ memberPermission: NotNull }>()
     .$if(!isOperator(user), (builder) => builder.where(leafNotHidden));
 }

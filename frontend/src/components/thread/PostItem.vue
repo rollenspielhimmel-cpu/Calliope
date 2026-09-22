@@ -57,12 +57,19 @@ const mayReport = computed<boolean>(
  * first: a member demoted to reader may not touch even their own writing, which is what makes
  * demotion a real move against an account somebody else has taken over.
  */
-const mayModify = computed<boolean>(
-  () =>
+const mayModify = computed<boolean>(() => {
+  // **Ein offizieller Beitrag gehört der Administration.** `createdBy` ist dort der Absender,
+  // nicht der Schreiber; wer als dieses Konto angemeldet ist, ist deshalb nicht sein Autor.
+  if (props.post.isOfficial) {
+    return props.mayAdminister === true
+  }
+
+  return (
     props.mayWrite === true &&
     (props.mayAdminister === true ||
-      (props.post.createdBy !== null && props.post.createdBy === props.currentUserId)),
-)
+      (props.post.createdBy !== null && props.post.createdBy === props.currentUserId))
+  )
+})
 
 /**
  * Edited where it sits rather than in the composer: that one is bound to the member's draft,

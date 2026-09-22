@@ -788,11 +788,15 @@ export interface WritingPost {
   editedBy: string | null;
   id: Generated<string>;
   isDraft: boolean;
+  shownAsSetAt: string | null;
+  shownAsSetBy: string | null;
+  shownAsUserId: string | null;
   text: string;
   writingThreadId: string;
 }
 
 export interface WritingThread {
+  awaitingRelease: Generated<boolean>;
   createdAt: Generated<string>;
   createdBy: string | null;
   folderId: string | null;
@@ -801,6 +805,9 @@ export interface WritingThread {
   lastActivityAt: Generated<string>;
   memberPermission: ForumPermission | null;
   publicationId: string | null;
+  shownAsSetAt: string | null;
+  shownAsSetBy: string | null;
+  shownAsUserId: string | null;
   title: string;
   writingGroupId: string | null;
 }
@@ -1708,6 +1715,9 @@ export const WRITING_POST_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   editedAt: z.iso.datetime({ offset: true }).nullable(),
   editedBy: z.uuidv7().nullable(),
+  shownAsUserId: z.uuidv7().nullable(),
+  shownAsSetBy: z.uuidv7().nullable(),
+  shownAsSetAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export const WRITING_THREAD_SCHEMA = z.object({
@@ -1721,4 +1731,8 @@ export const WRITING_THREAD_SCHEMA = z.object({
   memberPermission: FORUM_PERMISSION_SCHEMA.nullable(),
   publicationId: z.uuidv7().nullable(),
   isBroadcastArchive: z.boolean(),
+  awaitingRelease: z.boolean(),
+  shownAsUserId: z.uuidv7().nullable(),
+  shownAsSetBy: z.uuidv7().nullable(),
+  shownAsSetAt: z.iso.datetime({ offset: true }).nullable(),
 });

@@ -21,6 +21,11 @@ const broadcastQueue: { value: { status: number; data: unknown[] } } = {
   value: { status: 200, data: [] },
 }
 
+/** Offizielle Threads warten in derselben Warteschlange; ihre Zahl zählt mit. */
+const officialQueue: { value: { status: number; data: unknown[] } } = {
+  value: { status: 200, data: [] },
+}
+
 /** Und die dritte: Gespräche im Postfach, auf die noch niemand geantwortet hat. */
 const adminInbox: { value: { status: number; data: { results: unknown[] } } } = {
   value: { status: 200, data: { results: [] } },
@@ -35,6 +40,7 @@ vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListBroadcastQueue: () => ({ data: broadcastQueue }),
   useListAdminInbox: () => ({ data: adminInbox }),
+  useListOfficialThreadQueue: () => ({ data: officialQueue }),
 }))
 
 // Spread rather than replaced: `lib/api/queryClient.ts` imports `getGetCurrentUserQueryKey` from
@@ -63,6 +69,7 @@ beforeEach(() => {
     data: { platformRole: 'administrator', mayPreparePublications: true },
   }
   broadcastQueue.value = { status: 200, data: [] }
+  officialQueue.value = { status: 200, data: [] }
   adminInbox.value = { status: 200, data: { results: [] } }
 })
 
@@ -153,6 +160,17 @@ describe('Warteschlange der Rundmails', () => {
    * Sie wartet auf die Uhr, nicht auf einen Menschen, und eine rote Zahl, die niemandes Aufgabe
    * meint, ist genau die Sorte Zahl, die man nach einer Woche nicht mehr liest.
    */
+  /** Offizielle Threads warten in derselben Warteschlange auf dieselbe Freigabe. */
+  it('zählt wartende offizielle Threads mit', () => {
+    broadcastQueue.value = { status: 200, data: [{ status: 'awaiting_approval' }] }
+    officialQueue.value = {
+      status: 200,
+      data: [{ status: 'awaiting_approval' }, { status: 'approved' }],
+    }
+
+    expect(moderationView().text()).toContain('2 offen')
+  })
+
   it('zählt Freigegebenes nicht mit, obwohl es in derselben Liste steht', () => {
     broadcastQueue.value = {
       status: 200,

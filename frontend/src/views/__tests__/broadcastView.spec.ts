@@ -62,18 +62,20 @@ const NAMES_ONLY = entry({
 const queue = { value: { status: 200, data: [NAMES_ONLY] } }
 
 // Gehoben, weil `vi.mock` vor allem anderen läuft und die Attrappen sonst noch nicht gäbe.
-const { sendTest, submitBroadcast, retract, released, viewer, senderList } = vi.hoisted(() => ({
-  senderList: { value: [] as Array<{ id: string; username: string; isPermanent: boolean }> },
-  submitBroadcast: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  retract: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  released: { value: { status: 200, data: [] as unknown[] } },
-  viewer: {
-    isPrimordialAdmin: false,
-    platformRole: 'administrator',
-    id: '01900000-0000-7000-8000-0000000000aa',
-  },
-}))
+const { sendTest, submitBroadcast, retract, released, viewer, senderList, officialQueue } =
+  vi.hoisted(() => ({
+    officialQueue: { value: [] as Array<{ status: string }> },
+    senderList: { value: [] as Array<{ id: string; username: string; isPermanent: boolean }> },
+    submitBroadcast: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    retract: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    released: { value: { status: 200, data: [] as unknown[] } },
+    viewer: {
+      isPrimordialAdmin: false,
+      platformRole: 'administrator',
+      id: '01900000-0000-7000-8000-0000000000aa',
+    },
+  }))
 
 // Wer angemeldet ist. Voreingestellt eine Administration; die Mod-Tests stellen es um und zurück.
 vi.mock('@/api/auth/auth', async (importOriginal) => ({
@@ -97,6 +99,9 @@ vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   useListBroadcastQueue: () => ({ data: queue }),
   useListReleasedBroadcasts: () => ({ data: released }),
   useListBroadcastSenders: () => ({ data: { value: { status: 200, data: senderList.value } } }),
+  useListOfficialThreadQueue: () => ({
+    data: { value: { status: 200, data: officialQueue.value } },
+  }),
   useCountBroadcastRecipients: () => ({ data: { value: undefined }, isFetching: false }),
   useSubmitBroadcast: () => ({ mutateAsync: submitBroadcast, isPending: false }),
   useEditBroadcast: () => ({
@@ -124,6 +129,8 @@ function broadcastView() {
         AppLayout: { template: '<div><slot /></div>' },
         // Der Namenswähler fragt den Server; die Namen kommen hier aus dem Eintrag.
         UserPicker: true,
+        // Die Liste der offiziellen Threads hat ihre eigene Datei; hier zählt nur ihre Zahl am Reiter.
+        OfficialThreadQueue: true,
       },
     },
   })

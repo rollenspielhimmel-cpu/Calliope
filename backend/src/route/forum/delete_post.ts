@@ -1,3 +1,4 @@
+import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { FORUM_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
@@ -65,12 +66,18 @@ export default new OpenAPIHono().openapi(
       return c.json({ error: "Post not found" }, STATUS_CODE.NotFound);
     }
 
-    if (
-      !mayActInForum(user, thread.effectiveMemberPermission, "post:delete", {
+    // **Ein offizieller Beitrag gehört der Administration**, nach der Veröffentlichung auch nicht mehr
+    // dem, der ihn geschrieben hat: Eine freigegebene Aussage darf sich nicht unbemerkt ändern.
+    // Vor der Autorenprüfung und statt ihrer — `post.createdBy` ist hier der angezeigte Absender,
+    // und wer sich als dieses Konto anmeldete, gälte sonst als Autor.
+    const mayTouch = post.isOfficial
+      ? mayAdministerPlatform(user.platformRole)
+      : mayActInForum(user, thread.effectiveMemberPermission, "post:delete", {
         createdBy: post.createdBy,
         userId: user.id,
-      })
-    ) {
+      });
+
+    if (!mayTouch) {
       return c.json(
         { error: "You cannot remove this post" },
         STATUS_CODE.Forbidden,

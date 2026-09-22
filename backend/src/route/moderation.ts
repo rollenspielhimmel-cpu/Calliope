@@ -18,6 +18,7 @@ import testBroadcast from "./moderation/test_broadcast.ts";
 import retractBroadcast from "./moderation/retract_broadcast.ts";
 import rolePermissions from "./moderation/role_permissions.ts";
 import senderGrants from "./moderation/sender_grants.ts";
+import officialThreads from "./moderation/official_threads.ts";
 import adminInbox from "./moderation/admin_inbox.ts";
 
 /**
@@ -47,6 +48,7 @@ export default new OpenAPIHono()
   .route("/", retractBroadcast)
   .route("/", rolePermissions)
   .route("/", senderGrants)
+  .route("/", officialThreads)
   // Lesbar für die ganze Moderation, anders als der Rest des Rundmail-Bereichs — die Route sagt es
   // selbst über ihre Middleware.
   .route("/", adminInbox)

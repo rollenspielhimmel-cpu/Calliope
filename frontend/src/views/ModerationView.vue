@@ -18,7 +18,11 @@ import { computed } from 'vue'
 import type { Component } from 'vue'
 import { useGetCurrentUser } from '@/api/auth/auth'
 import { useListReports } from '@/api/reports/reports'
-import { useListAdminInbox, useListBroadcastQueue } from '@/api/moderation/moderation'
+import {
+  useListAdminInbox,
+  useListBroadcastQueue,
+  useListOfficialThreadQueue,
+} from '@/api/moderation/moderation'
 import { GetCurrentUser200PlatformRole } from '@/api/models'
 import type { ListReportsBody } from '@/api/models'
 import { formatCount } from '@/lib/format/formatNumber'
@@ -91,11 +95,17 @@ const openReportCount = computed<number>(() =>
  */
 const { data: queue } = useListBroadcastQueue()
 
+const { data: officialQueue } = useListOfficialThreadQueue()
+
 const waitingBroadcasts = computed<number>(() =>
   queue.value?.status === 200 && isAdministrator.value
     ? // Nur die, die auf jemanden warten. Was freigegeben ist und auf die Uhr wartet, steht in
       // derselben Liste, ist aber niemandes Aufgabe mehr.
-      queue.value.data.filter((entry) => entry.status === 'awaiting_approval').length
+      queue.value.data.filter((entry) => entry.status === 'awaiting_approval').length +
+      // Offizielle Threads warten in derselben Warteschlange auf dieselbe Freigabe.
+      (officialQueue.value?.status === 200
+        ? officialQueue.value.data.filter((entry) => entry.status === 'awaiting_approval').length
+        : 0)
     : 0,
 )
 
@@ -206,8 +216,9 @@ const SECTIONS: Section[] = [
         waiting: waitingConversations,
       },
       {
-        title: 'Rundmail',
-        description: 'Eine Nachricht an alle Mitglieder oder an eine Teilmenge von ihnen.',
+        title: 'Rundmails und offizielle Threads',
+        description:
+          'Eine Nachricht an alle Mitglieder oder an eine Teilmenge von ihnen — oder ein Thema im Forum, unter einem Absender der Plattform.',
         icon: Megaphone,
         to: { name: 'moderationBroadcast' },
         only: 'preparePublications',

@@ -68,6 +68,15 @@ const currentUserId = computed<string | undefined>(() =>
   userData.value?.status === 200 ? userData.value.data.id : undefined,
 )
 
+/**
+ * Ob die Administration hier ist: Einen offiziellen Beitrag ändert und löscht nur sie, auch nach
+ * der Veröffentlichung — nicht der, der ihn geschrieben hat, und nicht, wer als der Absender
+ * angemeldet ist. Die API prüft das selbst; das hier bietet nur an, was sie annimmt.
+ */
+const isAdministrator = computed<boolean>(
+  () => userData.value?.status === 200 && userData.value.data.platformRole === 'administrator',
+)
+
 /** A member's action rather than moderation, so it waits for neither #62 nor slice 7. */
 const reportedPost = ref<ListForumPosts200ResultsItem | undefined>(undefined)
 const reportingPost = computed<boolean>({
@@ -378,6 +387,7 @@ async function refresh(): Promise<void> {
           :first="index === 0"
           :current-user-id="currentUserId"
           :may-write="mayWrite"
+          :may-administer="post.isOfficial && isAdministrator"
           :editing="editingPostId === post.id"
           :saving="savingReply"
           :error="editingPostId === post.id ? editError : undefined"

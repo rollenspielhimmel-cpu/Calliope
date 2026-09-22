@@ -15,6 +15,13 @@ import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import { PseudonymService } from "@/src/service/pseudonym_service.ts";
 import { BlindDateNameGuardService } from "@/src/service/blind_date_name_guard_service.ts";
 import { applyMask } from "@/src/service/word_filter_service.ts";
+import {
+  isOfficial,
+  shownAuthorId,
+  shownAuthorName,
+  shownEditorId,
+  shownEditorName,
+} from "@/src/service/shown_author.ts";
 
 export type Post =
   & Pick<
@@ -43,6 +50,11 @@ export type Post =
      * this post. The post is shown as written either way — a suspicion is not a finding.
      */
     isUnderReview: boolean;
+    /**
+     * Unter einem Absender der Plattform veröffentlicht. Dann sind `createdBy` und die Namen der
+     * Absender, nicht die Person — und ändern darf den Beitrag nur die Administration.
+     */
+    isOfficial: boolean;
   };
 
 const SELECTED_COLUMNS = [
@@ -50,11 +62,26 @@ const SELECTED_COLUMNS = [
   "writingPost.writingThreadId",
   "writingPost.text",
   "writingPost.isDraft",
-  "writingPost.createdBy",
   "writingPost.createdAt",
   "writingPost.editedAt",
-  "writingPost.editedBy",
 ] as const;
+
+/**
+ * Autor und Bearbeiter, **wie sie hinausgehen** — bei einem offiziellen Beitrag der Absender, sonst
+ * die Person. Kennung und Name kommen aus denselben Ausdrücken, damit keine Antwort den Namen
+ * tauscht und die Kennung des Schreibers mitschickt; siehe `shown_author.ts`. Subqueries statt
+ * Joins, weil ein zweiter Alias auf `user` die Tabellenmenge über das hinaus weitet, was
+ * `listResultsWithCount` annimmt.
+ */
+function authorColumns() {
+  return [
+    shownAuthorId("writing_post").as("createdBy"),
+    shownAuthorName("writing_post").as("createdByUsername"),
+    shownEditorId().as("editedBy"),
+    shownEditorName().as("editedByUsername"),
+    isOfficial("writing_post").as("isOfficial"),
+  ];
+}
 
 /** Reads one post back with its author, bypassing the draft filter: after a write the
  * caller has already established that it may see the row. */
@@ -65,7 +92,6 @@ function postWithAuthorById(
 ) {
   return executor
     .selectFrom("writingPost")
-    .leftJoin("user", "user.id", "writingPost.createdBy")
     .$call((builder) =>
       withFavourite(builder, "writing_post", "writingPost.id", viewerId)
     )
@@ -74,13 +100,7 @@ function postWithAuthorById(
       // Cast rather than selected plainly: the column's generated type is `unknown`, and
       // `DOCUMENT_SCHEMA` is what says what may be in there.
       eb.ref("writingPost.document").$castTo<PostDocument>().as("document"),
-      "user.username as createdByUsername",
-      // A subquery rather than a second join on `user`: an alias widens the builder's table
-      // set past what `listResultsWithCount` accepts, and this is a primary-key lookup.
-      eb.selectFrom("user as editor")
-        .select("editor.username")
-        .whereRef("editor.id", "=", "writingPost.editedBy")
-        .as("editedByUsername"),
+      ...authorColumns(),
     ])
     .where("writingPost.id", "=", postId);
 }
@@ -152,7 +172,6 @@ function postsWithAuthor(
   executor: typeof db | Transaction = db,
 ) {
   return readableBy(viewerId, executor)
-    .leftJoin("user", "user.id", "writingPost.createdBy")
     .$call((builder) =>
       withFavourite(builder, "writing_post", "writingPost.id", viewerId)
     )
@@ -161,13 +180,7 @@ function postsWithAuthor(
       // Cast rather than selected plainly: the column's generated type is `unknown`, and
       // `DOCUMENT_SCHEMA` is what says what may be in there.
       eb.ref("writingPost.document").$castTo<PostDocument>().as("document"),
-      "user.username as createdByUsername",
-      // A subquery rather than a second join on `user`: an alias widens the builder's table
-      // set past what `listResultsWithCount` accepts, and this is a primary-key lookup.
-      eb.selectFrom("user as editor")
-        .select("editor.username")
-        .whereRef("editor.id", "=", "writingPost.editedBy")
-        .as("editedByUsername"),
+      ...authorColumns(),
     ]);
 }
 

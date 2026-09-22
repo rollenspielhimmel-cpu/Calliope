@@ -1,3 +1,4 @@
+import { OfficialThreadService } from "@/src/service/official_thread_service.ts";
 import { BroadcastQueueService } from "./service/broadcast_queue_service.ts";
 import { ActivityService } from "./service/activity_service.ts";
 import { UserAvatarService } from "./service/user_avatar_service.ts";
@@ -76,6 +77,13 @@ export function scheduleCronJobs() {
 
       if (sent > 0) {
         console.log(`Released ${sent} due broadcast(s)`);
+      }
+
+      // Offizielle Threads im selben Takt, nach derselben Regel: freigegeben und fällig.
+      const appeared = await OfficialThreadService.releaseDue();
+
+      if (appeared > 0) {
+        console.log(`Released ${appeared} due official thread(s)`);
       }
     },
   );

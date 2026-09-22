@@ -19,6 +19,7 @@ import {
   useEditBroadcast,
   useListBroadcastQueue,
   useListBroadcastSenders,
+  useListOfficialThreadQueue,
   useListReleasedBroadcasts,
   useRetractBroadcast,
   useSendTestBroadcast,
@@ -41,6 +42,7 @@ import ModerationPage from '@/components/moderation/ModerationPage.vue'
 import ModerationTabs from '@/components/moderation/ModerationTabs.vue'
 import type { ModerationTab } from '@/components/moderation/ModerationTabs.vue'
 import BroadcastSendersPanel from '@/components/moderation/BroadcastSendersPanel.vue'
+import OfficialThreadQueue from '@/components/moderation/OfficialThreadQueue.vue'
 import UserPicker from '@/components/user/UserPicker.vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -64,8 +66,8 @@ const tabs = computed<ModerationTab[]>(() => [
   {
     value: 'queue',
     label:
-      waitingBroadcasts.value.length > 0
-        ? `Warteschlange (${waitingBroadcasts.value.length})`
+      waitingBroadcasts.value.length + waitingThreadCount.value > 0
+        ? `Warteschlange (${waitingBroadcasts.value.length + waitingThreadCount.value})`
         : 'Warteschlange',
   },
   { value: 'released', label: 'Gesendete' },
@@ -651,6 +653,18 @@ const queuedBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
  */
 const waitingBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
   queuedBroadcasts.value.filter((entry) => entry.status === 'awaiting_approval'),
+)
+
+/**
+ * Wartende offizielle Threads, für die Zahl am Reiter: Sie warten in derselben Warteschlange auf
+ * dieselbe Freigabe, und eine Zahl, die sie ausließe, sagte „nichts zu tun", wo etwas wartet.
+ */
+const { data: officialQueue } = useListOfficialThreadQueue()
+
+const waitingThreadCount = computed<number>(() =>
+  officialQueue.value?.status === 200
+    ? officialQueue.value.data.filter((entry) => entry.status === 'awaiting_approval').length
+    : 0,
 )
 
 const scheduledBroadcasts = computed<ListBroadcastQueue200Item[]>(() =>
@@ -1364,6 +1378,8 @@ function audienceOf(entry: {
         <p v-if="queueError" class="mt-3 text-[12.5px] text-destructive" role="alert">
           {{ queueError }}
         </p>
+
+        <OfficialThreadQueue mode="waiting" />
       </template>
 
       <!-- ── Gesendete ─────────────────────────────────────────────────────────────────────── -->
@@ -1496,6 +1512,8 @@ function audienceOf(entry: {
                  Siehe views/moderation/AdminInboxView.vue. -->
           </li>
         </ul>
+
+        <OfficialThreadQueue mode="released" />
       </template>
 
       <BroadcastSendersPanel v-else />

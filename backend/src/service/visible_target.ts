@@ -123,12 +123,15 @@ export async function resolveVisibleTarget(
           "writingThread.writingGroupId",
           "writingThread.createdBy",
           "writingThread.memberPermission",
+          "writingThread.awaitingRelease",
           "writingFolder.effectiveMemberPermission",
         ])
         .where("writingThread.id", "=", targetId)
         .executeTakeFirst();
 
-      if (thread === undefined) {
+      // Ein offizieller Thread vor seinem Termin ist für niemanden da — nicht zum Merken und nicht
+      // zum Melden. Dieselbe Regel wie in `forumThreads`, hier für die eigene Abfrage.
+      if (thread === undefined || thread.awaitingRelease) {
         return undefined;
       }
 
@@ -181,6 +184,7 @@ export async function resolveVisibleTarget(
           // The thread's, not the post's: a post is not placed in the tree, so what governs it
           // is whatever governs the thread it is in.
           "writingThread.memberPermission",
+          "writingThread.awaitingRelease",
           "writingFolder.effectiveMemberPermission",
         ])
         // Only when somebody asked. This is the column the opt-in exists for.
@@ -192,7 +196,11 @@ export async function resolveVisibleTarget(
         .executeTakeFirst();
 
       // A draft is visible only to its author, and reporting your own draft is not a thing.
-      if (post === undefined || (post.isDraft && post.createdBy !== user.id)) {
+      // Ein Beitrag in einem Thread, der noch auf sein Erscheinen wartet, ist ebenso wenig da.
+      if (
+        post === undefined || post.awaitingRelease ||
+        (post.isDraft && post.createdBy !== user.id)
+      ) {
         return undefined;
       }
 

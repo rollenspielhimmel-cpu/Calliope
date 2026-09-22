@@ -11,6 +11,14 @@ import {
 import type { GetThread200 } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { getListForumThreadsQueryKey, useCreateForumThread } from '@/api/forum/forum'
+import {
+  getListOfficialThreadQueueQueryKey,
+  useSubmitOfficialThread,
+} from '@/api/moderation/moderation'
+import { useGetCurrentUser } from '@/api/auth/auth'
+import { berlinToUtc, formatBerlin } from '@/lib/format/berlinTime'
+import OfficialThreadFields from '@/components/thread/OfficialThreadFields.vue'
+import type { OfficialDraft } from '@/components/thread/OfficialThreadFields.vue'
 import { exactKeyFilter } from '@/lib/api/queryKeys'
 import type { WriteScope } from '@/lib/folder/treeScope'
 import { failureMessage } from '@/lib/format/failure'
@@ -70,11 +78,109 @@ const TITLE = titleSchema(LIMIT.title, 'Gib dem Thema einen Titel.')
 const formError = ref<string | undefined>(undefined)
 const formElement = ref<HTMLFormElement | null>(null)
 
+// ── Offizieller Thread ────────────────────────────────────────────────────────────────────────
+
+const { data: currentUser } = useGetCurrentUser()
+
+/** Nur im Forum, nur beim Anlegen, und nur für wen vorbereiten darf. */
+const offersOfficial = computed<boolean>(
+  () =>
+    props.scope.kind === 'forum' &&
+    !renaming.value &&
+    currentUser.value?.status === 200 &&
+    currentUser.value.data.mayPreparePublications,
+)
+
+const isAdministrator = computed<boolean>(
+  () =>
+    currentUser.value?.status === 200 && currentUser.value.data.platformRole === 'administrator',
+)
+
+function emptyDraft(): OfficialDraft {
+  return { enabled: false, text: '', sendAs: '', scheduledFor: '', administrationOnly: false }
+}
+
+const official = ref<OfficialDraft>(emptyDraft())
+const goesOfficial = computed<boolean>(() => offersOfficial.value && official.value.enabled)
+
+/**
+ * Was nach dem Einreichen geschah, als Satz — aus der Antwort, nicht aus der eigenen Rolle.
+ * Solange er dasteht, ersetzt er das Formular.
+ */
+const officialOutcome = ref<string | undefined>(undefined)
+
+/** Der Knopf sagt, was geschieht: Bei der Administration folgt keine zweite Freigabe mehr. */
+const submitLabel = computed<string>(() => {
+  if (renaming.value) {
+    return 'Änderungen speichern'
+  }
+  if (!goesOfficial.value) {
+    return 'Thema anlegen'
+  }
+  if (!isAdministrator.value) {
+    return 'Zur Freigabe einreichen'
+  }
+  return official.value.scheduledFor === '' ? 'Jetzt veröffentlichen' : 'Freigeben'
+})
+
+const { mutateAsync: submitOfficialThread, isPending: isSubmittingOfficial } =
+  useSubmitOfficialThread()
+
+async function submitOfficial(title: string) {
+  const text = official.value.text.trim()
+  if (text === '') {
+    formError.value = 'Schreib den Eröffnungsbeitrag. Er wird mit dem Titel zusammen freigegeben.'
+    return
+  }
+
+  let answer
+  try {
+    answer = await submitOfficialThread({
+      data: {
+        title,
+        text,
+        folderId: props.folderId ?? null,
+        sendAsUserId: official.value.sendAs === '' ? null : official.value.sendAs,
+        scheduledFor:
+          official.value.scheduledFor === '' ? null : berlinToUtc(official.value.scheduledFor),
+        administrationOnly: official.value.administrationOnly,
+      },
+    })
+  } catch (error) {
+    formError.value = failureMessage(
+      error,
+      'Der Thread konnte nicht eingereicht werden. Versuche es noch einmal.',
+    )
+    return
+  }
+
+  await queryClient.invalidateQueries({ queryKey: getListOfficialThreadQueueQueryKey() })
+
+  if (answer.status !== 201) {
+    return
+  }
+
+  // Erschienen: wie ein gewöhnliches Thema — die Liste neu, und der Aufrufer öffnet ihn.
+  if (answer.data.status === 'released') {
+    await queryClient.invalidateQueries(exactKeyFilter(getListForumThreadsQueryKey()))
+    open.value = false
+    emit('created', answer.data.threadId)
+    return
+  }
+
+  officialOutcome.value =
+    answer.data.status === 'approved'
+      ? `Freigegeben. Er erscheint am ${formatBerlin(answer.data.scheduledFor ?? '')} von selbst — bis dahin steht er in der Warteschlange.`
+      : 'Eingereicht. Er steht in der Warteschlange und erscheint, sobald die Administration ihn freigibt.'
+}
+
 const { mutateAsync: createThread, isPending: isCreatingInGroup } = useCreateThread()
 const { mutateAsync: createForumThread, isPending: isCreatingInForum } = useCreateForumThread()
 const isCreating = computed<boolean>(() => isCreatingInGroup.value || isCreatingInForum.value)
 const { mutateAsync: updateThread, isPending: isRenaming } = useUpdateThread()
-const isPending = computed<boolean>(() => isCreating.value || isRenaming.value)
+const isPending = computed<boolean>(
+  () => isCreating.value || isRenaming.value || isSubmittingOfficial.value,
+)
 
 const form = useForm({
   defaultValues: { title: '' },
@@ -102,6 +208,11 @@ const form = useForm({
         queryClient.invalidateQueries(exactKeyFilter(getListThreadsQueryKey(groupId))),
       ])
       open.value = false
+      return
+    }
+
+    if (goesOfficial.value) {
+      await submitOfficial(title)
       return
     }
 
@@ -139,6 +250,8 @@ const form = useForm({
 // Opening fills the field from the thread being renamed; closing clears it either way.
 watch(open, (isOpen) => {
   formError.value = undefined
+  official.value = emptyDraft()
+  officialOutcome.value = undefined
   form.reset({ title: isOpen ? (props.thread?.title ?? '') : '' })
 })
 </script>
@@ -159,7 +272,16 @@ watch(open, (isOpen) => {
            and only an operator can open this at the root, so it is addressed to them. -->
       <p v-if="atForumRoot" class="text-note text-ink-5">{{ ROOT_NOTE }}</p>
 
+      <!-- Nach dem Einreichen eines offiziellen Threads: was geschah, statt des Formulars. -->
+      <template v-if="officialOutcome">
+        <p class="text-row text-ink-2" role="status">{{ officialOutcome }}</p>
+        <DialogFooter>
+          <Button type="button" @click="open = false">Schließen</Button>
+        </DialogFooter>
+      </template>
+
       <form
+        v-else
         ref="formElement"
         class="flex flex-col gap-5"
         novalidate
@@ -184,13 +306,15 @@ watch(open, (isOpen) => {
           </form.Field>
         </FieldGroup>
 
+        <OfficialThreadFields v-if="offersOfficial" v-model="official" />
+
         <DialogFooter>
           <Button type="button" variant="outline" :disabled="isPending" @click="open = false">
             Abbrechen
           </Button>
           <Button type="submit" :disabled="isPending">
             <Spinner v-if="isPending" />
-            {{ renaming ? 'Änderungen speichern' : 'Thema anlegen' }}
+            {{ submitLabel }}
           </Button>
         </DialogFooter>
       </form>
