@@ -1169,10 +1169,11 @@ Deno.test("einen Ordner löschen lässt Gespräche und Nachrichten im Postfach",
     const [message] = (await messagesOf(cookies.root, chatId)).filter((one) =>
       one.text === REPLY
     );
+    assertExists(message);
 
     const folderId = await createFolder(cookies.root, "ai-ordner-weg");
     await putIn(cookies.root, folderId, { chatGroupId: chatId });
-    await putIn(cookies.root, folderId, { chatMessageId: message!.id });
+    await putIn(cookies.root, folderId, { chatMessageId: message.id });
 
     assertEquals(
       (await request(
@@ -1192,7 +1193,7 @@ Deno.test("einen Ordner löschen lässt Gespräche und Nachrichten im Postfach",
     assertExists(await entryOf(cookies.root, chatId), "das Gespräch bleibt");
     assert(
       (await messagesOf(cookies.root, chatId)).some((one) =>
-        one.id === message!.id
+        one.id === message.id
       ),
       "die Nachricht auch",
     );
