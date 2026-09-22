@@ -61,6 +61,13 @@ jobs:
         run: docker compose up -d --wait
         working-directory: .
 
+      # Ready by the healthcheck is not yet accepting connections on a fresh volume — see the
+      # healthcheck in docker-compose.yaml. This waits for a real connection, the one condition
+      # the migrations need.
+      - name: Wait until the database accepts connections
+        run: deno task db:wait
+        working-directory: database
+
       - name: Apply migrations
         run: deno task migrations:migrate
         working-directory: database
@@ -112,6 +119,10 @@ jobs:
       # The migrations are what these tests exercise, so they are applied here rather than
       # assumed. Rolling all the way down and up again proves every `migrate:down` really
       # reverses its `migrate:up` — a trigger function left behind breaks the next deploy.
+      # See the same step in the backend job.
+      - name: Wait until the database accepts connections
+        run: deno task db:wait
+
       - name: Apply migrations
         run: deno task migrations:migrate
 

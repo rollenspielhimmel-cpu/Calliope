@@ -12,8 +12,14 @@ services:
     ports:
       - "${POSTGRES_PORT:-54322}:5432"
 
+    # **Over TCP, not the socket.** On a fresh volume the image first runs a temporary server that
+    # listens on the Unix socket only, creates the database, and shuts down again before the real
+    # one starts. `pg_isready` without `-h` asks the socket and calls that temporary server ready;
+    # whoever connects in that half second meets the restart — "the database system is starting up",
+    # which is how CI run #55 failed. The temporary server never listens on TCP, so asking over TCP
+    # is ready exactly when the real one is.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U calliope -d calliope"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U calliope -d calliope"]
       interval: 1s
       timeout: 5s
       retries: 10
