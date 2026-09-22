@@ -62,7 +62,8 @@ const NAMES_ONLY = entry({
 const queue = { value: { status: 200, data: [NAMES_ONLY] } }
 
 // Gehoben, weil `vi.mock` vor allem anderen läuft und die Attrappen sonst noch nicht gäbe.
-const { sendTest, submitBroadcast, retract, released, viewer } = vi.hoisted(() => ({
+const { sendTest, submitBroadcast, retract, released, viewer, senderList } = vi.hoisted(() => ({
+  senderList: { value: [] as Array<{ id: string; username: string; isPermanent: boolean }> },
   submitBroadcast: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   retract: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -95,7 +96,7 @@ vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListBroadcastQueue: () => ({ data: queue }),
   useListReleasedBroadcasts: () => ({ data: released }),
-  useListBroadcastSenders: () => ({ data: { value: { status: 200, data: [] } } }),
+  useListBroadcastSenders: () => ({ data: { value: { status: 200, data: senderList.value } } }),
   useCountBroadcastRecipients: () => ({ data: { value: undefined }, isFetching: false }),
   useSubmitBroadcast: () => ({ mutateAsync: submitBroadcast, isPending: false }),
   useEditBroadcast: () => ({
@@ -651,5 +652,44 @@ describe('BroadcastView, Senden und Testen sind zwei Knöpfe', () => {
 
     expect(submitBroadcast).toHaveBeenCalledTimes(1)
     expect(sendTest).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Wer ohne „Admin" vorbereitet — Rogue mit einem persönlichen Absender —, bekommt seinen Absender
+ * vorgewählt und „Admin" gar nicht erst angeboten. Sonst ginge die Einreichung mit einer Wahl
+ * zurück, die niemand getroffen hat.
+ */
+describe('BroadcastView, der Absender ohne „Admin"', () => {
+  const FLAMINGO_ID = '01900000-0000-7000-8000-0000000000f1'
+
+  afterEach(() => {
+    senderList.value = []
+    viewer.platformRole = 'administrator'
+  })
+
+  it('wählt den eigenen Absender vor und bietet „Admin" nicht an', async () => {
+    viewer.platformRole = null as unknown as string
+    senderList.value = [{ id: FLAMINGO_ID, username: 'Infoflamingo', isPermanent: false }]
+    submitBroadcast.mockReset()
+    submitBroadcast.mockResolvedValue({ status: 201, data: entry({}) })
+    queue.value.data = []
+    const wrapper = broadcastView()
+    await flushPromises()
+
+    const options = wrapper.findAll('#broadcastSender option').map((option) => option.text())
+    expect(options).toEqual(['Infoflamingo'])
+
+    await checkbox(wrapper, 'Moderation').trigger('click')
+    await wrapper.find('#broadcastSubject').setValue('Ein Betreff')
+    await wrapper.find('#broadcastBody').setValue('Ein Text.')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    await buttonsLabelled(wrapper, 'Zur Freigabe einreichen')[0]?.trigger('click')
+    await flushPromises()
+
+    expect(submitBroadcast).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sendAsUserId: FLAMINGO_ID }),
+    })
   })
 })

@@ -24,6 +24,7 @@ import ChatsDialog from '@/components/chat/ChatsDialog.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { useIpAddressView } from '@/composables/useIpAddressView'
+import { teamEntry } from '@/lib/auth/teamEntry'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -293,6 +294,20 @@ async function signOut() {
                      deliberately rather than carried on every profile that happens to open. -->
                 <DropdownMenuItem @select="ipAddressViewEnabled = !ipAddressViewEnabled">
                   {{ ipAddressViewEnabled ? 'IP-Adressen ausblenden' : 'IP-Adressen einblenden' }}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </template>
+
+            <!-- **Wer ohne Teamrolle vorbereiten darf** — weil der Ur-Admin einen Absender
+                 persönlich vergeben hat — findet die Moderation nicht und soll sie auch nicht
+                 finden. Dieser Eintrag führt direkt zu der einen Seite, die ihn betrifft. -->
+            <template v-else-if="teamEntry(props.user) === 'publications'">
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem as-child @select="router.push({ name: 'moderationBroadcast' })">
+                  <RouterLink :to="{ name: 'moderationBroadcast' }"
+                    >Rundmails und offizielle Threads</RouterLink
+                  >
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             </template>

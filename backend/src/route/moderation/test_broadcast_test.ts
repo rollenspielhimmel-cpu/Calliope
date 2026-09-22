@@ -352,7 +352,8 @@ Deno.test("ein Mod testet, und nur er bekommt sie", async () => {
   const cookies = await fixture();
 
   try {
-    const response = await sendTest(cookies.moderator);
+    // Als „Admin": Den hat die Moderation seit der Migration, die Absender dieser Datei nicht.
+    const response = await sendTest(cookies.moderator, { sendAsUserId: null });
     assertEquals(response.status, STATUS_CODE.OK);
     const { chatGroupId } = await response.json();
 

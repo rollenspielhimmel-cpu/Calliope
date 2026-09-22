@@ -54,16 +54,24 @@ export type User =
   };
 
 /**
- * The role's permissions as one column of the account's row. `::text` because the driver parses
- * an array of text but not an array of an enum it has never seen — that would arrive as the
- * literal string `{prepare_publications}`.
+ * The account's permissions as one column of its row: what its role holds, and
+ * `prepare_publications` for anybody who was given a sender personally — somebody like an event
+ * manager's helper, who may prepare under that one name whatever their role says. `::text` because
+ * the driver parses an array of text but not an array of an enum it has never seen — that would
+ * arrive as the literal string `{prepare_publications}`.
  */
 function permissionsOfRole(eb: ExpressionBuilder<DB, "user">) {
   return eb.fn.coalesce(
     sql<PlatformPermission[]>`(
-      SELECT array_agg(permission::text ORDER BY permission)
-      FROM platform_role_permission
-      WHERE role = "user".platform_role
+      SELECT array_agg(permission ORDER BY permission)
+      FROM (
+        SELECT permission::text AS permission
+        FROM platform_role_permission
+        WHERE role = "user".platform_role
+        UNION
+        SELECT 'prepare_publications'
+        WHERE EXISTS (SELECT 1 FROM sender_grant WHERE sender_grant.user_id = "user".id)
+      ) AS held
     )`,
     sql<PlatformPermission[]>`'{}'::text[]`,
   ).as("permissions");

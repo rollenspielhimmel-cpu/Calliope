@@ -6,6 +6,7 @@ import { generate as generateUuidV7 } from "@std/uuid/v7";
 import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
+import type { User } from "@/src/service/user_service.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 import {
   documentToPlainText,
@@ -703,10 +704,10 @@ export type TestOutcome =
  * wie eine Nachricht unter einem beliebigen Namen aussähe.
  */
 async function sendTest(
-  tester: { id: string; emailAddress: string },
+  tester: User,
   input: TestBroadcast,
 ): Promise<TestOutcome> {
-  if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
+  if (!await BroadcastSenderService.mayUseSender(tester, input.sendAsUserId)) {
     return "sender_not_released";
   }
 

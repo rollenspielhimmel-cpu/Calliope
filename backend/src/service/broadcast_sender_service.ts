@@ -1,4 +1,7 @@
 import { db } from "@/src/database/client.ts";
+import type { PlatformRole } from "@/src/database/schema.ts";
+import type { User } from "@/src/service/user_service.ts";
+import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 
 /**
  * Which accounts a broadcast may be sent as.
@@ -164,9 +167,205 @@ async function mayBeSender(userId: string | null): Promise<boolean> {
   return released !== undefined;
 }
 
+// ── Wer welchen Absender nutzen darf ─────────────────────────────────────────────────────────
+//
+// `sender_grant` gibt einen Absender einer Rolle oder einer Person. Administrationen dürfen jeden
+// freigeschalteten, ohne Zeile. Siehe die Migration `absender_fuer_rollen_und_personen`.
+
+/**
+ * Der Schlüssel, unter dem ein Absender in `sender_grant` steht: null für „Admin", sonst das
+ * Konto. „Admin" kommt auf zwei Wegen an — als null, und als die Kennung des Ur-Admin-Kontos, die
+ * die Absenderliste zeigt —, und beides meint dasselbe.
+ */
+async function grantKey(senderUserId: string | null): Promise<string | null> {
+  if (senderUserId === null) {
+    return null;
+  }
+
+  const account = await db
+    .selectFrom("user")
+    .select("isPrimordialAdmin")
+    .where("id", "=", senderUserId)
+    .executeTakeFirst();
+
+  return account?.isPrimordialAdmin === true ? null : senderUserId;
+}
+
+/** Die Absender, die diese Person über ihre Rolle oder persönlich bekommen hat — als Schlüssel. */
+async function grantedKeys(user: User): Promise<Array<string | null>> {
+  const rows = await db
+    .selectFrom("senderGrant")
+    .select("senderUserId")
+    .where((eb) =>
+      eb.or([
+        eb("userId", "=", user.id),
+        ...(user.platformRole === null
+          ? []
+          : [eb("role", "=", user.platformRole)]),
+      ])
+    )
+    .execute();
+
+  return rows.map((row) => row.senderUserId);
+}
+
+/**
+ * Darf diese Person unter diesem Absender vorbereiten?
+ *
+ * **Im Backend, bei jedem Einreichen, Bearbeiten und Testen** — die Liste im Formular zeigt nur,
+ * was jemand nutzen darf, aber sie hindert niemanden daran, eine andere Kennung zu schicken.
+ * Freigeschaltet sein muss der Absender immer; dazu braucht jede Rolle ohne Administration eine
+ * Freigabe für ihre Rolle oder für sich selbst.
+ */
+async function mayUseSender(
+  user: User,
+  senderUserId: string | null,
+): Promise<boolean> {
+  if (!await mayBeSender(senderUserId)) {
+    return false;
+  }
+
+  if (mayAdministerPlatform(user.platformRole)) {
+    return true;
+  }
+
+  const key = await grantKey(senderUserId);
+  return (await grantedKeys(user)).includes(key);
+}
+
+/**
+ * Die Absenderliste, wie diese Person sie sieht: alle für eine Administration, sonst nur, was ihre
+ * Rolle oder sie selbst bekommen hat.
+ */
+async function listSendersFor(user: User): Promise<Sender[]> {
+  const all = await listSenders();
+
+  if (mayAdministerPlatform(user.platformRole)) {
+    return all;
+  }
+
+  const keys = await grantedKeys(user);
+  return all.filter((sender) =>
+    keys.includes(sender.isPermanent ? null : sender.id)
+  );
+}
+
+export type SenderGrant = {
+  /** Die Kennung des Absenders, wie `listSenders` sie zeigt — bei „Admin" das Ur-Admin-Konto. */
+  senderId: string;
+  role: Exclude<PlatformRole, "administrator"> | null;
+  userId: string | null;
+  username: string | null;
+  grantedAt: string;
+};
+
+/** Jede Freigabe, für die Übersicht des Ur-Admins: Rollen und Personen, je Absender. */
+async function listGrants(): Promise<SenderGrant[]> {
+  const [rows, rootAdmin] = await Promise.all([
+    db
+      .selectFrom("senderGrant")
+      .leftJoin("user", "user.id", "senderGrant.userId")
+      .select([
+        "senderGrant.senderUserId",
+        "senderGrant.role",
+        "senderGrant.userId",
+        "user.username",
+        "senderGrant.grantedAt",
+      ])
+      .orderBy("user.username")
+      .execute(),
+    db
+      .selectFrom("user")
+      .select("id")
+      .where("isPrimordialAdmin", "=", true)
+      .executeTakeFirst(),
+  ]);
+
+  return rows.flatMap((row) => {
+    const senderId = row.senderUserId ?? rootAdmin?.id;
+    // Ohne Ur-Admin-Konto gibt es „Admin" als Absender gerade nicht; dann auch keine Zeile dafür.
+    if (senderId === undefined) {
+      return [];
+    }
+    return [{
+      senderId,
+      // Die Bedingung `sender_grant_not_for_administrators` hält `administrator` heraus.
+      role: row.role as SenderGrant["role"],
+      userId: row.userId,
+      username: row.username,
+      grantedAt: row.grantedAt,
+    }];
+  });
+}
+
+export type GrantRefusal = "not_a_sender" | "not_found";
+
+/** Gibt einen Absender einer Rolle oder einer Person. Zweimal geben ändert nichts. */
+async function grant(
+  senderId: string,
+  to: { role: Exclude<PlatformRole, "administrator"> } | { userId: string },
+  grantedBy: string,
+): Promise<GrantRefusal | undefined> {
+  if (!await mayBeSender(senderId)) {
+    return "not_a_sender";
+  }
+
+  if ("userId" in to) {
+    const exists = await db
+      .selectFrom("user")
+      .select("id")
+      .where("id", "=", to.userId)
+      .executeTakeFirst();
+    if (exists === undefined) {
+      return "not_found";
+    }
+  }
+
+  await db
+    .insertInto("senderGrant")
+    .values({
+      senderUserId: await grantKey(senderId),
+      role: "role" in to ? to.role : null,
+      userId: "userId" in to ? to.userId : null,
+      grantedBy,
+    })
+    // Beide Teilindizes sind eindeutig; welcher greift, hängt davon ab, ob Rolle oder Person.
+    .onConflict((conflict) => conflict.doNothing())
+    .execute();
+
+  return undefined;
+}
+
+/** Nimmt eine Freigabe zurück. Was nicht vergeben war, ist danach genauso wenig vergeben. */
+async function revoke(
+  senderId: string,
+  from: { role: Exclude<PlatformRole, "administrator"> } | { userId: string },
+): Promise<void> {
+  const key = await grantKey(senderId);
+
+  await db
+    .deleteFrom("senderGrant")
+    .where((eb) =>
+      key === null
+        ? eb("senderUserId", "is", null)
+        : eb("senderUserId", "=", key)
+    )
+    .where((eb) =>
+      "role" in from
+        ? eb("role", "=", from.role)
+        : eb("userId", "=", from.userId)
+    )
+    .execute();
+}
+
 export const BroadcastSenderService = {
   listSenders,
+  listSendersFor,
   releaseSender,
   withdrawSender,
   mayBeSender,
+  mayUseSender,
+  listGrants,
+  grant,
+  revoke,
 };

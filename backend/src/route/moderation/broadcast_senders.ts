@@ -24,8 +24,10 @@ import {
  *
  * **Reading and changing are not equally restricted here**, unlike the Blind-Date desk next door.
  * Everybody who may prepare a publication has to read this list — it is what they pick a sender
- * from when they write one — while only the root administrator may change it. Restricting the reading too would mean
- * nobody but one person could compose anything.
+ * from when they write one — while only the root administrator may change it. Restricting the
+ * reading too would mean nobody but one person could compose anything. What each of them reads is
+ * narrowed, though: only administrators see every sender, everybody else what their role or they
+ * themselves were given (`sender_grants.ts`).
  *
  * The change is checked in the handler rather than by a middleware, for the reason the Blind-Date
  * grant gives: the middleware vocabulary is roles, and this sits one level above them.
@@ -60,7 +62,7 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Which accounts a broadcast may be sent as",
       description:
-        "The first administrator, which is always available, followed by every released account in the order they are offered. Readable by every role that may prepare publications, because this is the list a sender is chosen from.",
+        "The first administrator, which is always available, followed by every released account in the order they are offered — for an administrator. Anybody else sees only the senders their role or they themselves were given, because this is the list a sender is chosen from and it offers nothing the submission would refuse.",
       operationId: "listBroadcastSenders",
       middleware: [authenticated, authorizedToPreparePublications] as const,
       responses: {
@@ -73,7 +75,10 @@ export default new OpenAPIHono()
       },
     }),
     async (c) =>
-      c.json(await BroadcastSenderService.listSenders(), STATUS_CODE.OK),
+      c.json(
+        await BroadcastSenderService.listSendersFor(c.get("user")),
+        STATUS_CODE.OK,
+      ),
   )
   .openapi(
     createRoute({

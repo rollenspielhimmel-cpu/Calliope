@@ -124,6 +124,13 @@ export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
     reason: "masked-by-middleware",
   },
   {
+    // Administrationen, und nur sie: Wer welchen Absender persönlich hat, ist die Übersicht, mit
+    // der der Ur-Admin vergibt und entzieht.
+    route: "GET /api/moderation/broadcast/sender-grants",
+    fields: ["userId"],
+    reason: "moderation-only",
+  },
+  {
     route: "GET /api/moderation/invitations/pending",
     fields: ["invitedBy"],
     reason: "moderation-only",

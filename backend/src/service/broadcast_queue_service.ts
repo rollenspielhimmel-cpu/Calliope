@@ -22,12 +22,15 @@ import {
  * **Warum es die Warteschlange gibt:** Eine Rundmail geht an alle, ihre E-Mails sind nicht
  * zurückzuholen — zurückziehen lässt sich nur, was im Postfach und im Archiv liegt, und das erst,
  * wenn es schon gelesen sein kann —, und sie erscheint unter einem Absender, der nicht die Person
- * ist, die sie geschrieben hat. Wer im
- * Namen eines anderen an alle schreibt, kann Schaden anrichten, der ihm nicht zugeschrieben wird.
- * Zwei Augenpaare sind die einzige Sicherung, die davor greift — jede spätere ist eine Entschuldigung.
+ * ist, die sie geschrieben hat. Wer im Namen eines anderen an alle schreibt, kann Schaden anrichten,
+ * der ihm nicht zugeschrieben wird. Zwei Augenpaare sind die einzige Sicherung, die davor greift —
+ * jede spätere ist eine Entschuldigung.
  *
  * **Wer vorbereitet:** jede Rolle mit der Berechtigung `prepare_publications` — heute Admins und
- * Mods. Wer keine Administration hat, bearbeitet und verwirft nur das Eigene.
+ * Mods —, und jede Person, die persönlich einen Absender bekommen hat. **Unter welchem Namen:**
+ * Administrationen unter jedem freigeschalteten, alle anderen nur unter dem, was ihre Rolle oder
+ * sie selbst in `sender_grant` bekommen haben (`BroadcastSenderService.mayUseSender`). Wer keine
+ * Administration hat, bearbeitet und verwirft nur das Eigene.
  *
  * **Wer freigibt:** jede Administration, keine andere Rolle. Freigeben ist keine Berechtigung, die
  * man einer Rolle geben kann; sonst wäre die Warteschlange mit einem Haken abgeschafft.
@@ -296,7 +299,7 @@ async function submit(
   author: User,
   input: BroadcastInput,
 ): Promise<QueuedBroadcast | SubmitRefusal> {
-  if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
+  if (!await BroadcastSenderService.mayUseSender(author, input.sendAsUserId)) {
     return "sender_not_released";
   }
 
@@ -613,7 +616,7 @@ async function edit(
     return "not_yours";
   }
 
-  if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
+  if (!await BroadcastSenderService.mayUseSender(editor, input.sendAsUserId)) {
     return "sender_not_released";
   }
 

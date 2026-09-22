@@ -772,6 +772,19 @@ Deno.test("a released account may be used as the sender", async () => {
     STATUS_CODE.OK,
   );
 
+  // Ein neu freigeschalteter Absender gilt zunächst nur für Administrationen; der Mod braucht
+  // die Freigabe für seine Rolle. Siehe `sender_grants_test.ts`.
+  assertEquals(
+    (await request(
+      "PUT",
+      `/api/moderation/broadcast/senders/${await getUserId(
+        MODERATOR,
+      )}/roles/moderator`,
+      cookies.root,
+    )).status,
+    STATUS_CODE.OK,
+  );
+
   const created = await (await submit(cookies.author, {
     sendAsUserId: await getUserId(MODERATOR),
   })).json() as Row;

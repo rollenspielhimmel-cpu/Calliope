@@ -220,7 +220,7 @@ const scheduledForUtc = computed<string | null>(() =>
  * das ohne Zeile in der Tabelle immer zur Verfügung steht.
  *
  * Die Liste schlägt vor; verbindlich ist die Prüfung im Backend. Wer hier etwas anderes schickt,
- * bekommt eine Absage — siehe `mayBeSender`.
+ * bekommt eine Absage — siehe `mayUseSender`. Voreingestellt ist `defaultSendAs`.
  */
 const sendAs = ref<string>('')
 
@@ -237,6 +237,30 @@ const permanentSender = computed<ListBroadcastSenders200Item | undefined>(() =>
 
 const releasedSenders = computed<ListBroadcastSenders200Item[]>(() =>
   senders.value.filter((sender) => !sender.isPermanent),
+)
+
+/**
+ * Die Voreinstellung: „Admin", wenn man ihn nutzen darf, sonst der erste eigene Absender.
+ *
+ * **Die Liste zeigt nur, was man nutzen darf** — Rogue mit einem persönlichen „Infoflamingo" sieht
+ * nur ihn. Stünde dann trotzdem „Admin" vorgewählt, käme beim Einreichen eine Absage für eine
+ * Wahl, die niemand getroffen hat.
+ */
+const defaultSendAs = computed<string>(() =>
+  permanentSender.value !== undefined ? '' : (releasedSenders.value[0]?.id ?? ''),
+)
+
+// Die Liste kommt nach dem Formular an; bis dahin steht die leere Voreinstellung. Wer schon etwas
+// gewählt hat, behält es.
+watch(
+  defaultSendAs,
+  (preset) => {
+    if (sendAs.value === '' && permanentSender.value === undefined) {
+      sendAs.value = preset
+    }
+  },
+  // Auch beim Aufbau: Liegt die Liste schon im Zwischenspeicher, ändert sich die Voreinstellung nie.
+  { immediate: true },
 )
 
 const confirming = ref<boolean>(false)
@@ -389,7 +413,7 @@ function resetForm() {
   confirming.value = false
   subject.value = ''
   scheduledFor.value = ''
-  sendAs.value = ''
+  sendAs.value = defaultSendAs.value
   body.value = ''
   chosen.value = []
   namedRecipients.value = []
@@ -965,7 +989,9 @@ function audienceOf(entry: {
                 v-model="sendAs"
                 class="h-11 max-w-[320px] rounded-lg border border-input bg-transparent px-3 text-sm md:h-9"
               >
-                <option value="">{{ permanentSender?.username ?? 'Admin' }}</option>
+                <option v-if="permanentSender !== undefined" value="">
+                  {{ permanentSender.username }}
+                </option>
                 <option v-for="sender in releasedSenders" :key="sender.id" :value="sender.id">
                   {{ sender.username }}
                 </option>

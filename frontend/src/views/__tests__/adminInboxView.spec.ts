@@ -66,6 +66,14 @@ const conversation = { value: { status: 200, data: CONVERSATION } }
 
 const sendReply = vi.fn<(...args: unknown[]) => Promise<unknown>>()
 
+// Der Rahmen der Moderationsseiten fragt, ob der Rücklink zur Übersicht gezeigt wird.
+vi.mock('@/api/auth/auth', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useGetCurrentUser: () => ({
+    data: { value: { status: 200, data: { platformRole: 'administrator' } } },
+  }),
+}))
+
 // Aufgefaltet statt ersetzt: Die Datei liest aus demselben Modul auch die Abfrageschlüssel, und
 // ein blanker Mock nimmt die mit.
 vi.mock('@/api/moderation/moderation', async (importOriginal) => ({

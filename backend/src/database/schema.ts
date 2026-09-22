@@ -566,6 +566,15 @@ export interface Report {
   targetType: ReportTargetType;
 }
 
+export interface SenderGrant {
+  grantedAt: Generated<string>;
+  grantedBy: string | null;
+  id: Generated<string>;
+  role: PlatformRole | null;
+  senderUserId: string | null;
+  userId: string | null;
+}
+
 export interface StatusUpdate {
   body: string;
   createdAt: Generated<string>;
@@ -822,6 +831,7 @@ export interface DB {
   profileQuestionOption: ProfileQuestionOption;
   publication: Publication;
   report: Report;
+  senderGrant: SenderGrant;
   statusUpdate: StatusUpdate;
   statusUpdateComment: StatusUpdateComment;
   storyIdea: StoryIdea;
@@ -1468,6 +1478,15 @@ export const REPORT_SCHEMA = z.object({
   closingOutcome: REPORT_OUTCOME_SCHEMA.nullable(),
   closingNote: z.string().nullable(),
   status: REPORT_STATUS_SCHEMA,
+});
+
+export const SENDER_GRANT_SCHEMA = z.object({
+  id: z.uuidv7(),
+  senderUserId: z.uuidv7().nullable(),
+  role: PLATFORM_ROLE_SCHEMA.nullable(),
+  userId: z.uuidv7().nullable(),
+  grantedBy: z.uuidv7().nullable(),
+  grantedAt: z.iso.datetime({ offset: true }),
 });
 
 export const STATUS_UPDATE_SCHEMA = z.object({
