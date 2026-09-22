@@ -62,7 +62,8 @@ const NAMES_ONLY = entry({
 const queue = { value: { status: 200, data: [NAMES_ONLY] } }
 
 // Gehoben, weil `vi.mock` vor allem anderen läuft und die Attrappen sonst noch nicht gäbe.
-const { sendTest, retract, released, viewer } = vi.hoisted(() => ({
+const { sendTest, submitBroadcast, retract, released, viewer } = vi.hoisted(() => ({
+  submitBroadcast: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   retract: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   released: { value: { status: 200, data: [] as unknown[] } },
@@ -96,10 +97,7 @@ vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   useListReleasedBroadcasts: () => ({ data: released }),
   useListBroadcastSenders: () => ({ data: { value: { status: 200, data: [] } } }),
   useCountBroadcastRecipients: () => ({ data: { value: undefined }, isFetching: false }),
-  useSubmitBroadcast: () => ({
-    mutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    isPending: false,
-  }),
+  useSubmitBroadcast: () => ({ mutateAsync: submitBroadcast, isPending: false }),
   useEditBroadcast: () => ({
     mutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     isPending: false,
@@ -544,9 +542,9 @@ async function queueAs(platformRole: string) {
 }
 
 /** Den eigenen Eintrag bearbeiten und bis zur Bestätigung gehen, wo der Knopf seinen Namen hat. */
-async function confirmingOwnEditAs(platformRole: string) {
+async function confirmingOwnEditAs(platformRole: string, overrides: Record<string, unknown> = {}) {
   viewer.platformRole = platformRole
-  queue.value.data = [{ ...NAMES_ONLY, writtenBy: viewer.id }]
+  queue.value.data = [{ ...NAMES_ONLY, writtenBy: viewer.id, ...overrides }]
   const wrapper = broadcastView()
   await openQueue(wrapper)
 
@@ -597,5 +595,61 @@ describe('BroadcastView, was ein Mod darf und eine Administration', () => {
     expect(buttonsLabelledOrNone(wrapper, 'Änderung speichern')).toHaveLength(1)
     expect(buttonsLabelledOrNone(wrapper, 'Speichern und senden')).toHaveLength(0)
     expect(wrapper.text()).toContain('sobald die Administration sie freigibt')
+  })
+})
+
+/**
+ * Der Satz unter der Bestätigung. Hier stand „verschickte Rundmails lassen sich nicht zurückholen"
+ * — seit es das Zurückziehen gibt, stimmt das nur noch für die E-Mails.
+ */
+describe('BroadcastView, was sich danach noch zurückziehen lässt', () => {
+  afterEach(() => {
+    viewer.platformRole = 'administrator'
+  })
+
+  it('nennt den Ur-Admin und schweigt von E-Mails, wenn keine rausgehen', async () => {
+    const wrapper = await confirmingOwnEditAs('moderator', { deliverByEmail: false })
+
+    expect(wrapper.text()).toContain('Sie geht raus, sobald die Administration sie freigibt.')
+    expect(wrapper.text()).toContain('Zurückziehen kann sie danach nur der Ur-Admin.')
+    expect(wrapper.text()).not.toContain('E-Mails lassen sich nicht zurückholen.')
+    expect(wrapper.text()).not.toContain('Rundmails lassen sich nicht zurückholen')
+  })
+
+  it('sagt es von den E-Mails, wenn E-Mail als Weg gewählt ist', async () => {
+    const wrapper = await confirmingOwnEditAs('administrator', { deliverByEmail: true })
+
+    expect(wrapper.text()).toContain('Zurückziehen kann sie danach nur der Ur-Admin.')
+    expect(wrapper.text()).toContain('E-Mails lassen sich nicht zurückholen.')
+  })
+})
+
+/**
+ * Neben „Test-Rundmail" steht bei der Administration ein zweiter Knopf. Er heißt „Jetzt senden",
+ * und er sendet wirklich — die Test-Rundmail an sich selbst ist ein anderer Weg zum Server.
+ */
+describe('BroadcastView, Senden und Testen sind zwei Knöpfe', () => {
+  it('schickt mit „Jetzt senden" die Rundmail ab und nicht den Test', async () => {
+    sendTest.mockReset()
+    submitBroadcast.mockReset()
+    submitBroadcast.mockResolvedValue({
+      status: 201,
+      data: entry({ status: 'released', recipientCount: 3 }),
+    })
+    queue.value.data = []
+    const wrapper = broadcastView()
+
+    await checkbox(wrapper, 'Moderation').trigger('click')
+    await wrapper.find('#broadcastSubject').setValue('Ein Betreff')
+    await wrapper.find('#broadcastBody').setValue('Ein Text.')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(buttonsLabelledOrNone(wrapper, 'Jetzt testen')).toHaveLength(0)
+    await buttonsLabelled(wrapper, 'Jetzt senden')[0]?.trigger('click')
+    await flushPromises()
+
+    expect(submitBroadcast).toHaveBeenCalledTimes(1)
+    expect(sendTest).not.toHaveBeenCalled()
   })
 })

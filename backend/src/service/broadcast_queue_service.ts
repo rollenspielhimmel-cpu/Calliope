@@ -19,8 +19,10 @@ import {
 /**
  * Rundmails, die auf eine Freigabe warten — und was danach mit ihnen geschieht.
  *
- * **Warum es die Warteschlange gibt:** Eine Rundmail geht an alle und ist nicht zurückzuholen, und
- * sie erscheint unter einem Absender, der nicht die Person ist, die sie geschrieben hat. Wer im
+ * **Warum es die Warteschlange gibt:** Eine Rundmail geht an alle, ihre E-Mails sind nicht
+ * zurückzuholen — zurückziehen lässt sich nur, was im Postfach und im Archiv liegt, und das erst,
+ * wenn es schon gelesen sein kann —, und sie erscheint unter einem Absender, der nicht die Person
+ * ist, die sie geschrieben hat. Wer im
  * Namen eines anderen an alle schreibt, kann Schaden anrichten, der ihm nicht zugeschrieben wird.
  * Zwei Augenpaare sind die einzige Sicherung, die davor greift — jede spätere ist eine Entschuldigung.
  *

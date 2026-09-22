@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * One message to a chosen audience. The count is shown before the button and the send asks for a
- * confirmation, because this is the one action here that cannot be taken back: a mail that has
- * left cannot be recalled, and there are hundreds of them.
+ * confirmation, because sending is the one action here that cannot be fully taken back: the first
+ * administrator can retract what landed in inboxes and the archive, but a mail that has left cannot
+ * be recalled, and there are hundreds of them.
  *
  * The writing surface is the one from the post composer — the same serif at the same size on the
  * same paper — but without its formatting toolbar. The mail is plain text, as every message this
@@ -1053,7 +1054,7 @@ function audienceOf(entry: {
           </p>
         </form>
 
-        <!-- The one thing here that cannot be undone gets said in full before it happens. -->
+        <!-- The one thing here that cannot be fully undone gets said in full before it happens. -->
         <div
           v-if="confirming"
           class="mt-6 max-w-[60ch] rounded-lg border border-line-4 bg-paper-1 p-4"
@@ -1072,24 +1073,27 @@ function audienceOf(entry: {
           </p>
 
           <!-- Eine Administration gibt mit dem Absenden frei, also sagt der Satz, was dann
-               geschieht — und nicht, dass noch jemand hinsieht, der nicht mehr hinsieht. -->
+               geschieht — und nicht, dass noch jemand hinsieht, der nicht mehr hinsieht.
+
+               **Was danach noch geht, und was nicht.** Hier stand „verschickte Rundmails lassen
+               sich nicht zurückholen" — seit es das Zurückziehen gibt, stimmt das für Postfach und
+               Archiv nicht mehr. Nicht zurückzuholen sind nur die E-Mails, und deshalb steht der
+               Satz darüber nur da, wo E-Mail als Weg gewählt ist. -->
           <p class="mt-1 text-[12.5px] text-ink-5">
             <template v-if="isAdministrator && scheduledFor === ''">
-              Sie geht sofort raus, ohne weitere Freigabe — verschickte Rundmails lassen sich nicht
-              zurückholen.
+              Sie geht sofort raus, ohne weitere Freigabe.
             </template>
             <template v-else-if="isAdministrator">
-              Mit dem Speichern ist sie freigegeben und geht zum Termin von selbst raus. Verschickte
-              Rundmails lassen sich nicht zurückholen.
+              Sie ist damit freigegeben und geht zum Termin von selbst raus.
             </template>
             <template v-else-if="scheduledFor === ''">
-              Sie geht raus, sobald die Administration sie freigibt — verschickte Rundmails lassen
-              sich nicht zurückholen.
+              Sie geht raus, sobald die Administration sie freigibt.
             </template>
             <template v-else>
-              Freigegeben sein muss sie trotzdem; der Termin allein schickt nichts. Verschickte
-              Rundmails lassen sich nicht zurückholen.
+              Freigegeben sein muss sie trotzdem; der Termin allein schickt nichts.
             </template>
+            Zurückziehen kann sie danach nur der Ur-Admin.
+            <template v-if="deliverByEmail">E-Mails lassen sich nicht zurückholen.</template>
           </p>
           <div class="mt-3 flex flex-wrap gap-2">
             <Button :disabled="isPending || isSavingEdit" @click="submit">
