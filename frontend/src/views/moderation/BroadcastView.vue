@@ -49,15 +49,26 @@ import { Spinner } from '@/components/ui/spinner'
 const tab = ref<string>('compose')
 
 /**
- * No counts here. „Wie viele Absender es gibt" is not a number anybody acts on, and the design
- * rules keep counts for things still waiting to be done.
+ * **Eine Zahl, und nur an der Warteschlange.** Die Gestaltungsregeln lassen Zahlen nur dort zu, wo
+ * noch jemand etwas tun muss, und das ist genau eine Rundmail, die auf eine Freigabe wartet.
+ * Gezählt wird deshalb nur, was wartet, **nicht das Geplante**: Das ist freigegeben und wartet bloß
+ * auf die Uhr, da ist niemand am Zug. „Wie viele Absender es gibt" oder „wie viele gesendet sind"
+ * ist keine Zahl, nach der jemand handelt.
+ *
+ * Ohne Wartendes keine „(0)" — eine Null sagt nichts, was der blanke Reiter nicht auch sagt.
  */
-const TABS: ModerationTab[] = [
+const tabs = computed<ModerationTab[]>(() => [
   { value: 'compose', label: 'Schreiben' },
-  { value: 'queue', label: 'Warteschlange' },
+  {
+    value: 'queue',
+    label:
+      waitingBroadcasts.value.length > 0
+        ? `Warteschlange (${waitingBroadcasts.value.length})`
+        : 'Warteschlange',
+  },
   { value: 'released', label: 'Gesendete' },
   { value: 'senders', label: 'Absender' },
-]
+])
 
 type Role = SubmitBroadcastBodyAudienceRolesItem
 
@@ -685,7 +696,7 @@ function audienceOf(entry: {
     title="Rundmail"
     description="Eine Nachricht an das Team, an alle anderen, oder an alle zusammen. Reiner Text, wie jede andere Mail hier — gesperrte Konten bekommen sie nie."
   >
-    <ModerationTabs v-model="tab" :tabs="TABS" label="Ansichten" />
+    <ModerationTabs v-model="tab" :tabs="tabs" label="Ansichten" />
 
     <div class="mt-5">
       <template v-if="tab === 'compose'">

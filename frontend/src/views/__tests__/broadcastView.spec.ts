@@ -102,7 +102,8 @@ function broadcastView() {
 }
 
 async function openQueue(wrapper: ReturnType<typeof broadcastView>) {
-  const tab = wrapper.findAll('button').find((button) => button.text() === 'Warteschlange')
+  // Mit Anfang statt ganzem Text: Liegt etwas darin, heißt der Reiter „Warteschlange (1)".
+  const tab = wrapper.findAll('button').find((button) => button.text().startsWith('Warteschlange'))
   if (tab === undefined) {
     throw new Error('kein Reiter „Warteschlange"')
   }
@@ -369,5 +370,39 @@ describe('BroadcastView, die Test-Rundmail', () => {
 
     const item = wrapper.findAll('li').find((each) => each.text().includes('Zu zweit'))
     expect(item?.text()).toContain('eine Test-Mail ist an deine Adresse unterwegs')
+  })
+})
+
+/** Der Reiter der Warteschlange, mit oder ohne Zahl. */
+function queueTab(wrapper: ReturnType<typeof broadcastView>) {
+  return wrapper.findAll('button').find((each) => each.text().startsWith('Warteschlange'))
+}
+
+/**
+ * Die Zahl am Reiter der Warteschlange.
+ *
+ * **Nur was auf eine Freigabe wartet.** Das Geplante ist freigegeben und wartet bloß auf die Uhr —
+ * da ist niemand am Zug, und eine Zahl dafür risse jemanden zu einem Reiter, an dem nichts zu tun
+ * ist.
+ */
+describe('BroadcastView, die Zahl an der Warteschlange', () => {
+  it('zählt, was wartet, und nicht das Geplante', () => {
+    queue.value.data = [
+      entry({ publicationId: '01900000-0000-7000-8000-0000000000a1' }),
+      entry({
+        publicationId: '01900000-0000-7000-8000-0000000000a2',
+        status: 'approved',
+        scheduledFor: '2030-01-01T10:00:00.000Z',
+      }),
+    ]
+
+    expect(queueTab(broadcastView())?.text()).toBe('Warteschlange (1)')
+  })
+
+  it('zeigt keine Null', () => {
+    // Nur Geplantes: Niemand ist am Zug, also steht der Reiter ohne Zahl da.
+    queue.value.data = [entry({ status: 'approved', scheduledFor: '2030-01-01T10:00:00.000Z' })]
+
+    expect(queueTab(broadcastView())?.text()).toBe('Warteschlange')
   })
 })
