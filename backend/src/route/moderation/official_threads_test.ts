@@ -742,7 +742,11 @@ Deno.test("einen offiziellen Beitrag ändern: nur mit Grund, Text vorher und nac
     STATUS_CODE.BadRequest,
     "mit leerem Grund",
   );
-  assertEquals((await revisionsOf(cookies, threadId)).length, 0);
+  // Im Protokoll steht bis hierher nur, dass er offiziell wurde — keine Änderung am Beitrag.
+  assertEquals(
+    (await revisionsOf(cookies, threadId)).map((entry) => entry.kind),
+    ["made_official"],
+  );
 
   assertEquals(
     (await request("PATCH", path, cookies.admin, {
@@ -753,8 +757,9 @@ Deno.test("einen offiziellen Beitrag ändern: nur mit Grund, Text vorher und nac
   );
 
   const log = await revisionsOf(cookies, threadId);
-  assertEquals(log.length, 1);
-  assertEquals(log[0]?.kind, "post_edited");
+  assertEquals(log.length, 2, "die Änderung und der Namenstausch davor");
+  assertEquals(log[0]?.kind, "post_edited", "die neueste zuerst");
+  assertEquals(log[1]?.kind, "made_official");
   assertEquals(log[0]?.reason, "Tippfehler im Datum");
   assertEquals(log[0]?.textBefore, TEXT);
   assertEquals(log[0]?.textAfter, "Korrigiert.");
@@ -795,8 +800,8 @@ Deno.test("die Überschrift ändert die Administration, mit Grund und im Protoko
   assertEquals(thread.title, `${TITLE}-neu`);
 
   const log = await revisionsOf(cookies, threadId);
-  assertEquals(log.length, 1);
-  assertEquals(log[0]?.kind, "title_changed");
+  assertEquals(log.length, 2, "die Änderung und der Namenstausch davor");
+  assertEquals(log[0]?.kind, "title_changed", "die neueste zuerst");
   assertEquals(log[0]?.titleBefore, TITLE);
   assertEquals(log[0]?.titleAfter, `${TITLE}-neu`);
   assertEquals(log[0]?.reason, "Klarer");
@@ -850,8 +855,8 @@ Deno.test("einen offiziellen Beitrag löschen: nur mit Grund, der gelöschte Tex
   );
 
   const log = await revisionsOf(cookies, threadId);
-  assertEquals(log.length, 1);
-  assertEquals(log[0]?.kind, "post_deleted");
+  assertEquals(log.length, 2, "das Löschen und der Namenstausch davor");
+  assertEquals(log[0]?.kind, "post_deleted", "die neueste zuerst");
   assertEquals(log[0]?.reason, "Doppelt veröffentlicht");
   assertEquals(log[0]?.textBefore, TEXT, "der Text bleibt im Protokoll");
   assertEquals(log[0]?.textAfter, null);
@@ -914,5 +919,135 @@ Deno.test("nachträglich offiziell: ein Thread ohne Beitrag sagt, dass der Beitr
   assert(
     (await refused.text()).includes("noch kein Beitrag"),
     "und sagt, woran es liegt",
+  );
+});
+
+// ── Der Namenstausch im Protokoll, und der Weg zurück ────────────────────────────────────────
+
+type Revisions = Array<
+  Revision & { nameBefore: string | null; nameAfter: string | null }
+>;
+
+async function log(cookies: { admin: string }, threadId: string) {
+  return await (await revisions(cookies.admin, threadId)).json() as Revisions;
+}
+
+function unmake(cookie: string, threadId: string, reason?: string) {
+  const query = reason === undefined
+    ? ""
+    : `?reason=${encodeURIComponent(reason)}`;
+  return request(
+    "DELETE",
+    `/api/moderation/official-threads/threads/${threadId}/official${query}`,
+    cookie,
+  );
+}
+
+/**
+ * **Wer den Absender vertauscht, ändert, wer die Plattform zu sagen scheint.** Das stand als
+ * einziges nicht im Protokoll — auf der Beta ist es aus Versehen passiert und ließ sich nicht
+ * nachlesen.
+ */
+Deno.test("offiziell gemacht steht im Protokoll, mit dem Namen vorher und nachher", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-protokoll", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+
+  assertEquals(
+    (await makeOfficial(cookies.admin, threadId)).status,
+    STATUS_CODE.Created,
+  );
+
+  const entries = await log(cookies, threadId);
+  assertEquals(entries.length, 1);
+  assertEquals(entries[0]?.kind, "made_official");
+  assertEquals(entries[0]?.nameBefore, MOD, "wer vorher dastand");
+  assertEquals(entries[0]?.nameAfter, FLAMINGO, "und wer jetzt");
+  assertEquals(entries[0]?.editedByUsername, ADMIN);
+  assertEquals(
+    entries[0]?.reason,
+    null,
+    "ohne Grund: die Einreichung ist der Vorgang",
+  );
+});
+
+Deno.test("auch ein als offiziell geschriebener Thread sagt im Protokoll, unter welchem Namen er erschien", async () => {
+  const cookies = await fixture();
+  const { threadId } = await submitted(cookies.admin);
+
+  const entries = await log(cookies, threadId);
+  assertEquals(entries[0]?.kind, "made_official");
+  assertEquals(entries[0]?.nameBefore, null, "einen Namen davor gab es nie");
+  assertEquals(entries[0]?.nameAfter, FLAMINGO);
+});
+
+/** Der Weg zurück, den es für einzelne Beiträge längst gab. */
+Deno.test("offiziell machen lässt sich zurücknehmen, mit Grund und im Protokoll", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-zurueck", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+  await makeOfficial(cookies.admin, threadId);
+
+  assertEquals(
+    (await unmake(cookies.mod, threadId, "Falscher Absender")).status,
+    STATUS_CODE.Forbidden,
+    "nicht der Mod",
+  );
+  assertEquals(
+    (await unmake(cookies.admin, threadId)).status,
+    STATUS_CODE.BadRequest,
+    "nicht ohne Grund",
+  );
+
+  assertEquals(
+    (await unmake(cookies.admin, threadId, "Falschen Absender gewählt")).status,
+    STATUS_CODE.OK,
+  );
+
+  // Der Name von vorher steht wieder da, am Thread und am Eröffnungsbeitrag.
+  const posts = await postsAsSeenBy(cookies.member, threadId);
+  assertEquals(posts[0]?.createdByUsername, MOD);
+  assertEquals(posts[0]?.isOfficial, false);
+
+  const thread = await (await request(
+    "GET",
+    `/api/forum/threads/${threadId}`,
+    cookies.member,
+  )).json() as { createdByUsername: string; isOfficial: boolean };
+  assertEquals(thread.createdByUsername, MOD);
+  assertEquals(thread.isOfficial, false);
+
+  const entries = await log(cookies, threadId);
+  assertEquals(entries[0]?.kind, "unmade_official");
+  assertEquals(entries[0]?.nameBefore, FLAMINGO);
+  assertEquals(entries[0]?.nameAfter, MOD);
+  assertEquals(entries[0]?.reason, "Falschen Absender gewählt");
+  assertEquals(entries[0]?.editedByUsername, ADMIN);
+
+  // Und danach lässt es sich noch einmal einreichen: Die zurückgenommene steht nicht im Weg.
+  assertEquals(
+    (await makeOfficial(cookies.mod, threadId)).status,
+    STATUS_CODE.Created,
+  );
+});
+
+/**
+ * **Ein als offiziell geschriebener Thread hat keinen Namen, der zurückkäme.** Ihn zurückzunehmen
+ * setzte die Person darunter, die ihn getippt hat — und die hat nie unter ihrem Namen geschrieben.
+ */
+Deno.test("einen als offiziell geschriebenen Thread nimmt niemand zurück", async () => {
+  const cookies = await fixture();
+  const { threadId } = await submitted(cookies.admin);
+
+  const refused = await unmake(cookies.admin, threadId, "Doch nicht");
+  assertEquals(refused.status, STATUS_CODE.Conflict);
+  assert((await refused.text()).includes("als offizieller geschrieben"));
+
+  // Und der Schreiber steht weiterhin nirgends.
+  const read = await whatAMemberReads(cookies.member, threadId);
+  assert(!read.posts.includes(MOD));
+  assertEquals(
+    (await postsAsSeenBy(cookies.member, threadId))[0]?.createdByUsername,
+    FLAMINGO,
   );
 });

@@ -24,7 +24,7 @@ import {
   useUpdateForumPost,
 } from '@/api/forum/forum'
 import type { GetForumThread200, ListForumPosts200ResultsItem, PostDocument } from '@/api/models'
-import { BadgeCheck, Flag, Pencil, ScrollText, ShieldCheck } from '@lucide/vue'
+import { BadgeCheck, Flag, Pencil, ScrollText, ShieldCheck, Undo2 } from '@lucide/vue'
 import { useForumTree } from '@/composables/useForumTree'
 import { useIsOperator } from '@/composables/useIsOperator'
 import { mayWriteInForum } from '@/lib/forum/permission'
@@ -45,6 +45,7 @@ import DeletePostDialog from '@/components/thread/DeletePostDialog.vue'
 import MakeOfficialDialog from '@/components/thread/MakeOfficialDialog.vue'
 import OfficialTitleDialog from '@/components/thread/OfficialTitleDialog.vue'
 import OfficialRevisionsDialog from '@/components/thread/OfficialRevisionsDialog.vue'
+import UnmakeOfficialDialog from '@/components/thread/UnmakeOfficialDialog.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { useGetCurrentUser } from '@/api/auth/auth'
@@ -101,6 +102,7 @@ const administersOfficial = computed<boolean>(
   () => thread.value?.isOfficial === true && isAdministrator.value,
 )
 const changingTitle = ref<boolean>(false)
+const unmakingOfficial = ref<boolean>(false)
 const readingRevisions = ref<boolean>(false)
 
 /** Beim offiziellen Beitrag verlangt die API einen Grund, bis zu dieser Länge. */
@@ -450,6 +452,14 @@ async function refreshOfficial(): Promise<void> {
                 <ScrollText :size="14" :stroke-width="1.5" aria-hidden="true" />
                 Protokoll
               </button>
+              <button
+                type="button"
+                class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+                @click="unmakingOfficial = true"
+              >
+                <Undo2 :size="14" :stroke-width="1.5" aria-hidden="true" />
+                Nicht mehr offiziell
+              </button>
             </template>
           </div>
         </div>
@@ -522,6 +532,13 @@ async function refreshOfficial(): Promise<void> {
     v-model:open="changingTitle"
     :thread-id="thread.id"
     :title="thread.title"
+    @changed="refreshOfficial"
+  />
+
+  <UnmakeOfficialDialog
+    v-if="thread && unmakingOfficial"
+    v-model:open="unmakingOfficial"
+    :thread-id="thread.id"
     @changed="refreshOfficial"
   />
 

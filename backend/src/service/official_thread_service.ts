@@ -518,6 +518,25 @@ async function release(publicationId: string): Promise<boolean> {
       .where("writingThreadId", "=", thread.id)
       .execute();
 
+    // Auch hier steht im Protokoll, unter welchem Namen er erschienen ist — einen Namen davor gab
+    // es nie, er war bis eben unsichtbar.
+    const shownAs = await transaction
+      .selectFrom("writingThread")
+      .select("shownAsUserId")
+      .where("id", "=", thread.id)
+      .executeTakeFirst();
+
+    if (
+      shownAs?.shownAsUserId !== null && shownAs?.shownAsUserId !== undefined
+    ) {
+      await recordMadeOfficial(transaction, {
+        threadId: thread.id,
+        nameBefore: null,
+        shownAsUserId: shownAs.shownAsUserId,
+        editedBy: claimed.writtenBy,
+      });
+    }
+
     return true;
   });
 }
@@ -548,6 +567,14 @@ async function makeExistingOfficial(
     // bleibt und der nächste Takt es noch einmal versucht.
     throw new Error("There is no platform account to show the thread as");
   }
+
+  // Wer bis eben dastand — der Name kommt ins Protokoll und beim Zurücknehmen zurück.
+  const before = await transaction
+    .selectFrom("writingThread")
+    .leftJoin("user", "user.id", "writingThread.createdBy")
+    .select("user.username")
+    .where("writingThread.publicationId", "=", publicationId)
+    .executeTakeFirst();
 
   const thread = await transaction
     .updateTable("writingThread")
@@ -581,6 +608,158 @@ async function makeExistingOfficial(
           .limit(1),
     )
     .execute();
+
+  await recordMadeOfficial(transaction, {
+    threadId: thread.id,
+    nameBefore: before?.username ?? null,
+    shownAsUserId: shownAs,
+    editedBy: publication.writtenBy,
+  });
+}
+
+/**
+ * Hält im Protokoll fest, dass ein Thread offiziell geworden ist, und unter welchem Namen.
+ *
+ * **Das ist die größte Änderung an einem Thread.** Wer den Absender vertauscht, ändert, wer die
+ * Plattform zu sagen scheint — auf der Beta ist das einmal aus Versehen passiert und stand
+ * nirgends. Bei einem Thread, der schon im Forum stand, steht auch der Name davor darin.
+ */
+async function recordMadeOfficial(
+  transaction: Transaction,
+  entry: {
+    threadId: string;
+    nameBefore: string | null;
+    shownAsUserId: string;
+    editedBy: string | null;
+  },
+): Promise<void> {
+  const shownAs = await transaction
+    .selectFrom("user")
+    .select("username")
+    .where("id", "=", entry.shownAsUserId)
+    .executeTakeFirst();
+
+  await transaction
+    .insertInto("officialRevision")
+    .values({
+      kind: "made_official",
+      writingThreadId: entry.threadId,
+      editedBy: entry.editedBy,
+      // Kein Grund: Der Vorgang *ist* die Einreichung, und wer und wann steht daneben.
+      reason: null,
+      nameBefore: entry.nameBefore,
+      nameAfter: shownAs?.username ?? "Admin",
+    })
+    .execute();
+}
+
+export type UnmakeRefusal =
+  | "not_found"
+  | "not_official"
+  | "not_from_an_existing_thread";
+
+/**
+ * Nimmt zurück, dass ein Thread offiziell ist — der Weg zurück, den es für einzelne Beiträge schon
+ * gab und für den Namenstausch nicht.
+ *
+ * **Nur bei einem Thread, der vorher schon im Forum stand.** Dort gab es einen Namen davor, und der
+ * kommt zurück. Ein Thread, der als offizieller geschrieben wurde, hat keinen: Unter ihm steht die
+ * Person, die ihn getippt hat, und die hat nie unter ihrem Namen geschrieben. Sie nachträglich
+ * daruntersetzen hieße, ihr die Aussage anzuhängen — dafür gibt es das Löschen des Beitrags.
+ *
+ * Mit Grund, im Protokoll, und die Veröffentlichung gilt als zurückgezogen — dieselbe Spur wie bei
+ * einer zurückgezogenen Rundmail.
+ */
+async function unmakeOfficial(
+  threadId: string,
+  reason: string,
+  editor: User,
+): Promise<UnmakeRefusal | undefined> {
+  return await db.transaction().execute(async (transaction) => {
+    // Erst die Zeile sperren, dann lesen: `FOR UPDATE` verträgt sich nicht mit den Joins darunter —
+    // PostgreSQL weist es zurück, und zwar mitten im Vorgang.
+    await transaction
+      .selectFrom("writingThread")
+      .select("id")
+      .where("id", "=", threadId)
+      .forUpdate()
+      .execute();
+
+    const thread = await transaction
+      .selectFrom("writingThread")
+      .leftJoin("publication", "publication.id", "writingThread.publicationId")
+      .leftJoin("user as shown", "shown.id", "writingThread.shownAsUserId")
+      .select([
+        "writingThread.id",
+        "writingThread.publicationId",
+        "writingThread.shownAsSetAt",
+        "writingThread.awaitingRelease",
+        "shown.username as shownAsUsername",
+        "publication.forExistingThread",
+        "publication.retractedAt",
+      ])
+      .where("writingThread.id", "=", threadId)
+      .where("writingThread.writingGroupId", "is", null)
+      .executeTakeFirst();
+
+    if (thread === undefined || thread.awaitingRelease) {
+      return "not_found";
+    }
+    if (thread.shownAsSetAt === null) {
+      return "not_official";
+    }
+    if (thread.forExistingThread !== true) {
+      return "not_from_an_existing_thread";
+    }
+
+    // Der Name, der wieder dastehen wird: der echte Verfasser des Threads.
+    const author = await transaction
+      .selectFrom("writingThread")
+      .leftJoin("user", "user.id", "writingThread.createdBy")
+      .select("user.username")
+      .where("writingThread.id", "=", threadId)
+      .executeTakeFirst();
+
+    await transaction
+      .updateTable("writingThread")
+      .set({ shownAsUserId: null, shownAsSetBy: null, shownAsSetAt: null })
+      .where("id", "=", threadId)
+      .execute();
+
+    // Alle Beiträge dieses Threads, die den Absender tragen — beim nachträglichen Offiziell-Machen
+    // ist das genau der Eröffnungsbeitrag.
+    await transaction
+      .updateTable("writingPost")
+      .set({ shownAsUserId: null, shownAsSetBy: null, shownAsSetAt: null })
+      .where("writingThreadId", "=", threadId)
+      .where("shownAsSetAt", "is not", null)
+      .execute();
+
+    if (thread.publicationId !== null && thread.retractedAt === null) {
+      await transaction
+        .updateTable("publication")
+        .set({
+          retractedBy: editor.id,
+          retractedAt: new Date().toISOString(),
+        })
+        .where("id", "=", thread.publicationId)
+        .execute();
+    }
+
+    await transaction
+      .insertInto("officialRevision")
+      .values({
+        kind: "unmade_official",
+        writingThreadId: threadId,
+        editedBy: editor.id,
+        reason,
+        nameBefore: thread.shownAsUsername ?? "Admin",
+        nameAfter: author?.username ?? null,
+      })
+      .execute();
+
+    return undefined;
+  });
 }
 
 /** Was fällig ist, erscheint. Der Taktgeber ruft das jede Minute, wie bei den Rundmails. */
@@ -679,6 +858,7 @@ async function submitForExisting(
       "writingThread.awaitingRelease",
       "writingThread.shownAsSetAt",
       "publication.status as publicationStatus",
+      "publication.retractedAt as publicationRetractedAt",
     ])
     .where("writingThread.id", "=", input.threadId)
     .where("writingThread.writingGroupId", "is", null)
@@ -690,10 +870,13 @@ async function submitForExisting(
   if (thread.shownAsSetAt !== null) {
     return "already_official";
   }
-  // Eine offene Einreichung für diesen Thread gibt es schon; eine verworfene steht nicht im Weg.
+  // Eine offene Einreichung für diesen Thread gibt es schon; eine verworfene steht nicht im Weg —
+  // und eine zurückgenommene auch nicht, sonst ließe sich ein Thread nach dem Zurücknehmen nie
+  // wieder offiziell machen.
   if (
     thread.publicationStatus !== null &&
-    thread.publicationStatus !== "discarded"
+    thread.publicationStatus !== "discarded" &&
+    thread.publicationRetractedAt === null
   ) {
     return "already_pending";
   }
@@ -956,14 +1139,23 @@ async function deleteOfficialPost(
 
 export type OfficialRevision = {
   id: string;
-  kind: "title_changed" | "post_edited" | "post_deleted";
+  kind:
+    | "title_changed"
+    | "post_edited"
+    | "post_deleted"
+    | "made_official"
+    | "unmade_official";
   editedByUsername: string | null;
   editedAt: string;
-  reason: string;
+  /** Leer allein bei „offiziell gemacht": Dort ist die Einreichung selbst der Vorgang. */
+  reason: string | null;
   titleBefore: string | null;
   titleAfter: string | null;
   textBefore: string | null;
   textAfter: string | null;
+  /** Der Name, unter dem er erscheint — vorher und nachher. */
+  nameBefore: string | null;
+  nameAfter: string | null;
 };
 
 /** Das Protokoll eines offiziellen Threads, die neuesten zuerst. Nur für die Administration. */
@@ -981,6 +1173,8 @@ async function listRevisions(threadId: string): Promise<OfficialRevision[]> {
       "officialRevision.titleAfter",
       "officialRevision.textBefore",
       "officialRevision.textAfter",
+      "officialRevision.nameBefore",
+      "officialRevision.nameAfter",
     ])
     .where("officialRevision.writingThreadId", "=", threadId)
     .orderBy("officialRevision.editedAt", "desc")
@@ -998,6 +1192,7 @@ export const OfficialThreadService = {
   listWaiting,
   listReleased,
   changeTitle,
+  unmakeOfficial,
   editOfficialPost,
   deleteOfficialPost,
   listRevisions,

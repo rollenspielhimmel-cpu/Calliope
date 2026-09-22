@@ -13,7 +13,7 @@ import {
   useSubmitExistingOfficialThread,
 } from '@/api/moderation/moderation'
 import { useGetCurrentUser } from '@/api/auth/auth'
-import { failureMessage } from '@/lib/format/failure'
+import { refusalMessage } from '@/lib/format/failure'
 import OfficialSenderSelect from '@/components/thread/OfficialSenderSelect.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -56,7 +56,7 @@ async function submit() {
     })
     status = answer.status === 201 ? answer.data.status : ''
   } catch (failure) {
-    error.value = failureMessage(failure, 'Das ging nicht durch. Versuche es noch einmal.')
+    error.value = refusalMessage(failure, 'Das ging nicht durch. Versuche es noch einmal.')
     return
   }
 

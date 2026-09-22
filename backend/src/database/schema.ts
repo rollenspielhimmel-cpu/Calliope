@@ -59,9 +59,11 @@ export type NotificationType =
   | "visibility_changed_in_writing_group";
 
 export type OfficialRevisionKind =
+  | "made_official"
   | "post_deleted"
   | "post_edited"
-  | "title_changed";
+  | "title_changed"
+  | "unmade_official";
 
 export type PlatformPermission = "prepare_publications" | "see_whole_queue";
 
@@ -527,7 +529,9 @@ export interface OfficialRevision {
   editedBy: string | null;
   id: Generated<string>;
   kind: OfficialRevisionKind;
-  reason: string;
+  nameAfter: string | null;
+  nameBefore: string | null;
+  reason: string | null;
   textAfter: string | null;
   textBefore: string | null;
   titleAfter: string | null;
@@ -1262,9 +1266,11 @@ export const PLATFORM_PERMISSIONS = [
 export const PLATFORM_PERMISSION_SCHEMA = z.enum(PLATFORM_PERMISSIONS);
 
 export const OFFICIAL_REVISION_KINDS = [
+  "made_official",
   "post_deleted",
   "post_edited",
   "title_changed",
+  "unmade_official",
 ] as const;
 export const OFFICIAL_REVISION_KIND_SCHEMA = z.enum(OFFICIAL_REVISION_KINDS);
 
@@ -1499,13 +1505,15 @@ export const OFFICIAL_REVISION_SCHEMA = z.object({
   writingPostId: z.uuidv7().nullable(),
   editedBy: z.uuidv7().nullable(),
   editedAt: z.iso.datetime({ offset: true }),
-  reason: z.string(),
+  reason: z.string().nullable(),
   titleBefore: z.string().nullable(),
   titleAfter: z.string().nullable(),
   textBefore: z.string().nullable(),
   textAfter: z.string().nullable(),
   documentBefore: z.unknown().nullable(),
   documentAfter: z.unknown().nullable(),
+  nameBefore: z.string().nullable(),
+  nameAfter: z.string().nullable(),
 });
 
 export const PLATFORM_ROLE_PERMISSION_SCHEMA = z.object({

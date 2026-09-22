@@ -19,7 +19,7 @@ import {
 } from '@/api/moderation/moderation'
 import type { ListAdminInboxFolders200Item } from '@/api/models'
 import { queryClient } from '@/lib/api/queryClient'
-import { failureMessage } from '@/lib/format/failure'
+import { refusalMessage } from '@/lib/format/failure'
 import { pluralize } from '@/lib/format/formatText'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { ArrowDown, ArrowUp } from '@lucide/vue'
@@ -52,7 +52,7 @@ async function attempt(action: () => Promise<unknown>, fallback: string) {
   try {
     await action()
   } catch (failure) {
-    error.value = failureMessage(failure, fallback)
+    error.value = refusalMessage(failure, fallback)
     // Auch nach einem Nein neu laden: Meist heißt es, dass jemand anderes gerade etwas geändert hat.
     await queryClient.invalidateQueries({ queryKey: getListAdminInboxQueryKey() })
     return false

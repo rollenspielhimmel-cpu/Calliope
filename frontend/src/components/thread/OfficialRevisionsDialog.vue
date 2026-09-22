@@ -29,18 +29,33 @@ const revisions = computed<ListOfficialThreadRevisions200Item[]>(() =>
 )
 
 const KIND: Record<ListOfficialThreadRevisions200Item['kind'], string> = {
+  made_official: 'Offiziell gemacht',
+  unmade_official: 'Nicht mehr offiziell',
   title_changed: 'Überschrift geändert',
   post_edited: 'Beitrag geändert',
   post_deleted: 'Beitrag gelöscht',
 }
 
+/** Der Namenstausch zeigt Namen, die Überschrift den Titel, alles andere den Text. */
 function before(revision: ListOfficialThreadRevisions200Item): string | null {
+  if (revision.kind === 'made_official' || revision.kind === 'unmade_official') {
+    return revision.nameBefore
+  }
   return revision.kind === 'title_changed' ? revision.titleBefore : revision.textBefore
 }
 
 function after(revision: ListOfficialThreadRevisions200Item): string | null {
+  if (revision.kind === 'made_official' || revision.kind === 'unmade_official') {
+    return revision.nameAfter
+  }
   return revision.kind === 'title_changed' ? revision.titleAfter : revision.textAfter
 }
+
+/** „Vorher" heißt beim Namenstausch: der Name, der dastand. Ohne einen gab es keinen. */
+const label = (revision: ListOfficialThreadRevisions200Item) =>
+  revision.kind === 'made_official' || revision.kind === 'unmade_official'
+    ? { before: 'Stand als', after: 'Steht als' }
+    : { before: 'Vorher', after: 'Nachher' }
 </script>
 
 <template>
@@ -71,15 +86,17 @@ function after(revision: ListOfficialThreadRevisions200Item): string | null {
               {{ revision.editedByUsername ?? 'Gelöschtes Konto' }} ·
               {{ formatActivityTime(revision.editedAt) }}
             </p>
-            <p class="mt-2 text-[12.5px] text-ink-3">Grund: {{ revision.reason }}</p>
+            <p v-if="revision.reason" class="mt-2 text-[12.5px] text-ink-3">
+              Grund: {{ revision.reason }}
+            </p>
 
             <dl class="mt-2 flex flex-col gap-2 text-[12.5px]">
-              <div>
-                <dt class="text-ink-5">Vorher</dt>
+              <div v-if="before(revision) !== null">
+                <dt class="text-ink-5">{{ label(revision).before }}</dt>
                 <dd class="whitespace-pre-line text-ink-4">{{ before(revision) }}</dd>
               </div>
-              <div v-if="revision.kind !== 'post_deleted'">
-                <dt class="text-ink-5">Nachher</dt>
+              <div v-if="revision.kind !== 'post_deleted' && after(revision) !== null">
+                <dt class="text-ink-5">{{ label(revision).after }}</dt>
                 <dd class="whitespace-pre-line text-ink-4">{{ after(revision) }}</dd>
               </div>
             </dl>

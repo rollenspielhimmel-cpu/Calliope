@@ -1,10 +1,14 @@
 <script setup lang="ts">
 /**
- * Die Überschrift eines offiziellen Threads ändern — nur die Administration, nur mit Grund. Der
- * Grund steht mit der Überschrift vorher und nachher im Protokoll.
+ * „Nicht mehr offiziell": nimmt den Namenstausch zurück.
+ *
+ * Der Absender geht vom Thread und seinem Eröffnungsbeitrag, der Name von vorher kommt zurück, und
+ * beides steht mit Grund im Protokoll. Nur die Administration, und nur bei einem Thread, der schon
+ * im Forum stand — bei einem als offiziell geschriebenen gibt es keinen Namen, der zurückkäme; das
+ * sagt der Server, wenn es so ist.
  */
-import { computed, ref } from 'vue'
-import { useChangeOfficialThreadTitle } from '@/api/moderation/moderation'
+import { ref } from 'vue'
+import { useUnmakeOfficialThread } from '@/api/moderation/moderation'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { refusalMessage } from '@/lib/format/failure'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -22,31 +26,20 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{ threadId: string; title: string }>()
+const props = defineProps<{ threadId: string }>()
 const emit = defineEmits<{ changed: [] }>()
 
-const draftTitle = ref<string>(props.title)
 const reason = ref<string>('')
 const error = ref<string | undefined>(undefined)
 
-const ready = computed<boolean>(
-  () =>
-    draftTitle.value.trim().length > 0 &&
-    draftTitle.value.trim() !== props.title &&
-    reason.value.trim().length > 0,
-)
+const { mutateAsync: unmake, isPending } = useUnmakeOfficialThread()
 
-const { mutateAsync: changeTitle, isPending } = useChangeOfficialThreadTitle()
-
-async function save() {
+async function confirm() {
   error.value = undefined
   try {
-    await changeTitle({
-      threadId: props.threadId,
-      data: { title: draftTitle.value.trim(), reason: reason.value.trim() },
-    })
+    await unmake({ threadId: props.threadId, params: { reason: reason.value.trim() } })
   } catch (failure) {
-    error.value = refusalMessage(failure, 'Die Überschrift konnte nicht geändert werden.')
+    error.value = refusalMessage(failure, 'Das ging nicht zurück. Versuche es noch einmal.')
     return
   }
   emit('changed')
@@ -57,28 +50,24 @@ async function save() {
 <template>
   <Dialog v-model:open="open">
     <DialogContent class="sm:max-w-dialog-form">
+      <DialogTitle>Nicht mehr offiziell</DialogTitle>
       <DialogHeader>
-        <DialogTitle>Überschrift ändern</DialogTitle>
         <DialogDescription>
-          Ein offizieller Thread ändert sich nicht unbemerkt: Grund und Überschrift vorher und
-          nachher stehen im Protokoll, das nur die Administration liest.
+          Der Absender geht vom Thread und seinem Eröffnungsbeitrag; der Name, der vorher dastand,
+          kommt zurück.
         </DialogDescription>
       </DialogHeader>
 
       <div class="flex flex-col gap-4">
+        <p class="max-w-[62ch] text-control text-ink-5">
+          Grund und beide Namen stehen danach im Protokoll. Antworten im Thread bleiben, wie sie
+          sind.
+        </p>
+
         <Field>
-          <FieldLabel for="official-title">Überschrift</FieldLabel>
+          <FieldLabel for="unmake-official-reason">Grund</FieldLabel>
           <Input
-            id="official-title"
-            v-model="draftTitle"
-            :maxlength="TEXT_LIMIT.changeOfficialThreadTitle.title.maxLength"
-            :disabled="isPending"
-          />
-        </Field>
-        <Field>
-          <FieldLabel for="official-title-reason">Grund</FieldLabel>
-          <Input
-            id="official-title-reason"
+            id="unmake-official-reason"
             v-model="reason"
             :maxlength="TEXT_LIMIT.changeOfficialThreadTitle.reason.maxLength"
             :disabled="isPending"
@@ -94,9 +83,9 @@ async function save() {
         <Button type="button" variant="outline" :disabled="isPending" @click="open = false">
           Abbrechen
         </Button>
-        <Button type="button" :disabled="isPending || !ready" @click="save">
+        <Button type="button" :disabled="isPending || reason.trim().length === 0" @click="confirm">
           <Spinner v-if="isPending" />
-          Speichern
+          Zurücknehmen
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -54,14 +54,23 @@ const EXISTING_RESPONSE = z.object({
 
 const REVISION_RESPONSE = z.object({
   id: z.uuidv7(),
-  kind: z.enum(["title_changed", "post_edited", "post_deleted"]),
+  kind: z.enum([
+    "title_changed",
+    "post_edited",
+    "post_deleted",
+    "made_official",
+    "unmade_official",
+  ]),
   editedByUsername: z.string().nullable(),
   editedAt: z.iso.datetime({ offset: true }),
-  reason: z.string(),
+  /** Leer allein bei „offiziell gemacht": Dort ist die Einreichung selbst der Vorgang. */
+  reason: z.string().nullable(),
   titleBefore: z.string().nullable(),
   titleAfter: z.string().nullable(),
   textBefore: z.string().nullable(),
   textAfter: z.string().nullable(),
+  nameBefore: z.string().nullable(),
+  nameAfter: z.string().nullable(),
 });
 
 const THREAD_PARAMS = z.object({ threadId: z.uuidv7() });
@@ -286,4 +295,67 @@ export default new OpenAPIHono()
         ),
         STATUS_CODE.OK,
       ),
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/official-threads/threads/{threadId}/official",
+      tags: [MODERATION_TAG],
+      summary: "Take back that a thread is official",
+      description:
+        "Administrators only, with a reason: the sender goes off the thread and its opening post, the name that stood there before comes back, and the submission counts as retracted. Only for a thread that was already in the forum — one written as an official thread has no earlier name, and putting the writer under it would pin the statement on them.",
+      operationId: "unmakeOfficialThread",
+      middleware: [authenticated, authorizedAsAdministrator] as const,
+      request: {
+        params: THREAD_PARAMS,
+        query: z.object({ reason: REVISION_REASON }),
+      },
+      responses: {
+        [STATUS_CODE.OK]: {
+          description: "Taken back",
+          content: jsonContent(z.object({ ok: z.literal(true) })),
+        },
+        [STATUS_CODE.NotFound]: {
+          description: "No such thread in the forum",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Conflict]: {
+          description:
+            "Not official, or written as an official thread rather than made one",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
+        ...BAD_REQUEST_RESPONSE,
+        ...COMMON_RESPONSES,
+      },
+    }),
+    async (c) => {
+      const refusal = await OfficialThreadService.unmakeOfficial(
+        c.req.valid("param").threadId,
+        c.req.valid("query").reason,
+        c.get("user"),
+      );
+
+      switch (refusal) {
+        case undefined:
+          return c.json({ ok: true as const }, STATUS_CODE.OK);
+        case "not_found":
+          return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
+        case "not_official":
+          return c.json(
+            { error: "Dieser Thread ist nicht offiziell." },
+            STATUS_CODE.Conflict,
+          );
+        case "not_from_an_existing_thread":
+          return c.json(
+            {
+              error:
+                "Dieser Thread wurde als offizieller geschrieben; es gibt keinen Namen, der zurückkäme. Einzelne Beiträge darin lassen sich ändern oder löschen.",
+            },
+            STATUS_CODE.Conflict,
+          );
+        default:
+          return assertUnreachable(refusal);
+      }
+    },
   );

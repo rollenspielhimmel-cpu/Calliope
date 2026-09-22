@@ -21,7 +21,7 @@ import {
 } from '@/api/moderation/moderation'
 import type { ListAdminInbox200ResultsItem, ListAdminInboxFolders200Item } from '@/api/models'
 import { queryClient } from '@/lib/api/queryClient'
-import { failureMessage } from '@/lib/format/failure'
+import { refusalMessage } from '@/lib/format/failure'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import TeamConversation from '@/components/moderation/TeamConversation.vue'
@@ -56,7 +56,7 @@ async function attempt(action: () => Promise<unknown>, fallback: string) {
   try {
     await action()
   } catch (failure) {
-    error.value = failureMessage(failure, fallback)
+    error.value = refusalMessage(failure, fallback)
     return false
   }
   await refresh()

@@ -31,3 +31,26 @@ export function failureMessage(error: unknown, fallback?: string): string {
   }
   return fallback ?? 'Das ist gerade nicht möglich. Versuche es später noch einmal.'
 }
+
+/**
+ * Was ein Dienst *absichtlich* verweigert, in seinen eigenen Worten.
+ *
+ * **Ein 403, 404 oder 409 aus unseren Moderationswegen trägt einen Satz, der für die Person
+ * geschrieben wurde, die ihn liest** — „In diesem Thread steht noch kein Beitrag", „Unter diesem
+ * Absender darfst du nicht vorbereiten". `failureMessage` liest ihn nicht: Sie beantwortet den
+ * Fall „die Anfrage ging schief", nicht den Fall „der Server sagt begründet nein". Auf der Beta
+ * stand deshalb bei „Offiziell machen" nur der Auffangsatz, während der Server längst erklärt
+ * hatte, woran es lag.
+ *
+ * Nur für diese drei Stati und nur mit einem Satz darin; alles andere geht weiter an
+ * `failureMessage`, damit kein englischer Entwicklersatz nach außen rutscht.
+ */
+export function refusalMessage(error: unknown, fallback?: string): string {
+  if (error instanceof ApiError && [403, 404, 409].includes(error.status)) {
+    const said = error.body.error
+    if (typeof said === 'string' && said.trim() !== '') {
+      return said
+    }
+  }
+  return failureMessage(error, fallback)
+}
