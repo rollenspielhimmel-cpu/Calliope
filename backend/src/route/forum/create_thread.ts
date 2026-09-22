@@ -16,6 +16,8 @@ import {
   jsonContent,
 } from "@/src/http/response.ts";
 import { WRITING_THREAD_SCHEMA } from "@/src/database/schema.ts";
+import { DOCUMENT_SCHEMA } from "@/src/document/document_schema.ts";
+import { documentToPlainText } from "@/src/document/document_text.ts";
 
 const CREATE_THREAD_BODY = z.object({
   title: notBlank(
@@ -23,6 +25,13 @@ const CREATE_THREAD_BODY = z.object({
   ),
   /** Absent puts it at the forum's root, which only an operator may write to. */
   folderId: WRITING_THREAD_SCHEMA.shape.folderId.optional(),
+  /**
+   * Der erste Beitrag. **Ein Thema ohne ihn ist eine Überschrift, die niemand füllt** — auf der
+   * Beta sind so mehrere leere Themen entstanden, weil der Text erst in der Ansicht dahinter zu
+   * schreiben war. Optional, damit ein Aufrufer ohne ihn nicht scheitert; die Oberfläche verlangt
+   * ihn.
+   */
+  document: DOCUMENT_SCHEMA.optional(),
 });
 
 export default new OpenAPIHono().openapi(
@@ -57,7 +66,7 @@ export default new OpenAPIHono().openapi(
     },
   }),
   async (c) => {
-    const { title, folderId } = c.req.valid("json");
+    const { title, folderId, document } = c.req.valid("json");
     const user = c.get("user");
 
     // The folder decides, and at the root the forum's constant does — which is what makes
@@ -78,10 +87,25 @@ export default new OpenAPIHono().openapi(
       );
     }
 
+    // Dieselbe Grenze wie beim Beitrag selbst: Der erste ist keiner mit eigenen Regeln.
+    if (document !== undefined) {
+      const text = documentToPlainText(document);
+      if (text.length === 0 || text.length > TEXT_LIMIT.documentText) {
+        return c.json(
+          {
+            error:
+              `A post holds between 1 and ${TEXT_LIMIT.documentText} characters`,
+          },
+          STATUS_CODE.BadRequest,
+        );
+      }
+    }
+
     const thread = await ForumService.insertThread(
       user,
       title,
       folderId ?? null,
+      document,
     );
 
     return c.json(thread, STATUS_CODE.Created);

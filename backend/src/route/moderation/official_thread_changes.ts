@@ -132,6 +132,14 @@ export default new OpenAPIHono()
             },
             STATUS_CODE.Forbidden,
           );
+        case "no_opening_post":
+          return c.json(
+            {
+              error:
+                "In diesem Thread steht noch kein Beitrag. Schreib den ersten, dann lässt er sich offiziell machen.",
+            },
+            STATUS_CODE.Conflict,
+          );
         case "opening_post_not_by_team":
           return c.json(
             {

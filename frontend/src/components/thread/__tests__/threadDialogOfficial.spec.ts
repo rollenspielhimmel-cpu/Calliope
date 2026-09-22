@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   viewer: { platformRole: 'moderator' as string | null, mayPreparePublications: true },
   submitOfficial: vi.fn<(variables: unknown) => Promise<unknown>>(),
   createForumThread: vi.fn<(variables: unknown) => Promise<unknown>>(),
+  createGroupThread: vi.fn<(variables: unknown) => Promise<unknown>>(),
 }))
 
 vi.mock('@tanstack/vue-query', async (importOriginal) => ({
@@ -51,10 +52,7 @@ vi.mock('@/api/forum/forum', async (importOriginal) => ({
 
 vi.mock('@/api/threads/threads', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useCreateThread: () => ({
-    mutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    isPending: false,
-  }),
+  useCreateThread: () => ({ mutateAsync: mocks.createGroupThread, isPending: false }),
   useUpdateThread: () => ({
     mutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     isPending: false,
@@ -78,6 +76,13 @@ function state(wrapper: ReturnType<typeof dialog>) {
     officialOutcome: string | undefined
     formError: string | undefined
     submitOfficial: (title: string) => Promise<void>
+    asksForFirstPost: boolean
+    firstPost: unknown
+    firstPostText: string
+    form: {
+      setFieldValue: (name: string, value: string) => void
+      handleSubmit: () => Promise<void>
+    }
   }
 }
 
@@ -96,7 +101,22 @@ beforeEach(() => {
   mocks.viewer.platformRole = 'moderator'
   mocks.viewer.mayPreparePublications = true
   mocks.submitOfficial.mockReset()
+  mocks.createForumThread.mockReset()
+  mocks.createForumThread.mockResolvedValue({ status: 201, data: { id: 'thread-1' } })
+  mocks.createGroupThread.mockReset()
+  mocks.createGroupThread.mockResolvedValue({ status: 201, data: { id: 'thread-1' } })
 })
+
+const DOCUMENT = {
+  type: 'doc',
+  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Der erste Beitrag.' }] }],
+}
+
+/** Titel eintragen und abschicken, wie der Knopf es tut. */
+async function send(view: ReturnType<typeof state>, title = 'Ein Titel') {
+  view.form.setFieldValue('title', title)
+  await view.form.handleSubmit()
+}
 
 describe('ThreadDialog, offizieller Thread', () => {
   it('bietet den Haken im Forum an, wer vorbereiten darf', () => {
@@ -172,5 +192,56 @@ describe('ThreadDialog, offizieller Thread', () => {
 
     expect(mocks.submitOfficial).not.toHaveBeenCalled()
     expect(view.formError).toContain('Eröffnungsbeitrag')
+  })
+})
+
+/**
+ * **Ein Thema entsteht mit seinem ersten Beitrag.** Auf der Beta sind leere Themen entstanden: Der
+ * Text war erst in der Ansicht dahinter zu schreiben, und beim offiziellen Thread stand das Feld
+ * von Anfang an im Dialog. Dieselbe Selbstverständlichkeit gilt jetzt für das gewöhnliche Thema.
+ */
+describe('ThreadDialog, erster Beitrag', () => {
+  it('fragt im Forum nach dem ersten Beitrag, in der Gruppe nicht', () => {
+    expect(state(dialog()).asksForFirstPost).toBe(true)
+    expect(state(dialog({ kind: 'group', groupId: 'group-1' })).asksForFirstPost).toBe(false)
+  })
+
+  it('fragt nicht doppelt, wenn der Thread offiziell wird', () => {
+    const view = state(dialog())
+    view.official = enabled()
+    expect(view.asksForFirstPost).toBe(false)
+  })
+
+  it('legt Thema und ersten Beitrag zusammen an', async () => {
+    const view = state(dialog())
+    view.firstPost = DOCUMENT
+    view.firstPostText = 'Der erste Beitrag.'
+
+    await send(view)
+
+    expect(mocks.createForumThread).toHaveBeenCalledWith({
+      data: { title: 'Ein Titel', folderId: 'folder-1', document: DOCUMENT },
+    })
+  })
+
+  it('legt ohne ersten Beitrag gar nichts an', async () => {
+    const view = state(dialog())
+    view.firstPostText = '   '
+
+    await send(view)
+
+    expect(mocks.createForumThread).not.toHaveBeenCalled()
+    expect(view.formError).toContain('ersten Beitrag')
+  })
+
+  it('lässt ein Thema in der Gruppe wie bisher ohne Beitrag entstehen', async () => {
+    const view = state(dialog({ kind: 'group', groupId: 'group-1' }))
+
+    await send(view)
+
+    expect(mocks.createGroupThread).toHaveBeenCalledWith({
+      groupId: 'group-1',
+      data: { title: 'Ein Titel', folderId: 'folder-1' },
+    })
   })
 })

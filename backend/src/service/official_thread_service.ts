@@ -648,6 +648,7 @@ export type ExistingRefusal =
   | ThreadRefusal
   | "thread_not_found"
   | "not_the_opener"
+  | "no_opening_post"
   | "opening_post_not_by_team"
   | "already_official"
   | "already_pending";
@@ -712,7 +713,12 @@ async function submitForExisting(
     .limit(1)
     .executeTakeFirst();
 
-  if (opening === undefined || opening.platformRole === null) {
+  // Zwei verschiedene Nein, und sie dürfen nicht gleich klingen: Im Thema steht noch nichts, oder
+  // was darin steht, stammt nicht aus dem Team.
+  if (opening === undefined) {
+    return "no_opening_post";
+  }
+  if (opening.platformRole === null) {
     return "opening_post_not_by_team";
   }
 

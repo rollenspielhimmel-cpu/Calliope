@@ -1,4 +1,4 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { assert, assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import {
   clearRateLimits,
@@ -456,4 +456,57 @@ Deno.test("the prose bound holds on everything the forum writes", async () => {
     (await reply(memberCookie, thread.id, "")).status,
     STATUS_CODE.BadRequest,
   );
+});
+
+/**
+ * **Ein Thema entsteht mit seinem ersten Beitrag.**
+ *
+ * Auf der Beta standen mehrere Themen ohne einen einzigen Beitrag: Der Text war erst in der Ansicht
+ * dahinter zu schreiben, und dass das der Ort dafür ist, sah niemand — beim offiziellen Thread
+ * stand das Feld von Anfang an im Dialog. Seitdem nimmt das Anlegen den Beitrag mit.
+ */
+Deno.test("POST /api/forum/threads: legt den ersten Beitrag mit an", async () => {
+  const cookie = await registerUser(member);
+  const open = await createForumFolder("fw-offen-erster", "write");
+
+  const started = await request("POST", "/api/forum/threads", cookie, {
+    title: "Thema mit Beitrag",
+    folderId: open.id,
+    document: plainTextToDocument("Der erste Beitrag, gleich mit."),
+  });
+  assertEquals(started.status, STATUS_CODE.Created);
+  const { id: threadId } = await started.json() as { id: string };
+
+  const posts = await (await request(
+    "QUERY",
+    `/api/forum/threads/${threadId}/posts`,
+    cookie,
+    { limit: 10, offset: 0 },
+  )).json() as {
+    results: Array<
+      { text: string; isDraft: boolean; createdByUsername: string }
+    >;
+  };
+
+  assertEquals(posts.results.length, 1);
+  assertEquals(posts.results[0]?.text, "Der erste Beitrag, gleich mit.");
+  assertEquals(posts.results[0]?.isDraft, false);
+  assertEquals(posts.results[0]?.createdByUsername, member);
+});
+
+/** Ein leerer erster Beitrag ist keiner — und dann entsteht auch das Thema nicht. */
+Deno.test("POST /api/forum/threads: ohne Text kein Thema", async () => {
+  const cookie = await registerUser(member);
+  const open = await createForumFolder("fw-offen-leer", "write");
+
+  const started = await request("POST", "/api/forum/threads", cookie, {
+    title: "Thema ohne Text",
+    folderId: open.id,
+    document: plainTextToDocument("   "),
+  });
+  assertEquals(started.status, STATUS_CODE.BadRequest);
+
+  const tree = await (await request("GET", "/api/forum/threads", cookie))
+    .text();
+  assert(!tree.includes("Thema ohne Text"), "und es steht nirgends");
 });

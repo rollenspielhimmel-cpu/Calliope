@@ -8,7 +8,7 @@ import {
   useCreateThread,
   useUpdateThread,
 } from '@/api/threads/threads'
-import type { GetThread200 } from '@/api/models'
+import type { GetThread200, PostDocument } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { getListForumThreadsQueryKey, useCreateForumThread } from '@/api/forum/forum'
 import {
@@ -22,7 +22,15 @@ import type { OfficialDraft } from '@/components/thread/OfficialThreadFields.vue
 import { exactKeyFilter } from '@/lib/api/queryKeys'
 import type { WriteScope } from '@/lib/folder/treeScope'
 import { failureMessage } from '@/lib/format/failure'
-import { focusFirstInvalid, parsed, titleSchema } from '@/lib/validation/fieldSchemas'
+import {
+  firstMessage,
+  focusFirstInvalid,
+  parsed,
+  postSchema,
+  titleSchema,
+} from '@/lib/validation/fieldSchemas'
+import { emptyDocument } from '@/lib/document/emptyDocument'
+import PostEditor from '@/components/thread/PostEditor.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import FormTextField from '@/components/common/FormTextField.vue'
@@ -34,7 +42,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { FieldGroup } from '@/components/ui/field'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 
 /**
@@ -74,6 +82,26 @@ const atForumRoot = computed<boolean>(
 )
 
 const TITLE = titleSchema(LIMIT.title, 'Gib dem Thema einen Titel.')
+
+// ── Der erste Beitrag ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * **Ein Thema entsteht mit seinem ersten Beitrag**, nicht als leere Überschrift.
+ *
+ * Auf der Beta sind mehrere Themen ohne einen einzigen Beitrag entstanden: Den Text schrieb man
+ * erst in der Ansicht dahinter, und dass das der Ort dafür ist, sah niemand. Beim offiziellen
+ * Thread stand das Feld von Anfang an im Dialog — dieselbe Selbstverständlichkeit gilt hier.
+ *
+ * Nur im Forum: In einer Gruppe entsteht ein Thema weiter ohne Beitrag, das ist nicht dieser Umbau.
+ */
+const asksForFirstPost = computed<boolean>(
+  () => props.scope.kind === 'forum' && !renaming.value && !goesOfficial.value,
+)
+
+const FIRST_POST = postSchema(TEXT_LIMIT.createForumPost.document, 'Schreib den ersten Beitrag.')
+
+const firstPost = ref<PostDocument>(emptyDocument())
+const firstPostText = ref<string>('')
 
 const formError = ref<string | undefined>(undefined)
 const formElement = ref<HTMLFormElement | null>(null)
@@ -216,7 +244,18 @@ const form = useForm({
       return
     }
 
-    const data = { title, folderId: props.folderId }
+    if (asksForFirstPost.value) {
+      formError.value = firstMessage(FIRST_POST.safeParse(firstPostText.value))
+      if (formError.value !== undefined) {
+        return
+      }
+    }
+
+    const data = {
+      title,
+      folderId: props.folderId,
+      ...(asksForFirstPost.value ? { document: firstPost.value } : {}),
+    }
 
     let created
     try {
@@ -252,6 +291,8 @@ watch(open, (isOpen) => {
   formError.value = undefined
   official.value = emptyDraft()
   officialOutcome.value = undefined
+  firstPost.value = emptyDocument()
+  firstPostText.value = ''
   form.reset({ title: isOpen ? (props.thread?.title ?? '') : '' })
 })
 </script>
@@ -305,6 +346,18 @@ watch(open, (isOpen) => {
             </template>
           </form.Field>
         </FieldGroup>
+
+        <!-- Der erste Beitrag steht hier, wo das Thema entsteht. Geht es als offizieller Thread
+             online, schreibt man ihn stattdessen in dessen eigenem Feld. -->
+        <Field v-if="asksForFirstPost">
+          <FieldLabel>Erster Beitrag</FieldLabel>
+          <PostEditor
+            v-model:document="firstPost"
+            v-model:text="firstPostText"
+            :disabled="isPending"
+            framed
+          />
+        </Field>
 
         <OfficialThreadFields v-if="offersOfficial" v-model="official" />
 

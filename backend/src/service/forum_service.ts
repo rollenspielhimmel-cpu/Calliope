@@ -649,19 +649,45 @@ async function movePage(
 async function insertThread(
   user: User,
   title: string,
-  folderId: string | null = null,
+  folderId: string | null,
+  /**
+   * Der erste Beitrag, zusammen mit dem Thema.
+   *
+   * **Ein Thema ohne Beitrag ist kein Thema.** Beides in einer Transaktion: Geht der Beitrag
+   * schief, entsteht auch das Thema nicht — sonst stünde eine leere Überschrift im Forum, die
+   * niemand mehr füllt, weil der Ort dafür nicht offensichtlich ist. Genau so ist es auf der Beta
+   * passiert.
+   */
+  openingPost?: PostDocument,
 ): Promise<ForumThread> {
-  const { id } = await db
-    .insertInto("writingThread")
-    .values({
-      writingGroupId: null,
-      folderId,
-      title,
-      createdBy: user.id,
-      memberPermission: "write",
-    })
-    .returning(["id"])
-    .executeTakeFirstOrThrow();
+  const { id } = await db.transaction().execute(async (transaction) => {
+    const thread = await transaction
+      .insertInto("writingThread")
+      .values({
+        writingGroupId: null,
+        folderId,
+        title,
+        createdBy: user.id,
+        memberPermission: "write",
+      })
+      .returning(["id"])
+      .executeTakeFirstOrThrow();
+
+    if (openingPost !== undefined) {
+      await transaction
+        .insertInto("writingPost")
+        .values({
+          writingThreadId: thread.id,
+          document: openingPost,
+          text: documentToPlainText(openingPost),
+          isDraft: false,
+          createdBy: user.id,
+        })
+        .execute();
+    }
+
+    return thread;
+  });
 
   // The whole user, not their id: a stand-in would read as an operator, since an absent
   // `platformRole` is `undefined` rather than null.

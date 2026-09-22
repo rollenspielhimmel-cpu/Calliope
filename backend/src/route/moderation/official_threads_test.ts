@@ -893,3 +893,26 @@ Deno.test("die Datenbank verlangt Grund und Inhalt im Protokoll", async () => {
   }
   assertEquals(refused, 4);
 });
+
+/**
+ * **Ein Thema ohne Beitrag ist kein Fall für „stammt nicht aus dem Team".** Auf der Beta stand
+ * genau diese Meldung an leeren Themen — richtig war sie nie, und sie führte in die Irre.
+ */
+Deno.test("nachträglich offiziell: ein Thread ohne Beitrag sagt, dass der Beitrag fehlt", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-leer", "write");
+
+  const created = await request("POST", "/api/forum/threads", cookies.mod, {
+    title: `${TITLE}-ohne-beitrag`,
+    folderId: open.id,
+  });
+  assertEquals(created.status, STATUS_CODE.Created);
+  const { id: threadId } = await created.json() as { id: string };
+
+  const refused = await makeOfficial(cookies.mod, threadId);
+  assertEquals(refused.status, STATUS_CODE.Conflict);
+  assert(
+    (await refused.text()).includes("noch kein Beitrag"),
+    "und sagt, woran es liegt",
+  );
+});

@@ -66363,7 +66363,8 @@
                     "maxLength": 120,
                     "pattern": "\\S"
                   },
-                  "folderId": { "type": ["string", "null"], "format": "uuid" }
+                  "folderId": { "type": ["string", "null"], "format": "uuid" },
+                  "document": { "$ref": "#/components/schemas/PostDocument" }
                 },
                 "required": ["title"]
               }
