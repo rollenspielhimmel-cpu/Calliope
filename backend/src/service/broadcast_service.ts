@@ -464,6 +464,83 @@ async function deliverToInbox(
 }
 
 /**
+ * Wie viele Mails einer Rundmail zugleich unterwegs sind.
+ *
+ * Fünf, weil der Mailversand vorher genau so viele Verbindungen offen hielt (die Voreinstellung von
+ * nodemailer). Der Durchsatz bleibt also, wie er war; neu ist nur, dass zwischen zwei Mails
+ * nachgesehen wird, ob die Rundmail noch gewollt ist.
+ */
+const MAIL_WORKERS = 5;
+
+/**
+ * Rundmails, die in diesem Prozess zurückgezogen wurden — damit ihre Mails nicht weiter rausgehen.
+ *
+ * **Im Speicher, nicht in der Datenbank**, weil die Frage vor jeder einzelnen Mail gestellt wird,
+ * und bei Hunderten Adressen wären das Hunderte Abfragen für eine Antwort, die fast immer „ja"
+ * lautet. Das reicht, weil Versand und Zurückziehen im selben Prozess laufen: Es gibt ein Backend.
+ * Gäbe es mehrere, hielte das Zurückziehen nur die Mails auf dem eigenen an — das stünde dann hier.
+ *
+ * Wächst nur um eine Kennung je zurückgezogener Rundmail, und das ist eine Handvoll im Jahr.
+ */
+const withdrawn = new Set<string>();
+
+/** Hält die restlichen Mails einer Rundmail an. Was schon beim Relais liegt, ist draußen. */
+function stopMailsOf(broadcastId: string): void {
+  withdrawn.add(broadcastId);
+}
+
+/**
+ * Die Frage, die die Mail-Schleife vor jeder Mail stellt — benannt, damit ein Test sie nach einem
+ * echten Zurückziehen stellen kann. Sonst prüfte er nur seine eigene Attrappe und nicht, ob das
+ * Zurückziehen überhaupt bis zur Schleife durchdringt.
+ */
+export function mailsStillWanted(broadcastId: string): boolean {
+  return !withdrawn.has(broadcastId);
+}
+
+/**
+ * Schickt mit wenigen Arbeitern nacheinander und fragt **vor jeder Mail**, ob sie noch gewollt ist.
+ *
+ * **Warum nicht alle auf einmal übergeben, wie vorher:** Dann lagen sie sofort alle in der
+ * Warteschlange des Mailversands, und ein Zurückziehen fand nichts mehr, das es aufhalten konnte.
+ * So sind beim Zurückziehen höchstens `workers` Mails unterwegs; alle danach gehen nicht mehr raus.
+ *
+ * Eine Mail, die scheitert, hält die übrigen nicht auf — sie wird gemeldet und übersprungen, wie
+ * vorher auch. Gibt zurück, wie viele rausgingen.
+ */
+export async function sendWhileWanted<T>(
+  items: ReadonlyArray<T>,
+  sendOne: (item: T) => Promise<void>,
+  stillWanted: () => boolean,
+  workers: number = MAIL_WORKERS,
+): Promise<number> {
+  let next = 0;
+  let sent = 0;
+
+  async function work(): Promise<void> {
+    while (next < items.length && stillWanted()) {
+      // `next` wird vor dem Warten weitergezählt: So nimmt sich kein zweiter Arbeiter dieselbe.
+      const item = items[next] as T;
+      next++;
+
+      try {
+        // deno-lint-ignore no-await-in-loop -- nacheinander ist der Zweck: vor jeder Mail fragen
+        await sendOne(item);
+        sent++;
+      } catch (failure) {
+        console.error("Sending one mail of a broadcast failed", failure);
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(workers, items.length) }, work),
+  );
+
+  return sent;
+}
+
+/**
  * Stellt zu und sammelt ein, was danach noch zu tun ist.
  *
  * **In der Transaktion des Aufrufers, nicht in einer eigenen.** Freigabe und Zustellung gehören
@@ -556,18 +633,19 @@ async function send(
 
       runInBackground(
         `Sending a broadcast to ${byEmail.length} members`,
-        () => {
-          for (const recipient of byEmail) {
-            Mailer.sendInBackground(
-              broadcastMail({
-                emailAddress: recipient.emailAddress,
-                subject,
-                body,
-              }),
-            );
-          }
-
-          return Promise.resolve();
+        async () => {
+          await sendWhileWanted(
+            byEmail,
+            (recipient) =>
+              Mailer.send(
+                broadcastMail({
+                  emailAddress: recipient.emailAddress,
+                  subject,
+                  body,
+                }),
+              ),
+            () => mailsStillWanted(broadcastId),
+          );
         },
       );
     },
@@ -744,4 +822,5 @@ export const BroadcastService = {
   send,
   sendTest,
   publishInArchive,
+  stopMailsOf,
 };

@@ -19,6 +19,7 @@ import {
   useListBroadcastQueue,
   useListBroadcastSenders,
   useListReleasedBroadcasts,
+  useRetractBroadcast,
   useSendTestBroadcast,
   useSubmitBroadcast,
 } from '@/api/moderation/moderation'
@@ -28,6 +29,7 @@ import type {
   ListReleasedBroadcasts200Item,
   SubmitBroadcastBodyAudienceRolesItem,
 } from '@/api/models'
+import { useGetCurrentUser } from '@/api/auth/auth'
 import { queryClient } from '@/lib/api/queryClient'
 import { ApiError } from '@/lib/api/apiFetch'
 import { failureMessage } from '@/lib/format/failure'
@@ -615,6 +617,45 @@ const { mutateAsync: approveBroadcast, isPending: isApproving } = useApproveBroa
 const { mutateAsync: discardBroadcast, isPending: isDiscarding } = useDiscardBroadcast()
 
 const queueError = ref<string | undefined>(undefined)
+
+const { data: currentUser } = useGetCurrentUser()
+
+/**
+ * Zurückziehen darf nur der Ur-Admin — das Konto, das ohne Freigabe sendet.
+ *
+ * Die Oberfläche bietet den Knopf sonst gar nicht an; verbindlich ist die Prüfung im Backend.
+ */
+const mayRetract = computed<boolean>(
+  () => currentUser.value?.status === 200 && currentUser.value.data.isPrimordialAdmin,
+)
+
+const { mutateAsync: retractBroadcast, isPending: isRetracting } = useRetractBroadcast()
+
+/**
+ * Die Rundmail, deren Zurückziehen gerade bestätigt werden soll — und nur die.
+ *
+ * **Am Eintrag, nicht in einem Fenster**, wie die Bestätigung vor dem Absenden: Wer liest, was
+ * gleich verschwindet, soll dabei sehen, um welche Rundmail es geht.
+ */
+const retracting = ref<string | undefined>(undefined)
+const retractError = ref<{ publicationId: string; sentence: string } | undefined>(undefined)
+
+async function confirmRetraction(publicationId: string) {
+  retractError.value = undefined
+
+  try {
+    await retractBroadcast({ publicationId })
+  } catch (failure) {
+    retractError.value = {
+      publicationId,
+      sentence: failureMessage(failure, 'Das Zurückziehen ging nicht durch.'),
+    }
+    return
+  }
+
+  retracting.value = undefined
+  await queryClient.invalidateQueries({ queryKey: getListReleasedBroadcastsQueryKey() })
+}
 
 async function refreshBoth() {
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
@@ -1234,6 +1275,84 @@ function audienceOf(entry: {
               >
               · Freigegeben von {{ entry.approvedByUsername ?? 'einem gelöschten Konto' }}
             </p>
+
+            <!-- Was bleibt, wenn der Inhalt weg ist: wer und wann. -->
+            <p v-if="entry.retractedAt" class="mt-0.5 text-[12px] text-ink-3">
+              Zurückgezogen von {{ entry.retractedByUsername ?? 'einem gelöschten Konto' }} am
+              {{ formatBerlin(entry.retractedAt) }}
+            </p>
+
+            <template v-else-if="mayRetract">
+              <div v-if="retracting !== entry.publicationId" class="mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :disabled="isRetracting"
+                  @click="retracting = entry.publicationId"
+                >
+                  Zurückziehen
+                </Button>
+              </div>
+
+              <!-- **Nichts versprechen, was nicht verschwindet.** Deshalb steht hier beides: was
+                   weg ist, und was bleibt — und dass es nicht rückgängig zu machen ist. -->
+              <div
+                v-else
+                class="mt-3 max-w-[70ch] rounded-lg border border-line-4 bg-paper-2 p-4"
+                role="group"
+                aria-label="Zurückziehen bestätigen"
+              >
+                <p class="text-row text-ink-1">Diese Rundmail zurückziehen?</p>
+                <ul class="mt-2 flex list-disc flex-col gap-1 pl-5 text-[12.5px] text-ink-3">
+                  <li v-if="entry.recipientCount !== null">
+                    In {{ pluralize(entry.recipientCount, 'Postfach', 'Postfächern') }} verschwinden
+                    Text und Betreff. An ihrer Stelle steht „Diese Rundmail wurde zurückgezogen."
+                  </li>
+                  <li v-if="entry.archivePostId !== null">
+                    Im Archiv wird der Beitrag genauso ersetzt.
+                  </li>
+                  <li v-if="entry.emailRecipientCount">
+                    Bis zu {{ pluralize(entry.emailRecipientCount, 'E-Mail', 'E-Mails') }} sind
+                    schon verschickt und lassen sich nicht zurückholen. Was noch nicht raus ist,
+                    hält das Zurückziehen an.
+                  </li>
+                  <li>
+                    Antworten, die den Text zitieren, bleiben stehen, und Meldungen behalten ihren
+                    Auszug.
+                  </li>
+                  <li>
+                    Es lässt sich nicht rückgängig machen. Vom Wortlaut bleibt nichts, auch nicht
+                    für die Administration — nur wer zurückgezogen hat und wann.
+                  </li>
+                </ul>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    :disabled="isRetracting"
+                    @click="confirmRetraction(entry.publicationId)"
+                  >
+                    <Spinner v-if="isRetracting" />
+                    Zurückziehen
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    :disabled="isRetracting"
+                    @click="retracting = undefined"
+                  >
+                    Abbrechen
+                  </Button>
+                </div>
+                <p
+                  v-if="retractError?.publicationId === entry.publicationId"
+                  class="mt-2 text-[12.5px] text-destructive"
+                  role="alert"
+                >
+                  {{ retractError.sentence }}
+                </p>
+              </div>
+            </template>
 
             <!-- Hier stand die Liste „wer hat geantwortet". Sie ging mit dem einen Verlauf je
                  Mitglied: Eine Antwort hängt seitdem nicht mehr an einer Ankündigung, sondern ist

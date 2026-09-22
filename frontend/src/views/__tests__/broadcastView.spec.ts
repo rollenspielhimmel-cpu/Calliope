@@ -57,15 +57,26 @@ const NAMES_ONLY = entry({
 
 const queue = { value: { status: 200, data: [NAMES_ONLY] } }
 
-// Gehoben, weil `vi.mock` vor allem anderen läuft und die Attrappe sonst noch nicht gäbe.
-const { sendTest } = vi.hoisted(() => ({
+// Gehoben, weil `vi.mock` vor allem anderen läuft und die Attrappen sonst noch nicht gäbe.
+const { sendTest, retract, released, viewer } = vi.hoisted(() => ({
   sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  retract: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  released: { value: { status: 200, data: [] as unknown[] } },
+  viewer: { isPrimordialAdmin: false },
+}))
+
+// Wer angemeldet ist — zählt nur beim Zurückziehen, das allein der Ur-Admin darf.
+vi.mock('@/api/auth/auth', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useGetCurrentUser: () => ({
+    data: { value: { status: 200, data: { isPrimordialAdmin: viewer.isPrimordialAdmin } } },
+  }),
 }))
 
 vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListBroadcastQueue: () => ({ data: queue }),
-  useListReleasedBroadcasts: () => ({ data: { value: { status: 200, data: [] } } }),
+  useListReleasedBroadcasts: () => ({ data: released }),
   useListBroadcastSenders: () => ({ data: { value: { status: 200, data: [] } } }),
   useCountBroadcastRecipients: () => ({ data: { value: undefined }, isFetching: false }),
   useSubmitBroadcast: () => ({
@@ -85,6 +96,7 @@ vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
     isPending: false,
   }),
   useSendTestBroadcast: () => ({ mutateAsync: sendTest, isPending: false }),
+  useRetractBroadcast: () => ({ mutateAsync: retract, isPending: false }),
 }))
 
 function broadcastView() {
@@ -406,3 +418,98 @@ describe('BroadcastView, die Zahl an der Warteschlange', () => {
     expect(queueTab(broadcastView())?.text()).toBe('Warteschlange')
   })
 })
+
+/** Öffnet den Reiter „Gesendete". */
+async function openSent(wrapper: ReturnType<typeof broadcastView>) {
+  const sentTab = wrapper.findAll('button').find((each) => each.text() === 'Gesendete')
+  if (sentTab === undefined) {
+    throw new Error('kein Reiter „Gesendete"')
+  }
+  await sentTab.trigger('click')
+  await flushPromises()
+}
+
+/**
+ * Eine versendete Rundmail zurückziehen.
+ *
+ * **Was die Oberfläche hier zusagt:** Nur der Ur-Admin bekommt den Knopf; vor dem Zurückziehen steht
+ * da, was verschwindet, was nicht, und dass es nicht umkehrbar ist; danach steht, wer und wann.
+ */
+describe('BroadcastView, eine Rundmail zurückziehen', () => {
+  const SENT = entry({
+    publicationId: '01900000-0000-7000-8000-0000000000c1',
+    status: 'released',
+    subject: 'Wartung am Sonntag',
+    releasedAt: '2026-09-22T08:00:00.000Z',
+    approvedByUsername: 'federkiel',
+    recipientCount: 12,
+    emailRecipientCount: 9,
+    archivePostId: null,
+    retractedByUsername: null,
+    retractedAt: null,
+  })
+
+  it('bietet den Knopf nur dem Ur-Admin an', async () => {
+    released.value.data = [SENT]
+    viewer.isPrimordialAdmin = false
+    const others = broadcastView()
+    await openSent(others)
+    expect(buttonsLabelledOrNone(others, 'Zurückziehen')).toHaveLength(0)
+
+    viewer.isPrimordialAdmin = true
+    const admin = broadcastView()
+    await openSent(admin)
+    expect(buttonsLabelledOrNone(admin, 'Zurückziehen')).toHaveLength(1)
+  })
+
+  it('sagt vorher, was verschwindet, was nicht, und dass es nicht umkehrbar ist', async () => {
+    released.value.data = [SENT]
+    viewer.isPrimordialAdmin = true
+    retract.mockReset()
+    retract.mockResolvedValue({ status: 200, data: {} })
+    const wrapper = broadcastView()
+    await openSent(wrapper)
+
+    await buttonsLabelled(wrapper, 'Zurückziehen')[0]?.trigger('click')
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('In 12 Postfächern verschwinden Text und Betreff.')
+    expect(text).toContain(
+      'Bis zu 9 E-Mails sind schon verschickt und lassen sich nicht zurückholen.',
+    )
+    // Nichts versprechen, was nicht verschwindet.
+    expect(text).toContain('Antworten, die den Text zitieren, bleiben stehen')
+    expect(text).toContain('Es lässt sich nicht rückgängig machen.')
+    // Das Fragen allein zieht noch nichts zurück.
+    expect(retract).not.toHaveBeenCalled()
+
+    const confirm = buttonsLabelled(wrapper, 'Zurückziehen')
+    await confirm[confirm.length - 1]?.trigger('click')
+    await flushPromises()
+
+    expect(retract).toHaveBeenCalledWith({ publicationId: SENT.publicationId })
+  })
+
+  it('zeigt danach, wer und wann — und keinen Knopf mehr', async () => {
+    released.value.data = [
+      entry({
+        ...SENT,
+        subject: 'Zurückgezogen',
+        retractedByUsername: 'Admin',
+        retractedAt: '2026-09-22T09:14:00.000Z',
+      }),
+    ]
+    viewer.isPrimordialAdmin = true
+    const wrapper = broadcastView()
+    await openSent(wrapper)
+
+    expect(wrapper.text()).toContain('Zurückgezogen von Admin am')
+    expect(buttonsLabelledOrNone(wrapper, 'Zurückziehen')).toHaveLength(0)
+  })
+})
+
+/** Wie `buttonsLabelled`, aber ohne Fehler, wenn es keinen gibt — dafür sind diese Tests da. */
+function buttonsLabelledOrNone(wrapper: ReturnType<typeof broadcastView>, text: string) {
+  return wrapper.findAll('button').filter((each) => each.text() === text)
+}

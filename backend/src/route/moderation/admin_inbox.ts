@@ -53,6 +53,9 @@ const MESSAGE = z.object({
   isAnnouncement: z.boolean(),
   subject: z.string().nullable(),
   writtenByUsername: z.string().nullable(),
+  // Wer die Rundmail zurückgezogen hat und wann — nur an einer zurückgezogenen Ankündigung.
+  retractedByUsername: z.string().nullable(),
+  retractedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 const CONVERSATION_DETAIL = z.object({
@@ -211,6 +214,8 @@ export default new OpenAPIHono()
         isAnnouncement: false,
         subject: null,
         writtenByUsername: writer.username,
+        retractedByUsername: null,
+        retractedAt: null,
       }, STATUS_CODE.Created);
     },
   );

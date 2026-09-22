@@ -523,6 +523,8 @@ export interface Publication {
   id: Generated<string>;
   kind: PublicationKind;
   releasedAt: string | null;
+  retractedAt: string | null;
+  retractedBy: string | null;
   scheduledFor: string | null;
   sendAsUserId: string | null;
   status: Generated<PublicationStatus>;
@@ -1419,6 +1421,8 @@ export const PUBLICATION_SCHEMA = z.object({
   releasedAt: z.iso.datetime({ offset: true }).nullable(),
   editedBy: z.uuidv7().nullable(),
   editedAt: z.iso.datetime({ offset: true }).nullable(),
+  retractedBy: z.uuidv7().nullable(),
+  retractedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export const REPORT_SCHEMA = z.object({

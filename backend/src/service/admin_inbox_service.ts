@@ -174,6 +174,12 @@ export type InboxMessage = {
   subject: string | null;
   /** Wer wirklich getippt hat, wenn `username` eine Maske ist. Sonst leer. */
   writtenByUsername: string | null;
+  /**
+   * Wer die Rundmail zurückgezogen hat und wann — nur an Ankündigungen, und nur dann. Der Text
+   * sagt es ohnehin; wer und wann ist, was das Team darüber hinaus wissen will.
+   */
+  retractedByUsername: string | null;
+  retractedAt: string | null;
 };
 
 export type InboxConversationDetail = {
@@ -222,6 +228,9 @@ async function readConversation(
     .selectFrom("chatMessage")
     .leftJoin("user", "user.id", "chatMessage.createdBy")
     .leftJoin("user as writer", "writer.id", "chatMessage.writtenBy")
+    .leftJoin("broadcast", "broadcast.id", "chatMessage.broadcastId")
+    .leftJoin("publication", "publication.id", "broadcast.publicationId")
+    .leftJoin("user as retractor", "retractor.id", "publication.retractedBy")
     .select([
       "chatMessage.id",
       "chatMessage.text",
@@ -231,6 +240,8 @@ async function readConversation(
       "chatMessage.createdBy",
       "user.username",
       "writer.username as writtenByUsername",
+      "retractor.username as retractedByUsername",
+      "publication.retractedAt",
     ])
     .where("chatMessage.chatGroupId", "=", chatGroupId)
     // Kennungen sind uuidv7 und tragen ihre Entstehungszeit, also ist das die Lesereihenfolge.
@@ -253,6 +264,8 @@ async function readConversation(
       isAnnouncement: message.broadcastId !== null,
       subject: message.subject,
       writtenByUsername: message.writtenByUsername,
+      retractedByUsername: message.retractedByUsername,
+      retractedAt: message.retractedAt,
     })),
   };
 }

@@ -140,6 +140,12 @@ const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
   editedAt: z.iso.datetime({ offset: true }).nullable(),
   releasedAt: z.iso.datetime({ offset: true }).nullable(),
   /**
+   * Wer sie zurückgezogen hat und wann, oder leer. Danach steht vom Inhalt nichts mehr da, auch
+   * nicht hier — Betreff und Text tragen dann nur noch einen neutralen Ersatz.
+   */
+  retractedByUsername: z.string().nullable(),
+  retractedAt: z.iso.datetime({ offset: true }).nullable(),
+  /**
    * Beim Versand festgehalten, nicht später gezählt — und zwei Zahlen, weil die Wege verschieden
    * weit reichen. Null heißt jeweils: dieser Weg war nicht gewählt.
    */

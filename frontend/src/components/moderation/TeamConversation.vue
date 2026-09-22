@@ -22,6 +22,9 @@ export type TeamMessage = {
   isAnnouncement: boolean
   subject: string | null
   writtenByUsername: string | null
+  /** Wer die Rundmail zurückgezogen hat und wann — nur an einer zurückgezogenen Ankündigung. */
+  retractedByUsername: string | null
+  retractedAt: string | null
 }
 
 defineProps<{ messages: TeamMessage[] }>()
@@ -54,6 +57,12 @@ defineProps<{ messages: TeamMessage[] }>()
       </p>
       <p class="max-w-[70ch] text-[12.5px] whitespace-pre-line text-ink-3">
         {{ message.text }}
+      </p>
+      <!-- Der Text sagt schon, dass sie zurückgezogen ist. Wer und wann ist, was das Team darüber
+           hinaus wissen will — das Mitglied sieht es nicht. -->
+      <p v-if="message.retractedAt" class="text-[12px] text-ink-5">
+        Zurückgezogen von {{ message.retractedByUsername ?? 'einem gelöschten Konto' }},
+        {{ formatActivityTime(message.retractedAt) }}
       </p>
     </li>
   </ul>

@@ -163,3 +163,43 @@ describe('ChatConversation, die Markierung', () => {
     expect(wrapper.find('.border-oak').exists()).toBe(false)
   })
 })
+
+/**
+ * **Wer das Gespräch offen hat, während zurückgezogen wird.** Der Server schickt den Ersatz mit
+ * derselben Kennung wie die zugestellte Nachricht — so, wie das Ereignis sie trägt, ohne Betreff.
+ * Hier geht es darum, dass die Ansicht ihn über die Nachricht legt, statt beide zu zeigen oder die
+ * alte zu behalten: Sonst sähe genau der den Text weiter, bei dem er weg soll.
+ */
+describe('ChatConversation, ein Ersatz aus dem Strom', () => {
+  it('legt sich über die Nachricht mit derselben Kennung, samt Betreff', async () => {
+    const [original] = shown
+    const wrapper = mount(ChatConversation, {
+      props: {
+        chatGroupId: '01900000-0000-7000-8000-000000000001',
+        title: 'Admin',
+        live: [
+          {
+            id: original?.id ?? '',
+            chatGroupId: '01900000-0000-7000-8000-000000000001',
+            text: 'Diese Rundmail wurde zurückgezogen.',
+            createdAt: original?.createdAt ?? '',
+            createdBy: original?.createdBy ?? null,
+            createdByUsername: 'Admin',
+          } as never,
+        ],
+        isFavourite: false,
+        isFromAdministration: false,
+        isTestBroadcast: false,
+      },
+      global: {
+        plugins: [VueQueryPlugin],
+        stubs: { ChatInvite: { template: '<div data-invite />' } },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Diese Rundmail wurde zurückgezogen.')
+    expect(wrapper.text()).not.toContain('So sähe sie aus.')
+    expect(wrapper.text()).not.toContain('Wartung')
+  })
+})

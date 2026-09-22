@@ -46795,6 +46795,11 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
+                      "retractedByUsername": { "type": ["string", "null"] },
+                      "retractedAt": {
+                        "type": ["string", "null"],
+                        "format": "date-time"
+                      },
                       "recipientCount": { "type": ["integer", "null"] },
                       "emailRecipientCount": { "type": ["integer", "null"] },
                       "archivePostId": {
@@ -46835,6 +46840,8 @@
                       "editedByUsername",
                       "editedAt",
                       "releasedAt",
+                      "retractedByUsername",
+                      "retractedAt",
                       "recipientCount",
                       "emailRecipientCount",
                       "archivePostId",
@@ -47142,6 +47149,11 @@
                       "type": ["string", "null"],
                       "format": "date-time"
                     },
+                    "retractedByUsername": { "type": ["string", "null"] },
+                    "retractedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
                     "recipientCount": { "type": ["integer", "null"] },
                     "emailRecipientCount": { "type": ["integer", "null"] },
                     "archivePostId": {
@@ -47182,6 +47194,8 @@
                     "editedByUsername",
                     "editedAt",
                     "releasedAt",
+                    "retractedByUsername",
+                    "retractedAt",
                     "recipientCount",
                     "emailRecipientCount",
                     "archivePostId",
@@ -47510,6 +47524,11 @@
                         "type": ["string", "null"],
                         "format": "date-time"
                       },
+                      "retractedByUsername": { "type": ["string", "null"] },
+                      "retractedAt": {
+                        "type": ["string", "null"],
+                        "format": "date-time"
+                      },
                       "recipientCount": { "type": ["integer", "null"] },
                       "emailRecipientCount": { "type": ["integer", "null"] },
                       "archivePostId": {
@@ -47550,6 +47569,8 @@
                       "editedByUsername",
                       "editedAt",
                       "releasedAt",
+                      "retractedByUsername",
+                      "retractedAt",
                       "recipientCount",
                       "emailRecipientCount",
                       "archivePostId",
@@ -48949,6 +48970,275 @@
         }
       }
     },
+    "/api/moderation/broadcast/released/{publicationId}/retraction": {
+      "post": {
+        "tags": ["moderation"],
+        "summary": "Retract a broadcast that has gone out",
+        "description": "Only the first administrator. Replaces the text and subject in every inbox and the archive post with a note that it was retracted, and keeps who retracted it and when. Mails already handed to the relay cannot be recalled; the rest are stopped.",
+        "operationId": "retractBroadcast",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "required": true,
+            "name": "publicationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retracted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "retractedAt": { "type": "string", "format": "date-time" },
+                    "inboxes": { "type": "integer" },
+                    "archived": { "type": "boolean" }
+                  },
+                  "required": ["retractedAt", "inboxes", "archived"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the first administrator retracts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such broadcast",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not sent yet, or already retracted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/moderation/inbox": {
       "get": {
         "tags": ["moderation"],
@@ -49233,7 +49523,12 @@
                           "fromTeam": { "type": "boolean" },
                           "isAnnouncement": { "type": "boolean" },
                           "subject": { "type": ["string", "null"] },
-                          "writtenByUsername": { "type": ["string", "null"] }
+                          "writtenByUsername": { "type": ["string", "null"] },
+                          "retractedByUsername": { "type": ["string", "null"] },
+                          "retractedAt": {
+                            "type": ["string", "null"],
+                            "format": "date-time"
+                          }
                         },
                         "required": [
                           "id",
@@ -49243,7 +49538,9 @@
                           "fromTeam",
                           "isAnnouncement",
                           "subject",
-                          "writtenByUsername"
+                          "writtenByUsername",
+                          "retractedByUsername",
+                          "retractedAt"
                         ]
                       }
                     }
@@ -49581,7 +49878,12 @@
                     "fromTeam": { "type": "boolean" },
                     "isAnnouncement": { "type": "boolean" },
                     "subject": { "type": ["string", "null"] },
-                    "writtenByUsername": { "type": ["string", "null"] }
+                    "writtenByUsername": { "type": ["string", "null"] },
+                    "retractedByUsername": { "type": ["string", "null"] },
+                    "retractedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    }
                   },
                   "required": [
                     "id",
@@ -49591,7 +49893,9 @@
                     "fromTeam",
                     "isAnnouncement",
                     "subject",
-                    "writtenByUsername"
+                    "writtenByUsername",
+                    "retractedByUsername",
+                    "retractedAt"
                   ]
                 }
               }

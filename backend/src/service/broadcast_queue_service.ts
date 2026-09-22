@@ -3,6 +3,11 @@ import { db, type Transaction } from "@/src/database/client.ts";
 import type { PublicationStatus } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
+import { publishChatEvent } from "@/src/event/chat_events.ts";
+import {
+  documentToPlainText,
+  plainTextToDocument,
+} from "@/src/document/document_text.ts";
 import {
   type BroadcastAudience,
   type BroadcastDelivery,
@@ -98,6 +103,12 @@ export type QueuedBroadcast = BroadcastInput & {
   editedByUsername: string | null;
   editedAt: string | null;
   releasedAt: string | null;
+  /**
+   * Wer sie zurückgezogen hat und wann — oder nichts. Vom Inhalt bleibt danach nichts, auch intern
+   * nicht; das hier ist, was bleibt.
+   */
+  retractedByUsername: string | null;
+  retractedAt: string | null;
   /** Wie viele es ins Postfach bekommen haben, oder null, wenn dieser Weg nicht gewählt war. */
   recipientCount: number | null;
   /** Wie viele eine Mail bekommen haben. Weniger, wenn Adressen unbestätigt sind. */
@@ -168,6 +179,7 @@ function rows() {
     .leftJoin("user as author", "author.id", "publication.writtenBy")
     .leftJoin("user as approver", "approver.id", "publication.approvedBy")
     .leftJoin("user as editor", "editor.id", "publication.editedBy")
+    .leftJoin("user as retractor", "retractor.id", "publication.retractedBy")
     .select([
       "publication.id as publicationId",
       "publication.status",
@@ -181,6 +193,8 @@ function rows() {
       "editor.username as editedByUsername",
       "publication.editedAt",
       "publication.releasedAt",
+      "retractor.username as retractedByUsername",
+      "publication.retractedAt",
       "broadcast.id as broadcastId",
       "broadcast.subject",
       "broadcast.body",
@@ -226,6 +240,8 @@ function toQueued(row: {
   editedByUsername: string | null;
   editedAt: string | null;
   releasedAt: string | null;
+  retractedByUsername: string | null;
+  retractedAt: string | null;
   broadcastId: string;
   subject: string;
   body: string;
@@ -695,7 +711,184 @@ async function listReleased(): Promise<QueuedBroadcast[]> {
   return found.map(toQueued);
 }
 
+/** Was nach dem Zurückziehen an der Stelle der Rundmail steht — im Postfach wie im Archiv. */
+export const RETRACTED_TEXT = "Diese Rundmail wurde zurückgezogen.";
+
+/**
+ * Der Ersatz für Betreff und Text der Rundmail selbst. Nicht leer, weil die Datenbank das nicht
+ * zulässt (`broadcast_subject_not_blank`) — und nichts vom Wortlaut.
+ */
+const RETRACTED_SUBJECT = "Zurückgezogen";
+
+export type RetractRefusal =
+  | "not_found"
+  | "not_the_first_administrator"
+  | "not_released"
+  | "already_retracted";
+
+export type Retracted = {
+  retractedAt: string;
+  /** In wie vielen Postfächern der Text ersetzt wurde. */
+  inboxes: number;
+  archived: boolean;
+};
+
+/**
+ * Zieht eine versendete Rundmail zurück — **nur der Ur-Admin, und nur der Inhalt geht.**
+ *
+ * **Was verschwindet:** Text und Betreff in jedem Postfach, wo an ihrer Stelle
+ * `RETRACTED_TEXT` steht, damit Antworten darunter nicht in der Luft hängen; der Beitrag im Archiv,
+ * genauso ersetzt statt gelöscht, damit die Sammlung keine stille Lücke hat — Dokument **und**
+ * Volltext, sonst fände die Suche ihn weiter; und der Wortlaut an der Rundmail selbst, auch intern,
+ * auch der Betreff. Zurückgezogen wird meist, weil der Text weg *muss*.
+ *
+ * **Was bleibt:** wer wann zurückgezogen hat, wer sie geschrieben und freigegeben hat, der
+ * Absender, der Empfängerkreis samt den namentlich Genannten und die Empfängerzahlen. Nichts
+ * davon ist Inhalt, und wer sie bekam, braucht man gerade danach, um die Betroffenen anzusprechen.
+ *
+ * **Was nicht verschwindet, und das sagt die Oberfläche vorher:** Mails, die beim Relais liegen;
+ * Antworten, die den Text zitieren; Meldungen, die ihren eigenen Auszug tragen. Die übrigen Mails
+ * hält `stopMailsOf` an, sobald festgeschrieben ist.
+ *
+ * **Nur einmal**, mit derselben Bedingung im `WHERE` wie beim Freigeben: Zweimal gleichzeitig
+ * gedrückt, trifft der zweite nichts mehr.
+ */
+async function retract(
+  publicationId: string,
+  actor: User,
+): Promise<RetractRefusal | Retracted> {
+  // Die Rolle reicht nicht, und das ist die Entscheidung: Zurückziehen ist der eine Schritt, der
+  // an allen Freigaben vorbei wirkt, also liegt er bei dem einen Konto, das ohne Freigabe sendet.
+  if (!actor.isPrimordialAdmin) {
+    return "not_the_first_administrator";
+  }
+
+  const now = new Date().toISOString();
+
+  const outcome = await db.transaction().execute(async (transaction) => {
+    const claimed = await transaction
+      .updateTable("publication")
+      .set({ retractedBy: actor.id, retractedAt: now })
+      .where("id", "=", publicationId)
+      .where("kind", "=", "broadcast")
+      .where("status", "=", "released")
+      .where("retractedAt", "is", null)
+      .returning("id")
+      .executeTakeFirst();
+
+    if (claimed === undefined) {
+      const found = await transaction
+        .selectFrom("publication")
+        .select(["status", "retractedAt"])
+        .where("id", "=", publicationId)
+        .where("kind", "=", "broadcast")
+        .executeTakeFirst();
+
+      return found === undefined
+        ? "not_found" as const
+        : found.retractedAt !== null
+        ? "already_retracted" as const
+        : "not_released" as const;
+    }
+
+    const broadcast = await transaction
+      .updateTable("broadcast")
+      .set({
+        subject: RETRACTED_SUBJECT,
+        body: RETRACTED_TEXT,
+        updatedAt: now,
+      })
+      .where("publicationId", "=", publicationId)
+      .returning(["id", "archivePostId"])
+      .executeTakeFirstOrThrow();
+
+    const replaced = await transaction
+      .updateTable("chatMessage")
+      .set({ text: RETRACTED_TEXT, subject: null })
+      .where("broadcastId", "=", broadcast.id)
+      .returning(["id", "chatGroupId", "createdAt", "createdBy"])
+      .execute();
+
+    // Wer die Gespräche gerade offen hat, sieht sonst den Text weiter, der weg soll.
+    const members = replaced.length === 0 ? [] : await transaction
+      .selectFrom("userInChatGroup")
+      .select(["chatGroupId", "userId"])
+      .where(
+        "chatGroupId",
+        "in",
+        replaced.map((message) => message.chatGroupId),
+      )
+      .execute();
+
+    const senderName = replaced[0]?.createdBy === null ||
+        replaced[0] === undefined
+      ? null
+      : (await transaction
+        .selectFrom("user")
+        .select("username")
+        .where("id", "=", replaced[0].createdBy)
+        .executeTakeFirst())?.username ?? null;
+
+    if (broadcast.archivePostId !== null) {
+      const document = plainTextToDocument(RETRACTED_TEXT);
+
+      await transaction
+        .updateTable("writingPost")
+        .set({
+          document,
+          text: documentToPlainText(document),
+          editedBy: actor.id,
+          editedAt: now,
+        })
+        .where("id", "=", broadcast.archivePostId)
+        .execute();
+    }
+
+    return {
+      broadcastId: broadcast.id,
+      archived: broadcast.archivePostId !== null,
+      replaced,
+      members,
+      senderName,
+    };
+  });
+
+  if (typeof outcome === "string") {
+    return outcome;
+  }
+
+  // Erst nach dem Festschreiben: Ein Rückzieher darf nichts angehalten und niemandem etwas
+  // angekündigt haben.
+  BroadcastService.stopMailsOf(outcome.broadcastId);
+
+  for (const message of outcome.replaced) {
+    publishChatEvent(
+      outcome.members
+        .filter((member) => member.chatGroupId === message.chatGroupId)
+        .map((member) => member.userId),
+      {
+        chatGroupId: message.chatGroupId,
+        // Dieselbe Kennung wie die Nachricht, die ersetzt wird: Die Oberfläche legt sie darüber.
+        message: {
+          id: message.id,
+          text: RETRACTED_TEXT,
+          createdAt: message.createdAt,
+          createdBy: message.createdBy,
+          createdByUsername: outcome.senderName,
+        },
+      },
+    );
+  }
+
+  return {
+    retractedAt: now,
+    inboxes: outcome.replaced.length,
+    archived: outcome.archived,
+  };
+}
+
 export const BroadcastQueueService = {
+  retract,
   submit,
   approve,
   releaseDue,
