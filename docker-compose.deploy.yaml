@@ -254,8 +254,12 @@ services:
     volumes:
       - db-data:/var/lib/postgresql
 
+    # **Over TCP, not the socket** — the reason is in docker-compose.yaml. Here it matters exactly
+    # once, and for certain: the first start of a real instance on an empty volume, when the
+    # temporary init server would otherwise count as ready and the migrations would meet its
+    # restart. `pg_isready` does not authenticate, so no password is needed for `-h`.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U calliope -d calliope"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U calliope -d calliope"]
       interval: 1s
       timeout: 5s
       retries: 10
