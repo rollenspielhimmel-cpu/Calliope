@@ -1,5 +1,7 @@
 import { generate as generateUuidV7 } from "@std/uuid/v7";
+import type { ExpressionBuilder } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
+import type { DB } from "@/src/database/schema.ts";
 import {
   type ChatMessage,
   ChatMessageService,
@@ -48,10 +50,22 @@ export type InboxConversation = {
    * lügt. Hier fällt die Antwort aus dem Verlauf selbst heraus: Steht die letzte Nachricht vom
    * Mitglied, hat noch niemand geantwortet.
    *
-   * Der Preis ist ehrlich zu benennen: Ein „Danke!", das keine Antwort braucht, bleibt offen, bis
-   * jemand antwortet — oder es später in einen Ordner legt.
+   * Ein „Danke!", das keine Antwort braucht, blieb damit offen, bis jemand antwortete. Dafür gibt
+   * es jetzt „Erledigt" — siehe `isOpen`.
    */
   awaitingReply: boolean;
+  /**
+   * Ob noch jemand etwas tun muss: Das Mitglied hat zuletzt geschrieben, und niemand hat das
+   * Gespräch seitdem erledigt genannt.
+   *
+   * **Erledigt heißt „erledigt bis zu dieser Nachricht".** Schreibt das Mitglied danach wieder,
+   * liegt seine neueste Nachricht hinter der Marke, und das Gespräch ist von selbst wieder offen.
+   * Niemand muss dafür etwas zurücksetzen.
+   */
+  isOpen: boolean;
+  /** Wer es ohne Antwort erledigt genannt hat, und wann — nur, solange die Marke noch gilt. */
+  markedDoneByUsername: string | null;
+  markedDoneAt: string | null;
 };
 
 /**
@@ -77,10 +91,14 @@ async function listConversations(): Promise<InboxConversation[]> {
     .innerJoin("chatMessage", "chatMessage.chatGroupId", "chatGroup.id")
     .innerJoin("user", "user.id", "chatMessage.createdBy")
     .leftJoin("user as sender", "sender.id", "chatGroup.createdBy")
+    .leftJoin("user as doneBy", "doneBy.id", "chatGroup.inboxDoneBy")
     .select([
       "chatGroup.id as chatGroupId",
       "user.username",
       "sender.username as senderUsername",
+      "chatGroup.inboxDoneThrough",
+      "chatGroup.inboxDoneAt",
+      "doneBy.username as doneByUsername",
       "chatMessage.id as messageId",
       "chatMessage.text",
       "chatMessage.createdAt",
@@ -96,16 +114,7 @@ async function listConversations(): Promise<InboxConversation[]> {
     // brüchige Fassung derselben Aussage, und sie stimmte nur, solange ein Faden genau eine
     // Rundmail trug.
     .where("chatMessage.broadcastId", "is", null)
-    .where((eb) =>
-      eb.or([
-        eb("chatGroup.createdBy", "is", null),
-        eb(
-          "chatGroup.createdBy",
-          "!=",
-          eb.ref("chatGroup.administrationPartnerId"),
-        ),
-      ])
-    )
+    .where(notTalkingToItself)
     .orderBy("chatMessage.createdAt", "desc")
     .execute();
 
@@ -142,16 +151,117 @@ async function listConversations(): Promise<InboxConversation[]> {
 
   const latestByChat = new Map(latest.map((row) => [row.chatGroupId, row.id]));
 
-  return [...newest.values()].map((row) => ({
-    chatGroupId: row.chatGroupId,
-    username: row.username,
-    senderUsername: row.senderUsername,
-    excerpt: row.text.length > EXCERPT_LENGTH
-      ? `${row.text.slice(0, EXCERPT_LENGTH).trimEnd()} …`
-      : row.text,
-    lastMessageAt: row.createdAt,
-    awaitingReply: latestByChat.get(row.chatGroupId) === row.messageId,
-  }));
+  return [...newest.values()].map((row) => {
+    const awaitingReply = latestByChat.get(row.chatGroupId) === row.messageId;
+    const markedDone = coversMessage(row.inboxDoneThrough, row.messageId);
+
+    return {
+      chatGroupId: row.chatGroupId,
+      username: row.username,
+      senderUsername: row.senderUsername,
+      excerpt: row.text.length > EXCERPT_LENGTH
+        ? `${row.text.slice(0, EXCERPT_LENGTH).trimEnd()} …`
+        : row.text,
+      lastMessageAt: row.createdAt,
+      awaitingReply,
+      isOpen: awaitingReply && !markedDone,
+      markedDoneByUsername: markedDone ? row.doneByUsername : null,
+      markedDoneAt: markedDone ? row.inboxDoneAt : null,
+    };
+  });
+}
+
+/**
+ * Ob die Marke „erledigt bis" diese Nachricht des Mitglieds noch deckt.
+ *
+ * Kennungen sind uuidv7 und in ihrer Schreibweise zeitlich geordnet; ein Vergleich der Zeichenketten
+ * ist deshalb einer der Zeitpunkte, ohne dass eine Uhr mitreden muss.
+ */
+function coversMessage(doneThrough: string | null, messageId: string) {
+  return doneThrough !== null && messageId <= doneThrough;
+}
+
+/**
+ * Nicht der Faden, in dem die Plattform sich selbst gegenübersitzt — dort ist niemand, dem man
+ * antworten könnte. Siehe `listConversations`.
+ */
+function notTalkingToItself(
+  eb: ExpressionBuilder<DB, "chatGroup">,
+) {
+  return eb.or([
+    eb("chatGroup.createdBy", "is", null),
+    eb(
+      "chatGroup.createdBy",
+      "!=",
+      eb.ref("chatGroup.administrationPartnerId"),
+    ),
+  ]);
+}
+
+export type DoneRefusal = "not_found" | "nothing_from_the_member";
+
+/**
+ * Nennt ein Gespräch erledigt, ohne zu antworten — etwa bei einem „Danke".
+ *
+ * **Bis zur neuesten Nachricht des Mitglieds, nicht darüber hinaus.** Was es danach schreibt, liegt
+ * hinter der Marke und macht das Gespräch von selbst wieder offen. Wer und wann steht mit dabei.
+ */
+async function markDone(
+  chatGroupId: string,
+  administrator: { id: string },
+): Promise<DoneRefusal | undefined> {
+  return await db.transaction().execute(async (transaction) => {
+    const chat = await transaction
+      .selectFrom("chatGroup")
+      .select(["id", "administrationPartnerId"])
+      .where("id", "=", chatGroupId)
+      .where("addressedToAdministration", "=", true)
+      .where(notTalkingToItself)
+      .forUpdate()
+      .executeTakeFirst();
+
+    if (chat === undefined || chat.administrationPartnerId === null) {
+      return "not_found";
+    }
+
+    const newest = await transaction
+      .selectFrom("chatMessage")
+      .select("id")
+      .where("chatGroupId", "=", chat.id)
+      .where("createdBy", "=", chat.administrationPartnerId)
+      .where("broadcastId", "is", null)
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    if (newest === undefined) {
+      return "nothing_from_the_member";
+    }
+
+    await transaction
+      .updateTable("chatGroup")
+      .set({
+        inboxDoneThrough: newest.id,
+        inboxDoneBy: administrator.id,
+        inboxDoneAt: new Date().toISOString(),
+      })
+      .where("id", "=", chat.id)
+      .execute();
+
+    return undefined;
+  });
+}
+
+/** Nimmt „erledigt" zurück, falls es zu früh war. */
+async function reopen(chatGroupId: string): Promise<"not_found" | undefined> {
+  const result = await db
+    .updateTable("chatGroup")
+    .set({ inboxDoneThrough: null, inboxDoneBy: null, inboxDoneAt: null })
+    .where("id", "=", chatGroupId)
+    .where("addressedToAdministration", "=", true)
+    .executeTakeFirst();
+
+  return result.numUpdatedRows === 0n ? "not_found" : undefined;
 }
 
 export type InboxMessage = {
@@ -528,6 +638,8 @@ async function openThreadInsteadOfInviting(
 
 export const AdminInboxService = {
   listConversations,
+  markDone,
+  reopen,
   readConversation,
   reply,
   findOrCreateThreads,

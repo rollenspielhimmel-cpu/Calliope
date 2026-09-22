@@ -447,6 +447,9 @@ export interface ChatGroup {
   createdAt: Generated<string>;
   createdBy: string | null;
   id: Generated<string>;
+  inboxDoneAt: string | null;
+  inboxDoneBy: string | null;
+  inboxDoneThrough: string | null;
   isTestBroadcast: Generated<boolean>;
   lastActivityAt: Generated<string>;
   title: string;
@@ -483,6 +486,23 @@ export interface Favourite {
   writingPageId: string | null;
   writingPostId: string | null;
   writingThreadId: string | null;
+}
+
+export interface InboxFolder {
+  createdAt: Generated<string>;
+  createdBy: string | null;
+  id: Generated<string>;
+  position: number;
+  title: string;
+}
+
+export interface InboxFolderItem {
+  addedAt: Generated<string>;
+  addedBy: string | null;
+  chatGroupId: string | null;
+  chatMessageId: string | null;
+  id: Generated<string>;
+  inboxFolderId: string;
 }
 
 export interface Notification {
@@ -854,6 +874,8 @@ export interface DB {
   chatMessage: ChatMessage;
   customPage: CustomPage;
   favourite: Favourite;
+  inboxFolder: InboxFolder;
+  inboxFolderItem: InboxFolderItem;
   notification: Notification;
   officialRevision: OfficialRevision;
   platformRolePermission: PlatformRolePermission;
@@ -1400,6 +1422,9 @@ export const CHAT_GROUP_SCHEMA = z.object({
   addressedToAdministration: z.boolean(),
   administrationPartnerId: z.uuidv7().nullable(),
   isTestBroadcast: z.boolean(),
+  inboxDoneThrough: z.uuidv7().nullable(),
+  inboxDoneBy: z.uuidv7().nullable(),
+  inboxDoneAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export const CHAT_MESSAGE_SCHEMA = z.object({
@@ -1433,6 +1458,23 @@ export const FAVOURITE_SCHEMA = z.object({
   storyIdeaId: z.uuidv7().nullable(),
   chatGroupId: z.uuidv7().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
+});
+
+export const INBOX_FOLDER_SCHEMA = z.object({
+  id: z.uuidv7(),
+  title: z.string(),
+  position: int32,
+  createdBy: z.uuidv7().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+
+export const INBOX_FOLDER_ITEM_SCHEMA = z.object({
+  id: z.uuidv7(),
+  inboxFolderId: z.uuidv7(),
+  chatGroupId: z.uuidv7().nullable(),
+  chatMessageId: z.uuidv7().nullable(),
+  addedBy: z.uuidv7().nullable(),
+  addedAt: z.iso.datetime({ offset: true }),
 });
 
 export const NOTIFICATION_SCHEMA = z.object({

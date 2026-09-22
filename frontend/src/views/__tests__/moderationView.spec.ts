@@ -227,7 +227,12 @@ describe('Postfach der Administration', () => {
   it('sagt nichts, solange nichts offen ist', () => {
     adminInbox.value = {
       status: 200,
-      data: { results: [{ awaitingReply: false }, { awaitingReply: false }] },
+      data: {
+        results: [
+          { awaitingReply: false, isOpen: false },
+          { awaitingReply: false, isOpen: false },
+        ],
+      },
     }
 
     const view = moderationView()
@@ -237,11 +242,18 @@ describe('Postfach der Administration', () => {
     expect(view.text()).not.toContain('offen')
   })
 
-  it('zählt nur, worauf noch niemand geantwortet hat', () => {
+  it('zählt nur Offenes — nicht, was ohne Antwort erledigt wurde', () => {
     adminInbox.value = {
       status: 200,
       data: {
-        results: [{ awaitingReply: true }, { awaitingReply: false }, { awaitingReply: true }],
+        results: [
+          { awaitingReply: true, isOpen: true },
+          { awaitingReply: false, isOpen: false },
+          { awaitingReply: true, isOpen: true },
+          // Ein „Danke", erledigt ohne Antwort: Die letzte Nachricht ist vom Mitglied, zu tun ist
+          // trotzdem nichts.
+          { awaitingReply: true, isOpen: false },
+        ],
       },
     }
 

@@ -20,6 +20,7 @@ import rolePermissions from "./moderation/role_permissions.ts";
 import senderGrants from "./moderation/sender_grants.ts";
 import officialThreads from "./moderation/official_threads.ts";
 import officialThreadChanges from "./moderation/official_thread_changes.ts";
+import adminInboxFolders from "./moderation/admin_inbox_folders.ts";
 import adminInbox from "./moderation/admin_inbox.ts";
 
 /**
@@ -55,6 +56,8 @@ export default new OpenAPIHono()
   .route("/", officialThreads)
   // Lesbar für die ganze Moderation, anders als der Rest des Rundmail-Bereichs — die Route sagt es
   // selbst über ihre Middleware.
+  // Vor dem Postfach: sonst nähme dessen `/inbox/{chatGroupId}` „folders" für eine Kennung.
+  .route("/", adminInboxFolders)
   .route("/", adminInbox)
   .route("/", broadcast)
   .route("/", invitations)

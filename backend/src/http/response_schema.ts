@@ -483,7 +483,17 @@ export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA
   // `isTestBroadcast` kommt dagegen mit, und zwar bewusst: Es beschreibt das Gespräch so, wie die
   // Person es führt — ihr eigener Test-Faden, in dem sie weder einladen noch schreiben kann. Eine
   // Auskunft über die Teamseite ist das nicht, denn der Faden steht in keinem Postfach des Teams.
-  .omit({ addressedToAdministration: true, administrationPartnerId: true })
+  //
+  // Dasselbe gilt für `inboxDone*`: ob, von wem und wann die Administration ein Gespräch im
+  // Postfach erledigt genannt hat. Das Mitglied soll nicht lesen, dass sein „Danke" abgehakt wurde
+  // — und schon gar nicht von wem. Wieder hat der Typprüfer es gemeldet.
+  .omit({
+    addressedToAdministration: true,
+    administrationPartnerId: true,
+    inboxDoneThrough: true,
+    inboxDoneBy: true,
+    inboxDoneAt: true,
+  })
   .extend({
     ...OWN_FAVOURITE,
     /** The reader's own standing in it, so the interface knows whether to show a conversation. */

@@ -4,9 +4,11 @@ import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
 import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
+import { AdminInboxFolderService } from "@/src/service/admin_inbox_folder_service.ts";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
+import { assertUnreachable } from "@/src/util/assert_unreachable.ts";
 import {
   BAD_REQUEST_RESPONSE,
   COMMON_RESPONSES,
@@ -41,6 +43,10 @@ const CONVERSATION = z.object({
   excerpt: z.string(),
   lastMessageAt: z.iso.datetime({ offset: true }),
   awaitingReply: z.boolean(),
+  // Noch etwas zu tun: zuletzt das Mitglied, und seitdem niemand „erledigt" gesagt.
+  isOpen: z.boolean(),
+  markedDoneByUsername: z.string().nullable(),
+  markedDoneAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 const MESSAGE = z.object({
@@ -58,11 +64,19 @@ const MESSAGE = z.object({
   retractedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
+const FOLDER_PLACE = z.object({ itemId: z.uuidv7(), folderId: z.uuidv7() });
+
 const CONVERSATION_DETAIL = z.object({
   chatGroupId: z.uuidv7(),
   username: z.string().nullable(),
   senderUsername: z.string().nullable(),
   messages: z.array(MESSAGE),
+  // In welchen Ordnern das Gespräch liegt und welche seiner Nachrichten wo — damit der Verlauf
+  // zeigen kann, was schon einsortiert ist.
+  folderPlaces: z.object({
+    conversation: z.array(FOLDER_PLACE),
+    messages: z.array(FOLDER_PLACE.extend({ messageId: z.uuidv7() })),
+  }),
 });
 
 const REPLY_BODY = z.object({
@@ -147,9 +161,14 @@ export default new OpenAPIHono()
         chatGroupId,
       );
 
-      return conversation === undefined
-        ? c.json({ error: NOT_IN_THE_INBOX }, STATUS_CODE.NotFound)
-        : c.json(conversation, STATUS_CODE.OK);
+      if (conversation === undefined) {
+        return c.json({ error: NOT_IN_THE_INBOX }, STATUS_CODE.NotFound);
+      }
+
+      return c.json({
+        ...conversation,
+        folderPlaces: await AdminInboxFolderService.placesOf(chatGroupId),
+      }, STATUS_CODE.OK);
     },
   )
   .openapi(
@@ -218,4 +237,87 @@ export default new OpenAPIHono()
         retractedAt: null,
       }, STATUS_CODE.Created);
     },
+  )
+  .openapi(
+    createRoute({
+      method: "put",
+      path: "/inbox/{chatGroupId}/done",
+      tags: [MODERATION_TAG],
+      summary: "Mark a conversation as done without replying",
+      description:
+        "Done up to the member's newest message, not for good: whatever the member writes after it opens the conversation again by itself. Who and when are kept.",
+      operationId: "markAdminInboxConversationDone",
+      middleware: [authenticated, authorizedAsAdministrator] as const,
+      request: { params: z.object({ chatGroupId: z.uuidv7() }) },
+      responses: {
+        [STATUS_CODE.OK]: {
+          description: "Done",
+          content: jsonContent(z.object({ ok: z.literal(true) })),
+        },
+        [STATUS_CODE.NotFound]: {
+          description: "No such conversation in the inbox",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Conflict]: {
+          description: "The member has not written anything in it",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
+        [STATUS_CODE.Forbidden]: NOT_AN_ADMINISTRATOR_RESPONSE,
+        ...BAD_REQUEST_RESPONSE,
+        ...COMMON_RESPONSES,
+      },
+    }),
+    async (c) => {
+      const refusal = await AdminInboxService.markDone(
+        c.req.valid("param").chatGroupId,
+        c.get("user"),
+      );
+
+      switch (refusal) {
+        case undefined:
+          return c.json({ ok: true as const }, STATUS_CODE.OK);
+        case "not_found":
+          return c.json({ error: NOT_IN_THE_INBOX }, STATUS_CODE.NotFound);
+        case "nothing_from_the_member":
+          return c.json(
+            { error: "Das Mitglied hat hier noch nichts geschrieben." },
+            STATUS_CODE.Conflict,
+          );
+        default:
+          return assertUnreachable(refusal);
+      }
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/inbox/{chatGroupId}/done",
+      tags: [MODERATION_TAG],
+      summary: "Take back „done“",
+      description:
+        "For a conversation marked done too early. Whether it is open again then follows from the conversation itself.",
+      operationId: "reopenAdminInboxConversation",
+      middleware: [authenticated, authorizedAsAdministrator] as const,
+      request: { params: z.object({ chatGroupId: z.uuidv7() }) },
+      responses: {
+        [STATUS_CODE.OK]: {
+          description: "Taken back",
+          content: jsonContent(z.object({ ok: z.literal(true) })),
+        },
+        [STATUS_CODE.NotFound]: {
+          description: "No such conversation in the inbox",
+          content: jsonContent(ERROR_RESPONSE),
+        },
+        [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
+        [STATUS_CODE.Forbidden]: NOT_AN_ADMINISTRATOR_RESPONSE,
+        ...BAD_REQUEST_RESPONSE,
+        ...COMMON_RESPONSES,
+      },
+    }),
+    async (c) =>
+      await AdminInboxService.reopen(c.req.valid("param").chatGroupId) ===
+          undefined
+        ? c.json({ ok: true as const }, STATUS_CODE.OK)
+        : c.json({ error: NOT_IN_THE_INBOX }, STATUS_CODE.NotFound),
   );

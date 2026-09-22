@@ -57,6 +57,11 @@ const data = scopedTestData({
   users: USERS,
   seat: ROOT,
   remove: async (transaction) => {
+    // Die Ordner dieser Datei: Sie gehören keinem Konto, also gehen sie nicht mit den Konten.
+    await transaction
+      .deleteFrom("inboxFolder")
+      .where("title", "like", "ai-ordner-%")
+      .execute();
     await transaction
       .deleteFrom("publication")
       .where(
@@ -754,6 +759,573 @@ Deno.test("ein gewöhnlicher Administrator wird ganz normal eingeladen", async (
     // den Gesprächen der Mitglieder ausgesperrt, ohne dass es jemandem auffiele: Die Absage sähe aus
     // wie die richtige.
     assertEquals(invited.status, STATUS_CODE.Created);
+  } finally {
+    await cleanUp();
+  }
+});
+
+// ── Erledigt ─────────────────────────────────────────────────────────────────────────────────
+
+type OpenEntry = Entry & {
+  isOpen: boolean;
+  markedDoneByUsername: string | null;
+  markedDoneAt: string | null;
+};
+
+async function entryOf(cookie: string, chatGroupId: string) {
+  const { results } = await (await inbox(cookie)).json() as {
+    results: OpenEntry[];
+  };
+  return results.find((row) => row.chatGroupId === chatGroupId);
+}
+
+function markDone(cookie: string, chatGroupId: string) {
+  return request("PUT", `/api/moderation/inbox/${chatGroupId}/done`, cookie);
+}
+
+function reopen(cookie: string, chatGroupId: string) {
+  return request("DELETE", `/api/moderation/inbox/${chatGroupId}/done`, cookie);
+}
+
+/**
+ * **Erledigt, ohne zu antworten — bis das Mitglied wieder schreibt.** Ein „Danke" braucht keine
+ * Antwort; was danach kommt, darf aber nicht unter der alten Marke verschwinden.
+ */
+Deno.test("erledigt ohne Antwort, und von selbst wieder offen, wenn das Mitglied schreibt", async () => {
+  const cookies = await fixture();
+
+  try {
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+    await write(cookies.member, chatId, "Danke!");
+
+    assertEquals((await entryOf(cookies.root, chatId))?.isOpen, true);
+
+    assertEquals((await markDone(cookies.root, chatId)).status, STATUS_CODE.OK);
+
+    const done = await entryOf(cookies.root, chatId);
+    assertEquals(done?.isOpen, false);
+    assertEquals(done?.awaitingReply, true, "geantwortet hat niemand");
+    assertEquals(done?.markedDoneByUsername, ROOT);
+    assertExists(done?.markedDoneAt);
+
+    await write(cookies.member, chatId, "Ach, noch eine Frage.");
+
+    const again = await entryOf(cookies.root, chatId);
+    assertEquals(again?.isOpen, true, "wieder offen");
+    assertEquals(
+      again?.markedDoneByUsername,
+      null,
+      "die alte Marke gilt nicht mehr",
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("„erledigt“ lässt sich zurücknehmen", async () => {
+  const cookies = await fixture();
+
+  try {
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+    await write(cookies.member, chatId, REPLY);
+    await markDone(cookies.root, chatId);
+
+    assertEquals((await reopen(cookies.root, chatId)).status, STATUS_CODE.OK);
+    assertEquals((await entryOf(cookies.root, chatId))?.isOpen, true);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("erledigt nennt ein Gespräch nur die Administration", async () => {
+  const cookies = await fixture();
+
+  try {
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+    await write(cookies.member, chatId, REPLY);
+
+    assertEquals(
+      (await markDone(cookies.moderator, chatId)).status,
+      STATUS_CODE.Forbidden,
+    );
+    assertEquals(
+      (await reopen(cookies.moderator, chatId)).status,
+      STATUS_CODE.Forbidden,
+    );
+    assertEquals((await entryOf(cookies.root, chatId))?.isOpen, true);
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Ein privates Gespräch zweier Mitglieder, am Postfach vorbei — mit einer Nachricht darin. */
+async function privateChat(): Promise<{ chatId: string; messageId: string }> {
+  const chat = await db
+    .insertInto("chatGroup")
+    .values({ title: "ai-privat", createdBy: await getUserId(OUTSIDER) })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const message = await db
+    .insertInto("chatMessage")
+    .values({
+      chatGroupId: chat.id,
+      text: "Nur unter uns.",
+      createdBy: await getUserId(OUTSIDER),
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  return { chatId: chat.id, messageId: message.id };
+}
+
+Deno.test("erledigt nur, was im Postfach liegt und worin das Mitglied geschrieben hat", async () => {
+  const cookies = await fixture();
+
+  try {
+    const broadcastId = await sendBroadcast(cookies.root);
+
+    assertEquals(
+      (await markDone(cookies.root, await chatOf(broadcastId, SILENT))).status,
+      STATUS_CODE.Conflict,
+      "bloß zugestellt",
+    );
+
+    const { chatId } = await privateChat();
+    try {
+      assertEquals(
+        (await markDone(cookies.root, chatId)).status,
+        STATUS_CODE.NotFound,
+        "ein privates Gespräch",
+      );
+      assertEquals(
+        await db.selectFrom("chatGroup").select("inboxDoneAt")
+          .where("id", "=", chatId).executeTakeFirst(),
+        { inboxDoneAt: null },
+      );
+    } finally {
+      await db.deleteFrom("chatGroup").where("id", "=", chatId).execute();
+    }
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Dass sein „Danke" abgehakt wurde, und von wem, liest das Mitglied nirgends. */
+Deno.test("das Mitglied sieht nicht, dass und von wem erledigt wurde", async () => {
+  const cookies = await fixture();
+
+  try {
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+    await write(cookies.member, chatId, "Danke!");
+    await markDone(cookies.root, chatId);
+
+    const chats = await (await request("QUERY", "/api/chats", cookies.member, {
+      limit: 100,
+    }))
+      .text();
+    assert(chats.includes(chatId), "das Gespräch ist in der Antwort");
+    assert(
+      !chats.includes("Done"),
+      "weder die Marke noch, wer sie gesetzt hat",
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+// ── Ordner ───────────────────────────────────────────────────────────────────────────────────
+
+type Folder = {
+  id: string;
+  title: string;
+  conversationCount: number;
+  messageCount: number;
+};
+
+async function createFolder(cookie: string, title: string) {
+  const response = await request(
+    "POST",
+    "/api/moderation/inbox/folders",
+    cookie,
+    { title },
+  );
+  assertEquals(response.status, STATUS_CODE.Created);
+  return (await response.json() as { id: string }).id;
+}
+
+async function folders(cookie: string): Promise<Folder[]> {
+  return await (await request("GET", "/api/moderation/inbox/folders", cookie))
+    .json();
+}
+
+function putIn(
+  cookie: string,
+  folderId: string,
+  target: { chatGroupId: string } | { chatMessageId: string },
+) {
+  return request(
+    "POST",
+    `/api/moderation/inbox/folders/${folderId}/items`,
+    cookie,
+    target,
+  );
+}
+
+/** Die Nachrichten eines Gesprächs, wie die Administration sie liest. */
+async function messagesOf(cookie: string, chatGroupId: string) {
+  return (await (await request(
+    "GET",
+    `/api/moderation/inbox/${chatGroupId}`,
+    cookie,
+  )).json() as { messages: Array<{ id: string; text: string }> }).messages;
+}
+
+Deno.test("Ordner: ganze Gespräche und einzelne Nachrichten, und beides wieder heraus", async () => {
+  const cookies = await fixture();
+
+  try {
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+    await write(cookies.member, chatId, "Erste wichtige Nachricht.");
+    await write(cookies.member, chatId, "Unwichtiges dazwischen.");
+    await write(cookies.member, chatId, "Zweite wichtige Nachricht.");
+
+    const messages = await messagesOf(cookies.root, chatId);
+    const important = messages.filter((message) =>
+      message.text.includes("wichtige Nachricht")
+    );
+    assertEquals(important.length, 2);
+
+    const folderId = await createFolder(cookies.root, "ai-ordner-wichtig");
+
+    // Eine andere Administration sortiert ein — jeder Admin darf das.
+    assertEquals(
+      (await putIn(cookies.member, folderId, { chatGroupId: chatId })).status,
+      STATUS_CODE.Created,
+    );
+    for (const message of important) {
+      // deno-lint-ignore no-await-in-loop -- zwei, nacheinander
+      const added = await putIn(cookies.root, folderId, {
+        chatMessageId: message.id,
+      });
+      assertEquals(added.status, STATUS_CODE.Created);
+    }
+    assertEquals(
+      (await putIn(cookies.root, folderId, { chatGroupId: chatId })).status,
+      STATUS_CODE.Conflict,
+      "zweimal dasselbe nicht",
+    );
+
+    const folder = (await folders(cookies.root)).find((one) =>
+      one.id === folderId
+    );
+    assertEquals(folder?.conversationCount, 1);
+    assertEquals(folder?.messageCount, 2);
+
+    const items = await (await request(
+      "GET",
+      `/api/moderation/inbox/folders/${folderId}/items`,
+      cookies.root,
+    )).json() as Array<
+      {
+        id: string;
+        kind: string;
+        chatGroupId: string;
+        username: string;
+        addedByUsername: string;
+        message?: { text: string };
+      }
+    >;
+    assertEquals(items.length, 3);
+    assertEquals(
+      items.filter((item) => item.kind === "message").map((item) =>
+        item.message?.text
+      ).sort(),
+      important.map((message) => message.text).sort(),
+    );
+    assert(items.every((item) => item.chatGroupId === chatId));
+    assert(items.every((item) => item.username === MEMBER));
+    assertEquals(
+      items.find((item) => item.kind === "conversation")?.addedByUsername,
+      MEMBER,
+    );
+
+    // Der Verlauf weiß, was wo liegt.
+    const detail = await (await request(
+      "GET",
+      `/api/moderation/inbox/${chatId}`,
+      cookies.root,
+    )).json() as {
+      folderPlaces: {
+        conversation: Array<{ folderId: string }>;
+        messages: Array<{ messageId: string }>;
+      };
+    };
+    assertEquals(detail.folderPlaces.conversation[0]?.folderId, folderId);
+    assertEquals(
+      detail.folderPlaces.messages.map((place) => place.messageId).sort(),
+      important.map((message) => message.id).sort(),
+    );
+
+    // Heraus: nur die Einsortierung geht.
+    const one = items.find((item) => item.kind === "message");
+    assertEquals(
+      (await request(
+        "DELETE",
+        `/api/moderation/inbox/folder-items/${one?.id}`,
+        cookies.root,
+      )).status,
+      STATUS_CODE.OK,
+    );
+    assertEquals(
+      (await messagesOf(cookies.root, chatId)).length,
+      messages.length,
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+/**
+ * **Nur, was im Postfach liegt.** Sonst zöge ein Ordner einen privaten Chat zweier Mitglieder in
+ * die Administration — und machte ihn dort lesbar.
+ */
+Deno.test("Ordner nehmen nichts auf, was nicht im Postfach liegt", async () => {
+  const cookies = await fixture();
+
+  try {
+    const folderId = await createFolder(cookies.root, "ai-ordner-privat");
+    const { chatId, messageId } = await privateChat();
+
+    try {
+      assertEquals(
+        (await putIn(cookies.root, folderId, { chatGroupId: chatId })).status,
+        STATUS_CODE.NotFound,
+      );
+      assertEquals(
+        (await putIn(cookies.root, folderId, { chatMessageId: messageId }))
+          .status,
+        STATUS_CODE.NotFound,
+      );
+      assertEquals(
+        (await folders(cookies.root)).find((one) => one.id === folderId)
+          ?.messageCount,
+        0,
+      );
+    } finally {
+      await db.deleteFrom("chatGroup").where("id", "=", chatId).execute();
+    }
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("Ordner umbenennen, und keine zwei mit demselben Namen", async () => {
+  const cookies = await fixture();
+
+  try {
+    const first = await createFolder(cookies.root, "ai-ordner-bewerbungen");
+    const second = await createFolder(cookies.root, "ai-ordner-beschwerden");
+
+    assertEquals(
+      (await request("POST", "/api/moderation/inbox/folders", cookies.root, {
+        title: "  AI-Ordner-Bewerbungen ",
+      })).status,
+      STATUS_CODE.Conflict,
+      "anders geschrieben, derselbe Name",
+    );
+    assertEquals(
+      (await request(
+        "PATCH",
+        `/api/moderation/inbox/folders/${second}`,
+        cookies.root,
+        { title: "ai-ordner-bewerbungen" },
+      )).status,
+      STATUS_CODE.Conflict,
+    );
+    assertEquals(
+      (await request(
+        "PATCH",
+        `/api/moderation/inbox/folders/${first}`,
+        cookies.member,
+        { title: "ai-ordner-bewerbungen-2026" },
+      )).status,
+      STATUS_CODE.OK,
+    );
+    assertEquals(
+      (await folders(cookies.root)).find((one) => one.id === first)?.title,
+      "ai-ordner-bewerbungen-2026",
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Löschen nimmt die Einsortierung weg, nicht die Gespräche und Nachrichten darin. */
+Deno.test("einen Ordner löschen lässt Gespräche und Nachrichten im Postfach", async () => {
+  const cookies = await fixture();
+
+  try {
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+    await write(cookies.member, chatId, REPLY);
+    const [message] = (await messagesOf(cookies.root, chatId)).filter((one) =>
+      one.text === REPLY
+    );
+
+    const folderId = await createFolder(cookies.root, "ai-ordner-weg");
+    await putIn(cookies.root, folderId, { chatGroupId: chatId });
+    await putIn(cookies.root, folderId, { chatMessageId: message!.id });
+
+    assertEquals(
+      (await request(
+        "DELETE",
+        `/api/moderation/inbox/folders/${folderId}`,
+        cookies.root,
+      )).status,
+      STATUS_CODE.OK,
+    );
+
+    assert(!(await folders(cookies.root)).some((one) => one.id === folderId));
+    assertEquals(
+      (await db.selectFrom("inboxFolderItem").select("id")
+        .where("inboxFolderId", "=", folderId).execute()).length,
+      0,
+    );
+    assertExists(await entryOf(cookies.root, chatId), "das Gespräch bleibt");
+    assert(
+      (await messagesOf(cookies.root, chatId)).some((one) =>
+        one.id === message!.id
+      ),
+      "die Nachricht auch",
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Eine Reihenfolge für alle Admins — und keine, die zu einem anderen Stand gehört. */
+Deno.test("die Reihenfolge der Ordner gilt für alle Admins, und eine veraltete wird abgelehnt", async () => {
+  const cookies = await fixture();
+
+  try {
+    const a = await createFolder(cookies.root, "ai-ordner-a");
+    const b = await createFolder(cookies.root, "ai-ordner-b");
+    const c = await createFolder(cookies.root, "ai-ordner-c");
+
+    const order = (await folders(cookies.root)).map((one) => one.id);
+    // Neue stehen unten.
+    assertEquals(order.slice(-3), [a, b, c]);
+
+    // Den letzten nach ganz oben.
+    const wanted = [c, ...order.filter((id) => id !== c)];
+    assertEquals(
+      (await request(
+        "PUT",
+        "/api/moderation/inbox/folders/order",
+        cookies.root,
+        { folderIds: wanted },
+      )).status,
+      STATUS_CODE.OK,
+    );
+
+    // Eine andere Administration sieht dieselbe Reihenfolge.
+    assertEquals((await folders(cookies.member)).map((one) => one.id), wanted);
+
+    // Veraltet: ein Ordner fehlt in der Liste.
+    assertEquals(
+      (await request(
+        "PUT",
+        "/api/moderation/inbox/folders/order",
+        cookies.root,
+        { folderIds: wanted.filter((id) => id !== b) },
+      )).status,
+      STATUS_CODE.Conflict,
+    );
+    assertEquals(
+      (await request(
+        "PUT",
+        "/api/moderation/inbox/folders/order",
+        cookies.root,
+        { folderIds: [...wanted.filter((id) => id !== b), a] },
+      )).status,
+      STATUS_CODE.Conflict,
+      "einer doppelt statt eines anderen",
+    );
+    assertEquals((await folders(cookies.root)).map((one) => one.id), wanted);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("Ordner sind nur für die Administration", async () => {
+  const cookies = await fixture();
+
+  try {
+    const folderId = await createFolder(cookies.root, "ai-ordner-geheim");
+
+    for (const cookie of [cookies.moderator, cookies.outsider]) {
+      // deno-lint-ignore no-await-in-loop -- zwei, nacheinander
+      const listed = await request(
+        "GET",
+        "/api/moderation/inbox/folders",
+        cookie,
+      );
+      assertEquals(listed.status, STATUS_CODE.Forbidden);
+      // deno-lint-ignore no-await-in-loop -- dasselbe
+      const items = await request(
+        "GET",
+        `/api/moderation/inbox/folders/${folderId}/items`,
+        cookie,
+      );
+      assertEquals(items.status, STATUS_CODE.Forbidden);
+      // deno-lint-ignore no-await-in-loop -- dasselbe
+      const created = await request(
+        "POST",
+        "/api/moderation/inbox/folders",
+        cookie,
+        { title: "ai-ordner-vom-mod" },
+      );
+      assertEquals(created.status, STATUS_CODE.Forbidden);
+    }
+    assertNotEquals(
+      (await folders(cookies.root)).find((one) => one.id === folderId),
+      undefined,
+    );
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Die Datenbank selbst: genau eines von beidem, und nichts ohne Namen. */
+Deno.test("die Datenbank hält Ordner und Einsortierung sauber", async () => {
+  const cookies = await fixture();
+
+  try {
+    const folderId = await createFolder(cookies.root, "ai-ordner-db");
+    const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
+
+    let refused = 0;
+    for (
+      const attempt of [
+        () =>
+          db.insertInto("inboxFolderItem").values({ inboxFolderId: folderId })
+            .execute(),
+        () =>
+          db.insertInto("inboxFolder").values({ title: "  ", position: 9999 })
+            .execute(),
+        () =>
+          db.updateTable("chatGroup").set({
+            inboxDoneThrough: chatId,
+            inboxDoneAt: null,
+          }).where("id", "=", chatId).execute(),
+      ]
+    ) {
+      try {
+        // deno-lint-ignore no-await-in-loop -- jeder für sich
+        await attempt();
+      } catch {
+        refused++;
+      }
+    }
+    assertEquals(refused, 3);
   } finally {
     await cleanUp();
   }

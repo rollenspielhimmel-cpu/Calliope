@@ -27,6 +27,7 @@ export const TEXT_LIMIT = {
   stepText: 200,
   /** A message is a remark, not a chapter. Long enough for a paragraph, far short of a post. */
   messageText: 4_000,
+  inboxFolderTitle: 60,
   /** A second line under the title, as a book has one. */
   groupSubtitle: 120,
   /** The story at length, not the story itself: a treatment, far short of a chapter. */

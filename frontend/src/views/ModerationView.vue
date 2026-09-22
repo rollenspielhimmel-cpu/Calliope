@@ -114,15 +114,13 @@ const waitingBroadcasts = computed<number>(() =>
  *
  * Aus derselben Liste, die die Seite dahinter zeigt — dieselbe Regel wie bei den Rundmails und den
  * Missbrauchsmeldungen: Eine Zahl, die woanders herkommt, kann von dem abweichen, was man dann
- * vorfindet. „Offen" heißt: Die letzte Nachricht ist noch vom Mitglied; das entscheidet der Server
- * aus dem Verlauf und nicht aus einem Merker, den jemand pflegen müsste.
+ * vorfindet. Gezählt wird nur Offenes: Das Mitglied hat zuletzt geschrieben, und niemand hat
+ * seitdem geantwortet oder „Erledigt" gesagt. Das entscheidet der Server.
  */
 const { data: inbox } = useListAdminInbox()
 
 const waitingConversations = computed<number>(() =>
-  inbox.value?.status === 200
-    ? inbox.value.data.results.filter((entry) => entry.awaitingReply).length
-    : 0,
+  inbox.value?.status === 200 ? inbox.value.data.results.filter((entry) => entry.isOpen).length : 0,
 )
 
 const isAdministrator = computed<boolean>(

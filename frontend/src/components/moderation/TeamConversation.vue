@@ -64,6 +64,9 @@ defineProps<{ messages: TeamMessage[] }>()
         Zurückgezogen von {{ message.retractedByUsername ?? 'einem gelöschten Konto' }},
         {{ formatActivityTime(message.retractedAt) }}
       </p>
+      <!-- Was man mit einer einzelnen Nachricht tun kann — im Postfach: in einen Ordner legen.
+           Unter „Gesendete" bleibt der Platz leer. -->
+      <slot name="message-actions" :message="message" />
     </li>
   </ul>
 </template>
