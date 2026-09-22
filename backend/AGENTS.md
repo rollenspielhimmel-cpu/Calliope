@@ -196,6 +196,17 @@ prepared stays `authorizedAsAdministrator`: it is deliberately not a permission.
 
 Mount literal segments before parameters, or `/me` is swallowed by `/:userId`.
 
+**A path with two ids asks whether the child belongs to the parent — before the subtree, not in the
+route.** `/groups/{groupId}/threads/{threadId}/posts/{postId}` checked the role in `groupId` and read
+the post by thread alone, so any member of any group could read, change and delete another group's
+posts by writing their own group into the path. Where an id opens a subtree, the router registers a
+`belongsToParent` middleware from `middleware/belongs_to_parent.ts` (`router.use("/:threadId/*", …)`
+as its own statement, outside the typed chain, or the chain's type grows too deep to check). Every
+route below inherits it, including ones that do not exist yet. `parent_scope_inventory_test.ts`
+reads `open-api.json`, fails on any path with two ids that is neither covered nor exempted with a
+reason, and calls every covered one with foreign ids expecting 404. A new subtree gets its middleware
+and a line there in the same commit.
+
 ## Every declared response needs a content schema
 
 This is not a style preference. `@hono/zod-openapi` only type-checks a handler's return

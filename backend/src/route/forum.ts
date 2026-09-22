@@ -1,3 +1,4 @@
+import { postBelongsToThread } from "@/src/middleware/belongs_to_parent.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import listFolders from "./forum/list_folders.ts";
 import createFolder from "./forum/create_folder.ts";
@@ -40,7 +41,14 @@ import updatePage from "./forum/update_page.ts";
  * session-optional middleware, and teaching `forum_authorization.ts` what a reader without an
  * account may see. The writes stay as they are either way.
  */
-export default new OpenAPIHono()
+const router = new OpenAPIHono();
+
+// Der Beitrag muss in diesem Thread stehen — dieselbe Sicherung wie in den Gruppen. Vor allen
+// Routen und außerhalb der Kette, damit auch eine künftige sie erbt; siehe `belongs_to_parent.ts`.
+router.use("/threads/:threadId/posts/:postId", postBelongsToThread);
+router.use("/threads/:threadId/posts/:postId/*", postBelongsToThread);
+
+export default router
   .route("/folders", listFolders)
   .route("/folders", createFolder)
   .route("/folders/:folderId", updateFolder)
