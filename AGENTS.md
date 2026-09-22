@@ -41,6 +41,12 @@ Each project carries its own conventions; read the one you are working in:
 - **Zu jeder neuen Zusicherung gehört die Gegenprobe.** Ein grüner Test beweist nichts, solange
   nicht gezeigt ist, dass er rot werden kann: die Sicherung absichtlich brechen, den Test rot
   sehen, zurücknehmen.
+- **Ein Testlauf ist grün am Rückgabewert und an der Zahl der Tests, nicht an seiner
+  Zusammenfassung.** Eine Testdatei, die sich nicht laden lässt, fehlt in der Zusammenfassung
+  einfach: Dort stand „ok | 872 passed | 0 failed", der Rückgabewert war 1, und elf Tests waren nie
+  gelaufen — eine Datei in `node_modules` ließ sich einen Moment lang nicht lesen. Das Werkzeug hat
+  es gemeldet, gelesen wurde nur die grüne Zeile. Wer Läufe vergleicht, vergleicht deshalb auch die
+  Zahl der Tests; springt sie, fehlt etwas.
 - Run `validate:check` in whichever project you changed before considering anything done.
 
 ## The issue tracker
