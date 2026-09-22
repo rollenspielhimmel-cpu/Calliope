@@ -2,6 +2,7 @@ import { sql } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
 import type { PublicationStatus } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
+import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
 import {
@@ -23,19 +24,23 @@ import {
  * Namen eines anderen an alle schreibt, kann Schaden anrichten, der ihm nicht zugeschrieben wird.
  * Zwei Augenpaare sind die einzige Sicherung, die davor greift — jede spätere ist eine Entschuldigung.
  *
- * **Wer freigibt:** jede Administration, keine Moderation. Aber **nicht die eigene Einreichung**.
- * Das steht so nicht in der Anforderung und ist eine Folgerung: Dass der Ur-Admin ausdrücklich
- * keine Freigabe braucht, ergibt nur dann einen Sinn, wenn alle anderen eine von *jemand anderem*
- * brauchen. Dürfte jeder sich selbst freigeben, wäre die Ausnahme keine und die Warteschlange
- * Theater. Eine Zeile, falls das anders gemeint war.
+ * **Wer vorbereitet:** jede Rolle mit der Berechtigung `prepare_publications` — heute Admins und
+ * Mods. Wer keine Administration hat, bearbeitet und verwirft nur das Eigene.
  *
- * **Der Ur-Admin gibt mit dem Schreiben frei.** Auch dort werden `approved_by` und `approved_at`
- * gesetzt, statt sie leer zu lassen: Die Spalte soll immer sagen, wer es verantwortet, und ein
- * Sonderfall mit leeren Feldern wäre eine Lücke in genau der Spur, für die es sie gibt.
+ * **Wer freigibt:** jede Administration, keine andere Rolle. Freigeben ist keine Berechtigung, die
+ * man einer Rolle geben kann; sonst wäre die Warteschlange mit einem Haken abgeschafft.
  *
- * **Jede Bearbeitung setzt die Freigabe zurück** — Text, Betreff, Empfängerkreis und Absender
- * gleichermaßen. Sonst lässt man Harmloses absegnen und tauscht danach den Empfängerkreis, was
- * dasselbe ist wie einen anderen Text zu senden.
+ * **Eine Administration gibt mit dem Schreiben frei**, der Ur-Admin wie jede andere. Was sie
+ * einreicht, ist freigegeben; was sie bearbeitet, auch — die Fassung, die dann dasteht, ist ihre.
+ * Auch dort werden `approved_by` und `approved_at` gesetzt, statt sie leer zu lassen: Die Spalte
+ * soll immer sagen, wer es verantwortet, und ein Sonderfall mit leeren Feldern wäre eine Lücke in
+ * genau der Spur, für die es sie gibt. Bis zum 22. September 2026 galt das nur für den Ur-Admin, und
+ * keine Administration durfte die eigene Einreichung freigeben; seitdem ist die Warteschlange für
+ * das da, was Rollen ohne Administration schreiben.
+ *
+ * **Jede Bearbeitung setzt die Freigabe zurück**, wenn sie nicht von einer Administration kommt —
+ * Text, Betreff, Empfängerkreis und Absender gleichermaßen. Sonst lässt man Harmloses absegnen und
+ * tauscht danach den Empfängerkreis, was dasselbe ist wie einen anderen Text zu senden.
  *
  * **Freigabe und Versand sind zwei Dinge.** Ohne Termin fallen sie zusammen: freigeben heißt
  * senden. Mit Termin ist die Freigabe erteilt und die Uhr eine zweite Bedingung — `releaseDue`
@@ -88,7 +93,12 @@ export type QueuedBroadcast = BroadcastInput & {
   status: PublicationStatus;
   /** Nach außen: unter welchem Namen sie erscheint. */
   sendAsUsername: string | null;
-  /** Intern: wer sie verfasst hat, auch wenn außen jemand anderes draufsteht. */
+  /**
+   * Intern: wer sie verfasst hat, auch wenn außen jemand anderes draufsteht. Die Kennung daneben,
+   * weil die Oberfläche an ihr entscheidet, was jemand ohne Administration hier anfassen darf: nur
+   * das Eigene.
+   */
+  writtenBy: string | null;
   writtenByUsername: string | null;
   writtenAt: string;
   approvedByUsername: string | null;
@@ -136,8 +146,9 @@ function audienceOf(broadcast: BroadcastInput): BroadcastAudience {
  * Schreibt die namentlich Genannten, nachdem die alten weg sind.
  *
  * **Ersetzen statt ergänzen**, weil Bearbeiten den Empfängerkreis neu bestimmt: Wer einen Namen
- * herausnimmt, will ihn heraus haben, und ein Ergänzen ließe ihn stehen. Dass die Freigabe dabei
- * ohnehin zurückgesetzt wird, ist der Grund, warum das gefahrlos ist — es sieht noch jemand darauf.
+ * herausnimmt, will ihn heraus haben, und ein Ergänzen ließe ihn stehen. Gefahrlos ist das, weil
+ * die neue Fassung entweder wieder wartet oder von der Administration stammt, die sie freigibt —
+ * es sieht in beiden Fällen jemand darauf.
  *
  * `onConflict … doNothing`, weil dieselbe Kennung zweimal in der Liste stehen kann, wenn jemand im
  * Formular herumklickt. Eine Absage dafür wäre Strenge ohne Zweck.
@@ -167,8 +178,8 @@ function deliveryOf(broadcast: BroadcastInput): BroadcastDelivery {
 }
 
 /** Eine Zeile der Liste, mit beiden echten Namen und dem Absender daneben. */
-function rows() {
-  return db
+function rows(executor: typeof db | Transaction = db) {
+  return executor
     .selectFrom("publication")
     .innerJoin("broadcast", "broadcast.publicationId", "publication.id")
     .leftJoin(
@@ -186,6 +197,7 @@ function rows() {
       "publication.sendAsUserId",
       "publication.scheduledFor",
       "sender.username as sendAsUsername",
+      "publication.writtenBy",
       "author.username as writtenByUsername",
       "publication.writtenAt",
       "approver.username as approvedByUsername",
@@ -233,6 +245,7 @@ function toQueued(row: {
   sendAsUserId: string | null;
   scheduledFor: string | null;
   sendAsUsername: string | null;
+  writtenBy: string | null;
   writtenByUsername: string | null;
   writtenAt: string;
   approvedByUsername: string | null;
@@ -270,7 +283,8 @@ export type SubmitRefusal = "sender_not_released";
 /**
  * Schreibt eine Rundmail in die Warteschlange.
  *
- * Vom Ur-Admin kommt sie freigegeben heraus und geht sofort raus; von allen anderen wartet sie.
+ * Von einer Administration kommt sie freigegeben heraus und geht ohne Termin sofort raus; von
+ * allen anderen wartet sie.
  *
  * **Der Absender wird hier geprüft, nicht nur im Formular.** Die Liste dort schlägt vor; sie
  * hindert niemanden daran, eine andere Kennung zu schicken — und ohne diese Prüfung könnte jede
@@ -285,7 +299,7 @@ async function submit(
   }
 
   const now = new Date().toISOString();
-  const givesOwnApproval = author.isPrimordialAdmin;
+  const givesOwnApproval = mayAdministerPlatform(author.platformRole);
 
   const publicationId = await db.transaction().execute(async (transaction) => {
     const publication = await transaction
@@ -323,10 +337,10 @@ async function submit(
     return publication.id;
   });
 
-  // Freigegeben und ohne Termin heißt: jetzt. Mit Termin wartet sie auf den Taktgeber, auch beim
-  // Ur-Admin — die Freigabe ist erteilt, die Uhr ist eine zweite Bedingung.
+  // Freigegeben und ohne Termin heißt: jetzt. Mit Termin wartet sie auf den Taktgeber, auch bei
+  // einer Administration — die Freigabe ist erteilt, die Uhr ist eine zweite Bedingung.
   if (givesOwnApproval && input.scheduledFor === null) {
-    await release(publicationId, input);
+    await release(publicationId);
   }
 
   return await selectOneOrThrow(publicationId);
@@ -363,23 +377,17 @@ async function submit(
  * Die Empfängerzahl wird beim Versand festgehalten und nicht später gezählt: Wer die Liste
  * hinterher neu abfragt, zählt die Mitglieder von heute und nicht die, die sie bekommen haben.
  */
-async function release(
-  publicationId: string,
-  input: BroadcastInput,
-): Promise<boolean> {
+async function release(publicationId: string): Promise<boolean> {
   try {
-    return await releaseOnce(publicationId, input);
+    return await releaseOnce(publicationId);
   } catch (failure) {
     console.warn("Retrying the release of a broadcast", failure);
 
-    return await releaseOnce(publicationId, input);
+    return await releaseOnce(publicationId);
   }
 }
 
-async function releaseOnce(
-  publicationId: string,
-  input: BroadcastInput,
-): Promise<boolean> {
+async function releaseOnce(publicationId: string): Promise<boolean> {
   const dispatch = await db.transaction().execute(async (transaction) => {
     const claimed = await transaction
       .updateTable("publication")
@@ -393,11 +401,17 @@ async function releaseOnce(
       return undefined;
     }
 
-    const broadcast = await transaction
-      .selectFrom("broadcast")
-      .select("id")
-      .where("publicationId", "=", publicationId)
-      .executeTakeFirstOrThrow();
+    // **Was rausgeht, wird hier gelesen, nach dem Beanspruchen — nicht vom Aufrufer mitgebracht.**
+    // Der Taktgeber liest die Fälligen und sendet sie danach; dazwischen kann eine Administration
+    // sie bearbeitet haben, und deren Fassung ist sofort freigegeben. Mit dem Mitgebrachten ginge
+    // dann der alte Text raus, unter einer Freigabe für den neuen. Die Bearbeitung sperrt dieselbe
+    // Zeile, die das Beanspruchen sperrt; wer danach liest, liest also, was freigegeben ist.
+    const input = toQueued(
+      await rows(transaction)
+        .where("publication.id", "=", publicationId)
+        .executeTakeFirstOrThrow(),
+    );
+    const broadcast = { id: input.broadcastId };
 
     const delivery = deliveryOf(input);
 
@@ -475,7 +489,7 @@ async function releaseDue(): Promise<number> {
   for (const row of due) {
     try {
       // deno-lint-ignore no-await-in-loop -- siehe darüber
-      if (await release(row.publicationId, toQueued(row))) {
+      if (await release(row.publicationId)) {
         sent++;
       }
     } catch (failure) {
@@ -493,16 +507,17 @@ async function releaseDue(): Promise<number> {
   return sent;
 }
 
-export type ApprovalRefusal =
-  | "not_found"
-  | "not_waiting"
-  | "own_submission";
+export type ApprovalRefusal = "not_found" | "not_waiting";
 
 /**
  * Gibt frei und sendet sofort.
  *
  * Ein Zustand, der nicht `awaiting_approval` ist, wird abgelehnt statt still übergangen: Zweimal
  * freigeben hieße zweimal senden, und „schon erledigt" ist eine Antwort, die jemand lesen soll.
+ *
+ * **Kein Verbot mehr, das Eigene freizugeben.** Was eine Administration schreibt, wartet gar nicht
+ * erst. Was hier wartet, hat zuletzt jemand ohne Administration angefasst — auch wenn es einmal
+ * eine Administration eingereicht hat, und genau dann muss die es freigeben dürfen.
  */
 async function approve(
   publicationId: string,
@@ -516,16 +531,6 @@ async function approve(
 
   if (waiting.status !== "awaiting_approval") {
     return "not_waiting";
-  }
-
-  const author = await db
-    .selectFrom("publication")
-    .select("writtenBy")
-    .where("id", "=", publicationId)
-    .executeTakeFirst();
-
-  if (author?.writtenBy === approver.id) {
-    return "own_submission";
   }
 
   await db
@@ -542,7 +547,7 @@ async function approve(
   // Ohne Termin geht sie sofort raus; mit Termin ist die Freigabe erteilt und der Taktgeber holt
   // sie ab, sobald die Uhr so weit ist. Deshalb heißt der Knopf auch nicht mehr nur „senden".
   if (waiting.scheduledFor === null) {
-    await release(publicationId, waiting);
+    await release(publicationId);
   }
 
   return undefined;
@@ -551,19 +556,43 @@ async function approve(
 export type EditRefusal =
   | "not_found"
   | "already_out"
+  | "not_yours"
   | "sender_not_released";
 
+/** Ohne Administration nur das Eigene — beim Bearbeiten wie beim Verwerfen. */
+function mayTouch(
+  publication: { writtenBy: string | null },
+  actor: User,
+): boolean {
+  return mayAdministerPlatform(actor.platformRole) ||
+    publication.writtenBy === actor.id;
+}
+
+/** Was noch zu ändern ist: weder draußen noch verworfen. */
+const STILL_OPEN: PublicationStatus[] = ["awaiting_approval", "approved"];
+
+/** Die Bedingung im Update hat nichts getroffen; die Transaktion wird damit zurückgerollt. */
+class NoLongerOpen extends Error {}
+
 /**
- * Ändert eine wartende oder freigegebene Rundmail — und nimmt ihr damit die Freigabe.
+ * Ändert eine wartende oder freigegebene Rundmail.
+ *
+ * **Von einer Administration ist die neue Fassung freigegeben**, von jeder anderen Rolle wartet
+ * sie wieder. Ohne Termin geht eine freigegebene Fassung sofort raus, wie beim Einreichen — das
+ * Speichern einer Administration ist das Freigeben, und die Oberfläche sagt das am Knopf.
  *
  * Was schon draußen ist, lässt sich nicht mehr ändern: Die Mail ist verschickt, und eine Zeile in
  * der Datenbank zu korrigieren würde nur den Beleg von dem entfernen, was tatsächlich ankam.
+ *
+ * **Der Zustand wird im Update noch einmal geprüft**, nicht nur davor. Dazwischen kann der
+ * Taktgeber sie versendet haben; ohne die Bedingung stünde eine verschickte Rundmail danach
+ * wieder als wartend da, mit einem Text, der nie rausging.
  */
 async function edit(
   publicationId: string,
   input: BroadcastInput,
   editor: User,
-): Promise<EditRefusal | undefined> {
+): Promise<QueuedBroadcast | EditRefusal> {
   const existing = await selectOne(publicationId);
 
   if (existing === undefined) {
@@ -574,17 +603,54 @@ async function edit(
     return "already_out";
   }
 
+  if (!STILL_OPEN.includes(existing.status)) {
+    return "not_found";
+  }
+
+  if (!mayTouch(existing, editor)) {
+    return "not_yours";
+  }
+
   if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
     return "sender_not_released";
   }
 
+  const approves = mayAdministerPlatform(editor.platformRole);
+  const now = new Date().toISOString();
+
+  try {
+    await applyEdit(publicationId, input, editor, approves, now);
+  } catch (failure) {
+    if (failure instanceof NoLongerOpen) {
+      return "already_out";
+    }
+    throw failure;
+  }
+
+  if (approves && input.scheduledFor === null) {
+    await release(publicationId);
+  }
+
+  // Der Eintrag, wie er jetzt dasteht: Ob er wartet, geplant oder schon raus ist, entscheidet die
+  // Rolle dessen, der gespeichert hat — und das soll die Oberfläche aus der Antwort lesen, nicht
+  // selbst noch einmal herleiten.
+  return await selectOneOrThrow(publicationId);
+}
+
+async function applyEdit(
+  publicationId: string,
+  input: BroadcastInput,
+  editor: User,
+  approves: boolean,
+  now: string,
+): Promise<void> {
   await db.transaction().execute(async (transaction) => {
-    await transaction
+    const changed = await transaction
       .updateTable("publication")
       .set({
-        status: "awaiting_approval",
-        approvedBy: null,
-        approvedAt: null,
+        status: approves ? "approved" : "awaiting_approval",
+        approvedBy: approves ? editor.id : null,
+        approvedAt: approves ? now : null,
         sendAsUserId: input.sendAsUserId,
         scheduledFor: input.scheduledFor,
         // **Neben `written_by`, nicht an dessen Stelle.** Wer eingereicht hat, bleibt stehen: Der
@@ -592,10 +658,16 @@ async function edit(
         // einreicht und eine Administration es entschärft — und dann müssen beide Namen dastehen.
         // Eine wandernde Spalte hätte den ersten gelöscht.
         editedBy: editor.id,
-        editedAt: new Date().toISOString(),
+        editedAt: now,
       })
       .where("id", "=", publicationId)
-      .execute();
+      .where("status", "in", STILL_OPEN)
+      .returning("id")
+      .executeTakeFirst();
+
+    if (changed === undefined) {
+      throw new NoLongerOpen();
+    }
 
     const broadcast = await transaction
       .updateTable("broadcast")
@@ -632,10 +704,11 @@ async function edit(
  * deshalb auch nicht scheitern. Beide denselben Typ teilen zu lassen hieße, im Aufrufer einen Fall
  * zu behandeln, den es nicht gibt.
  */
-export type DiscardRefusal = "not_found" | "already_out";
+export type DiscardRefusal = "not_found" | "already_out" | "not_yours";
 
 async function discard(
   publicationId: string,
+  actor: User,
 ): Promise<DiscardRefusal | undefined> {
   const existing = await selectOne(publicationId);
 
@@ -647,13 +720,25 @@ async function discard(
     return "already_out";
   }
 
-  await db
+  if (!STILL_OPEN.includes(existing.status)) {
+    return "not_found";
+  }
+
+  if (!mayTouch(existing, actor)) {
+    return "not_yours";
+  }
+
+  // Die Bedingung aus demselben Grund wie beim Bearbeiten: Dazwischen kann der Taktgeber sie
+  // versendet haben, und „verworfen" über einer verschickten wäre eine falsche Spur.
+  const discarded = await db
     .updateTable("publication")
     .set({ status: "discarded" })
     .where("id", "=", publicationId)
-    .execute();
+    .where("status", "in", STILL_OPEN)
+    .returning("id")
+    .executeTakeFirst();
 
-  return undefined;
+  return discarded === undefined ? "already_out" : undefined;
 }
 
 async function selectOne(

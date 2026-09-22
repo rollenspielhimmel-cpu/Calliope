@@ -24,8 +24,9 @@ const ROOT = "bq-root";
 const AUTHOR = "bq-author";
 const SECOND = "bq-second";
 const MODERATOR = "bq-moderator";
+const MEMBER = "bq-member";
 
-const USERS = [ROOT, AUTHOR, SECOND, MODERATOR];
+const USERS = [ROOT, AUTHOR, SECOND, MODERATOR, MEMBER];
 
 const SUBJECT = "Warteschlangen-Test";
 
@@ -101,10 +102,13 @@ function fixture() {
       author: await registerUser(AUTHOR),
       second: await registerUser(SECOND),
       moderator: await registerUser(MODERATOR),
+      member: await registerUser(MEMBER),
     };
 
     await setRole(ROOT, "administrator");
-    await setRole(AUTHOR, "administrator");
+    // Ein Mod, seit Admins mit dem Schreiben freigeben: Was wartet, schreibt eine Rolle ohne
+    // Administration.
+    await setRole(AUTHOR, "moderator");
     await setRole(SECOND, "administrator");
     await setRole(MODERATOR, "moderator");
 
@@ -160,6 +164,7 @@ type Row = {
   sendAsUsername: string | null;
   recipientCount: number | null;
   releasedAt: string | null;
+  scheduledFor: string | null;
   includeUnverified: boolean;
   audienceRoles: string[];
 };
@@ -189,7 +194,7 @@ function only(rows: Row[]): Row {
   return rows[0] as Row;
 }
 
-Deno.test("an ordinary administrator's broadcast waits rather than going out", async () => {
+Deno.test("a moderator's broadcast waits rather than going out", async () => {
   const cookies = await fixture();
 
   const response = await submit(cookies.author);
@@ -206,22 +211,213 @@ Deno.test("an ordinary administrator's broadcast waits rather than going out", a
 });
 
 /**
- * Die Regel, die die Warteschlange zu mehr als einer Formalität macht. Sie steht so nicht in der
- * Anforderung — siehe die Herleitung in `broadcast_queue_service.ts`.
+ * **Freigeben ist keine Berechtigung, die eine Rolle bekommt.** Mods bereiten vor, und mehr nicht —
+ * auch nicht das, was ein anderer Mod eingereicht hat.
  */
-Deno.test("nobody approves their own submission", async () => {
+Deno.test("a moderator approves nothing, not even another moderator's", async () => {
   const cookies = await fixture();
 
   const created = await (await submit(cookies.author)).json() as Row;
 
-  const refused = await approve(cookies.author, created.publicationId);
-  assertEquals(refused.status, STATUS_CODE.Forbidden);
+  assertEquals(
+    (await approve(cookies.author, created.publicationId)).status,
+    STATUS_CODE.Forbidden,
+    "nicht das eigene",
+  );
+  assertEquals(
+    (await approve(cookies.moderator, created.publicationId)).status,
+    STATUS_CODE.Forbidden,
+    "und nicht das eines anderen Mods",
+  );
 
   // Und sie wartet weiter, statt still verbraucht zu sein.
-  assertEquals((await waiting(cookies.second)).length, 1);
+  assertEquals(only(await waiting(cookies.second)).status, "awaiting_approval");
 });
 
-Deno.test("a second administrator approves, and that sends it", async () => {
+/**
+ * **Eine Administration gibt mit dem Schreiben frei** — seit dem 22. September 2026 jede, nicht
+ * mehr nur der Ur-Admin. Ohne Termin heißt das: sofort raus.
+ */
+Deno.test("an administrator's broadcast is approved by the writing and goes out", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.second)).json() as Row;
+  assertEquals(created.status, "released");
+
+  assertEquals((await waiting(cookies.second)).length, 0, "wartet gar nicht");
+
+  const sent = only(await wentOut(cookies.second));
+  assertEquals(sent.writtenByUsername, SECOND);
+  assertEquals(
+    sent.approvedByUsername,
+    SECOND,
+    "wer es verantwortet, steht da",
+  );
+});
+
+/** Mit Termin ist die Freigabe erteilt und die Uhr die zweite Bedingung, wie beim Ur-Admin. */
+Deno.test("an administrator's scheduled broadcast is approved and waits for the clock", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.second, {
+    scheduledFor: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })).json() as Row;
+
+  assertEquals(created.status, "approved");
+  assertEquals(created.approvedByUsername, SECOND);
+  assertEquals((await wentOut(cookies.second)).length, 0, "noch nicht raus");
+});
+
+/**
+ * **Was eine Administration speichert, ist ihre Fassung und damit freigegeben.** Der Fall, für den
+ * das gebaut ist: Ein Mod reicht ein, eine Administration entschärft — und muss danach nicht auf
+ * eine zweite warten, die es ihr abnimmt.
+ */
+Deno.test("an administrator's edit approves the new version", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })).json() as Row;
+  assertEquals(created.status, "awaiting_approval");
+
+  const saved = await request(
+    "PUT",
+    `/api/moderation/broadcast/queue/${created.publicationId}`,
+    cookies.second,
+    await broadcastBody({
+      body: "Entschärft.",
+      scheduledFor: created.scheduledFor,
+    }),
+  );
+  assertEquals(saved.status, STATUS_CODE.OK);
+  // Die Antwort sagt es selbst, damit die Oberfläche es nicht aus der Rolle herleiten muss.
+  assertEquals((await saved.json() as Row).status, "approved");
+
+  const after = only(await waiting(cookies.second));
+  assertEquals(after.status, "approved");
+  assertEquals(after.approvedByUsername, SECOND);
+  assertEquals(after.writtenByUsername, AUTHOR, "der Verfasser bleibt stehen");
+});
+
+/** Ohne Termin heißt freigegeben: jetzt — beim Speichern wie beim Einreichen. */
+Deno.test("an administrator's edit without a date sends it", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+
+  const saved = await request(
+    "PUT",
+    `/api/moderation/broadcast/queue/${created.publicationId}`,
+    cookies.second,
+    await broadcastBody({ body: "Entschärft und raus." }),
+  );
+  assertEquals(saved.status, STATUS_CODE.OK);
+  assertEquals((await saved.json() as Row).status, "released");
+
+  // Und zwar die neue Fassung, nicht die eingereichte.
+  const arrived = await db
+    .selectFrom("chatMessage")
+    .innerJoin("broadcast", "broadcast.id", "chatMessage.broadcastId")
+    .select("chatMessage.text")
+    .where("broadcast.publicationId", "=", created.publicationId)
+    .execute();
+  assert(arrived.length > 0, "zugestellt");
+  assert(arrived.every((message) => message.text === "Entschärft und raus."));
+});
+
+/**
+ * **Und was ein Mod speichert, wartet** — auch wenn er sein Eigenes nach einer Freigabe noch einmal
+ * anfasst. Sonst ließe man Harmloses absegnen und tauschte danach den Text.
+ */
+Deno.test("a moderator's edit takes back an administrator's approval", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author, {
+    scheduledFor: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })).json() as Row;
+  await approve(cookies.second, created.publicationId);
+  assertEquals(only(await waiting(cookies.second)).status, "approved");
+
+  const saved = await request(
+    "PUT",
+    `/api/moderation/broadcast/queue/${created.publicationId}`,
+    cookies.author,
+    await broadcastBody({
+      body: "Doch etwas anderes.",
+      scheduledFor: created.scheduledFor,
+    }),
+  );
+  assertEquals(saved.status, STATUS_CODE.OK);
+  assertEquals((await saved.json() as Row).status, "awaiting_approval");
+
+  const after = only(await waiting(cookies.second));
+  assertEquals(after.status, "awaiting_approval");
+  assertEquals(after.approvedByUsername, null);
+});
+
+/** Ohne Administration nur das Eigene: ein anderer Mod darf weder ändern noch verwerfen. */
+Deno.test("a moderator changes and discards only their own", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+  const path = `/api/moderation/broadcast/queue/${created.publicationId}`;
+
+  assertEquals(
+    (await request(
+      "PUT",
+      path,
+      cookies.moderator,
+      await broadcastBody({ body: "Untergeschoben." }),
+    )).status,
+    STATUS_CODE.Forbidden,
+  );
+  assertEquals(
+    (await request("DELETE", path, cookies.moderator)).status,
+    STATUS_CODE.Forbidden,
+  );
+
+  const untouched = only(await waiting(cookies.second));
+  assertEquals(untouched.status, "awaiting_approval", "nicht verworfen");
+
+  const text = await db
+    .selectFrom("broadcast")
+    .select("body")
+    .where("publicationId", "=", created.publicationId)
+    .executeTakeFirstOrThrow();
+  assertEquals(text.body, BROADCAST.body, "nicht geändert");
+
+  // Und die Administration darf, was der fremde Mod nicht durfte.
+  assertEquals(
+    (await request("DELETE", path, cookies.second)).status,
+    STATUS_CODE.OK,
+  );
+});
+
+/**
+ * Was vor der neuen Regel eine Administration eingereicht hat, wartet noch — auf der Beta liegt so
+ * etwas. Das Verbot, das Eigene freizugeben, ist weg; sonst bliebe es für immer liegen, wenn die
+ * andere Administration nicht hinsieht.
+ */
+Deno.test("an administrator may approve what they submitted under the old rule", async () => {
+  const cookies = await fixture();
+
+  const created = await (await submit(cookies.author)).json() as Row;
+  // Wie unter der alten Regel: von der Administration eingereicht, und es wartet.
+  await db
+    .updateTable("publication")
+    .set({ writtenBy: await getUserId(SECOND) })
+    .where("id", "=", created.publicationId)
+    .execute();
+
+  assertEquals(
+    (await approve(cookies.second, created.publicationId)).status,
+    STATUS_CODE.OK,
+  );
+  assertEquals(only(await wentOut(cookies.second)).approvedByUsername, SECOND);
+});
+
+Deno.test("an administrator approves, and that sends it", async () => {
   const cookies = await fixture();
 
   const created = await (await submit(cookies.author)).json() as Row;
@@ -268,15 +464,26 @@ Deno.test("the first administrator needs no approval and it goes out at once", a
   assertEquals(only(sent).approvedByUsername, ROOT);
 });
 
-Deno.test("a moderator reaches none of this", async () => {
+/**
+ * **Mods bereiten vor**: Sie sehen die Warteschlange und die gesendeten, und sie reichen ein. Die
+ * Berechtigung dazu hat die Rolle, nicht der Code — siehe `platform_role_permission`.
+ */
+Deno.test("a moderator reads the queue and submits", async () => {
   const cookies = await fixture();
 
-  assertEquals((await queue(cookies.moderator)).status, STATUS_CODE.Forbidden);
-  assertEquals(
-    (await released(cookies.moderator)).status,
-    STATUS_CODE.Forbidden,
-  );
-  assertEquals((await submit(cookies.moderator)).status, STATUS_CODE.Forbidden);
+  assertEquals((await queue(cookies.moderator)).status, STATUS_CODE.OK);
+  assertEquals((await released(cookies.moderator)).status, STATUS_CODE.OK);
+  assertEquals((await submit(cookies.moderator)).status, STATUS_CODE.Created);
+});
+
+/** Die Gegenprobe zum Mod: ein Mitglied ohne Rolle erreicht nichts davon. */
+Deno.test("an ordinary member reaches none of this", async () => {
+  const cookies = await fixture();
+
+  assertEquals((await queue(cookies.member)).status, STATUS_CODE.Forbidden);
+  assertEquals((await released(cookies.member)).status, STATUS_CODE.Forbidden);
+  assertEquals((await submit(cookies.member)).status, STATUS_CODE.Forbidden);
+  assertEquals((await waiting(cookies.second)).length, 0, "nichts eingereicht");
 });
 
 /**

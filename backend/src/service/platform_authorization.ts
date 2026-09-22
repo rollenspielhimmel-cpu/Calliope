@@ -17,3 +17,18 @@ export function mayModeratePlatform(role: PlatformRole | null): boolean {
 export function mayAdministerPlatform(role: PlatformRole | null): boolean {
   return role === "administrator";
 }
+
+/**
+ * Writing broadcasts and official threads, submitting them, reading the queue — not releasing them,
+ * which stays `mayAdministerPlatform`.
+ *
+ * **A permission a role is given, not a role.** Which roles hold it is `platform_role_permission`,
+ * carried on the session user; administrators hold it without a row, because being able to take it
+ * from them would be a way to lock them out of approving what they write themselves.
+ */
+export function mayPreparePublications(
+  user: { platformRole: PlatformRole | null; permissions: readonly string[] },
+): boolean {
+  return mayAdministerPlatform(user.platformRole) ||
+    user.permissions.includes("prepare_publications");
+}

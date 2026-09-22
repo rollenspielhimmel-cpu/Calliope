@@ -7,6 +7,7 @@ import { NotificationService } from "@/src/service/notification_service.ts";
 import { UserAvatarService } from "@/src/service/user_avatar_service.ts";
 import { avatarUrl } from "@/src/http/avatar_url.ts";
 import { AVATAR_URL } from "@/src/http/response_schema.ts";
+import { mayPreparePublications } from "@/src/service/platform_authorization.ts";
 import {
   COMMON_RESPONSES,
   ERROR_RESPONSE,
@@ -27,6 +28,10 @@ const CURRENT_USER_RESPONSE = USER_SCHEMA
     isPrimordialAdmin: true,
   })
   .extend({
+    // Whether to offer the broadcast and official-thread desk. Computed rather than the role's raw
+    // permissions, so the interface cannot come to disagree with `mayPreparePublications` about
+    // administrators, who hold everything without a row.
+    mayPreparePublications: z.boolean(),
     // The top bar shows the member their own picture, and this is the only thing it asks for.
     avatarUrl: AVATAR_URL,
     // Carried here rather than on an endpoint of its own: the interface already asks who is
@@ -71,6 +76,7 @@ export default new OpenAPIHono().openapi(
       emailAddressVerifiedAt: user.emailAddressVerifiedAt,
       platformRole: user.platformRole,
       isPrimordialAdmin: user.isPrimordialAdmin,
+      mayPreparePublications: mayPreparePublications(user),
       avatarUrl: avatar === undefined ? null : avatarUrl(avatar.fileId),
       unreadNotifications,
     }, STATUS_CODE.OK);

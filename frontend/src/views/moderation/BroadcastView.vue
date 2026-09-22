@@ -31,7 +31,6 @@ import type {
 } from '@/api/models'
 import { useGetCurrentUser } from '@/api/auth/auth'
 import { queryClient } from '@/lib/api/queryClient'
-import { ApiError } from '@/lib/api/apiFetch'
 import { failureMessage } from '@/lib/format/failure'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { berlinToUtc, formatBerlin, utcToBerlin } from '@/lib/format/berlinTime'
@@ -529,14 +528,17 @@ const mayTest = computed<boolean>(
 /**
  * Speichert eine Bearbeitung.
  *
- * **Jede Bearbeitung setzt die Freigabe zurück** — das entscheidet der Server, nicht diese Datei.
- * Für die Warteschlange ändert das nichts, dort ist ohnehin nichts freigegeben; ein Geplantes
- * wandert dadurch zurück nach oben und braucht wieder ein zweites Augenpaar. Genau das ist der
- * Sinn: Sonst ließe man Harmloses absegnen und tauschte danach den Text.
+ * **Was danach gilt, entscheidet der Server, nicht diese Datei.** Von einer Rolle ohne
+ * Administration wartet sie wieder — ein Geplantes wandert zurück nach oben und braucht eine
+ * Freigabe, sonst ließe man Harmloses absegnen und tauschte danach den Text. Von einer
+ * Administration ist die gespeicherte Fassung freigegeben und geht ohne Termin sofort raus. Welcher
+ * Fall es war, steht in der Antwort; daraus kommt der Satz, wie beim Einreichen.
  */
 async function saveEdit(publicationId: string) {
+  let answer: Awaited<ReturnType<typeof editBroadcast>>
+
   try {
-    await editBroadcast({
+    answer = await editBroadcast({
       publicationId,
       data: {
         subject: subject.value.trim(),
@@ -556,11 +558,21 @@ async function saveEdit(publicationId: string) {
     return
   }
 
-  outcome.value = 'edited'
+  if (answer.status === 200) {
+    outcome.value =
+      answer.data.status === 'released'
+        ? 'sent'
+        : answer.data.status === 'approved'
+          ? 'scheduled'
+          : 'edited'
+    sentTo.value = answer.data.recipientCount ?? undefined
+    scheduledAt.value = answer.data.scheduledFor ?? undefined
+  }
   editing.value = undefined
   resetForm()
 
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
+  await queryClient.invalidateQueries({ queryKey: getListReleasedBroadcastsQueryKey() })
 }
 
 /**
@@ -629,6 +641,44 @@ const mayRetract = computed<boolean>(
   () => currentUser.value?.status === 200 && currentUser.value.data.isPrimordialAdmin,
 )
 
+/**
+ * Eine Administration gibt frei — und was sie selbst schreibt oder speichert, ist damit schon
+ * freigegeben. Andere Rollen mit der Berechtigung, vorzubereiten, reichen ein und warten.
+ *
+ * Nur für die Beschriftung und fürs Anbieten der Knöpfe; verbindlich ist die Prüfung im Backend,
+ * und was tatsächlich geschehen ist, sagt dessen Antwort.
+ */
+const isAdministrator = computed<boolean>(
+  () =>
+    currentUser.value?.status === 200 && currentUser.value.data.platformRole === 'administrator',
+)
+
+/**
+ * Was der Knopf unter der Bestätigung tut, in seinen eigenen Worten. Bei einer Administration
+ * heißt er, was geschieht — senden oder freigeben —, weil kein zweites Augenpaar mehr folgt.
+ */
+const confirmLabel = computed<string>(() => {
+  if (!isAdministrator.value) {
+    return editing.value === undefined ? 'Zur Freigabe einreichen' : 'Änderung speichern'
+  }
+  if (scheduledFor.value === '') {
+    return editing.value === undefined ? 'Jetzt senden' : 'Speichern und senden'
+  }
+  return editing.value === undefined ? 'Freigeben' : 'Speichern und freigeben'
+})
+
+/** Ohne Administration nur das Eigene — bearbeiten wie verwerfen. */
+function mayChange(entry: { writtenBy: string | null }): boolean {
+  if (isAdministrator.value) {
+    return true
+  }
+
+  // Beide Seiten müssen eine Kennung haben: Ein gelöschter Verfasser ist `null`, und zwei fehlende
+  // Kennungen wären sonst gleich — „das Eigene" von niemandem.
+  const ownId = currentUser.value?.status === 200 ? currentUser.value.data.id : undefined
+  return ownId !== undefined && entry.writtenBy !== null && entry.writtenBy === ownId
+}
+
 const { mutateAsync: retractBroadcast, isPending: isRetracting } = useRetractBroadcast()
 
 /**
@@ -668,11 +718,7 @@ async function approve(publicationId: string) {
   try {
     await approveBroadcast({ publicationId })
   } catch (failure) {
-    // Die eigene Einreichung ist der Fall, den jemand wirklich erlebt — der bekommt seinen Satz.
-    queueError.value =
-      failure instanceof ApiError && failure.status === 403
-        ? 'Deine eigene Einreichung muss jemand anderes aus der Administration freigeben.'
-        : failureMessage(failure, 'Die Freigabe ging nicht durch.')
+    queueError.value = failureMessage(failure, 'Die Freigabe ging nicht durch.')
     return
   }
 
@@ -1025,10 +1071,20 @@ function audienceOf(entry: {
             Sie geht am {{ formatBerlin(scheduledForUtc ?? '') }} raus, nicht sofort.
           </p>
 
+          <!-- Eine Administration gibt mit dem Absenden frei, also sagt der Satz, was dann
+               geschieht — und nicht, dass noch jemand hinsieht, der nicht mehr hinsieht. -->
           <p class="mt-1 text-[12.5px] text-ink-5">
-            <template v-if="scheduledFor === ''">
-              Sie geht raus, sobald sie freigegeben ist — verschickte Rundmails lassen sich nicht
+            <template v-if="isAdministrator && scheduledFor === ''">
+              Sie geht sofort raus, ohne weitere Freigabe — verschickte Rundmails lassen sich nicht
               zurückholen.
+            </template>
+            <template v-else-if="isAdministrator">
+              Mit dem Speichern ist sie freigegeben und geht zum Termin von selbst raus. Verschickte
+              Rundmails lassen sich nicht zurückholen.
+            </template>
+            <template v-else-if="scheduledFor === ''">
+              Sie geht raus, sobald die Administration sie freigibt — verschickte Rundmails lassen
+              sich nicht zurückholen.
             </template>
             <template v-else>
               Freigegeben sein muss sie trotzdem; der Termin allein schickt nichts. Verschickte
@@ -1038,7 +1094,7 @@ function audienceOf(entry: {
           <div class="mt-3 flex flex-wrap gap-2">
             <Button :disabled="isPending || isSavingEdit" @click="submit">
               <Spinner v-if="isPending || isSavingEdit" />
-              {{ editing === undefined ? 'Zur Freigabe einreichen' : 'Änderung speichern' }}
+              {{ confirmLabel }}
             </Button>
             <Button
               variant="outline"
@@ -1062,13 +1118,14 @@ function audienceOf(entry: {
         </p>
 
         <p v-else-if="outcome === 'waiting'" class="mt-4 text-note text-ink-5" role="status">
-          Eingereicht. Sie steht jetzt in der Warteschlange und geht raus, sobald jemand anderes aus
-          der Administration sie freigibt.
+          Eingereicht. Sie steht jetzt in der Warteschlange und geht raus, sobald die Administration
+          sie freigibt.
         </p>
 
-        <!-- Ein Satz für beide Fälle, weil das Ergebnis dasselbe ist: Nach einer Bearbeitung steht
-             sie in der Warteschlange, gleich woher sie kam. Ob eine Freigabe zurückgenommen wurde,
-             wusste nur, wer sie vorher hatte — und dem sagt es der Hinweis unter „Geplant". -->
+        <!-- Nur für eine Bearbeitung, die wieder wartet. Hat eine Administration gespeichert, sagt
+             die Antwort „raus" oder „geplant", und dann stehen oben die Sätze dafür. Ob eine
+             Freigabe zurückgenommen wurde, wusste nur, wer sie vorher hatte — und dem sagt es der
+             Hinweis unter „Geplant". -->
         <p v-else-if="outcome === 'edited'" class="mt-4 text-note text-ink-5" role="status">
           Gespeichert. Sie steht wieder in der Warteschlange und braucht eine Freigabe.
         </p>
@@ -1114,7 +1171,10 @@ function audienceOf(entry: {
             </p>
 
             <div class="mt-3 flex flex-wrap gap-2">
+              <!-- Nur die Administration gibt frei. Für alle anderen gibt es den Knopf nicht, statt
+                   eines, der jedes Drücken abweist. -->
               <Button
+                v-if="isAdministrator"
                 size="sm"
                 :disabled="isApproving || isDiscarding"
                 @click="approve(entry.publicationId)"
@@ -1132,6 +1192,7 @@ function audienceOf(entry: {
                 Test-Rundmail
               </Button>
               <Button
+                v-if="mayChange(entry)"
                 variant="outline"
                 size="sm"
                 :disabled="isApproving || isDiscarding"
@@ -1140,6 +1201,7 @@ function audienceOf(entry: {
                 Bearbeiten
               </Button>
               <Button
+                v-if="mayChange(entry)"
                 variant="ghost"
                 size="sm"
                 :disabled="isApproving || isDiscarding"
@@ -1200,6 +1262,7 @@ function audienceOf(entry: {
                      hier tippt, holt die Rundmail zurück in die Warteschlange und braucht wieder
                      ein zweites Augenpaar. Das soll niemand erst hinterher merken. -->
                 <Button
+                  v-if="mayChange(entry)"
                   variant="outline"
                   size="sm"
                   :disabled="isApproving || isDiscarding"
@@ -1208,6 +1271,7 @@ function audienceOf(entry: {
                   Bearbeiten
                 </Button>
                 <Button
+                  v-if="mayChange(entry)"
                   variant="ghost"
                   size="sm"
                   :disabled="isApproving || isDiscarding"
@@ -1223,7 +1287,10 @@ function audienceOf(entry: {
               >
                 {{ testOutcome.sentence }}
               </p>
-              <p class="mt-1.5 text-[12px] text-ink-6">
+              <p v-if="isAdministrator" class="mt-1.5 text-[12px] text-ink-6">
+                Was du hier speicherst, ist mit dem Speichern freigegeben.
+              </p>
+              <p v-else-if="mayChange(entry)" class="mt-1.5 text-[12px] text-ink-6">
                 Bearbeiten nimmt die Freigabe zurück — sie wandert dann wieder in die Warteschlange.
               </p>
             </li>

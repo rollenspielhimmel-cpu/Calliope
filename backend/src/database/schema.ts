@@ -58,6 +58,8 @@ export type NotificationType =
   | "role_changed_in_writing_group"
   | "visibility_changed_in_writing_group";
 
+export type PlatformPermission = "prepare_publications";
+
 export type PlatformRole = "administrator" | "moderator";
 
 export type ProfileQuestionKind = "choice" | "text";
@@ -493,6 +495,13 @@ export interface Notification {
   writingThreadId: string | null;
 }
 
+export interface PlatformRolePermission {
+  grantedAt: Generated<string>;
+  grantedBy: string | null;
+  permission: PlatformPermission;
+  role: PlatformRole;
+}
+
 export interface ProfileAnswer {
   answerText: string | null;
   optionId: string | null;
@@ -807,6 +816,7 @@ export interface DB {
   customPage: CustomPage;
   favourite: Favourite;
   notification: Notification;
+  platformRolePermission: PlatformRolePermission;
   profileAnswer: ProfileAnswer;
   profileQuestion: ProfileQuestion;
   profileQuestionOption: ProfileQuestionOption;
@@ -1182,6 +1192,9 @@ export const REPORT_TARGET_TYPES = [
 ] as const;
 export const REPORT_TARGET_TYPE_SCHEMA = z.enum(REPORT_TARGET_TYPES);
 
+export const PLATFORM_PERMISSIONS = ["prepare_publications"] as const;
+export const PLATFORM_PERMISSION_SCHEMA = z.enum(PLATFORM_PERMISSIONS);
+
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
   windowStart: z.iso.datetime({ offset: true }),
@@ -1384,6 +1397,13 @@ export const NOTIFICATION_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   occurredAt: z.iso.datetime({ offset: true }),
   readAt: z.iso.datetime({ offset: true }).nullable(),
+});
+
+export const PLATFORM_ROLE_PERMISSION_SCHEMA = z.object({
+  role: PLATFORM_ROLE_SCHEMA,
+  permission: PLATFORM_PERMISSION_SCHEMA,
+  grantedBy: z.uuidv7().nullable(),
+  grantedAt: z.iso.datetime({ offset: true }),
 });
 
 export const PROFILE_ANSWER_SCHEMA = z.object({

@@ -20,6 +20,7 @@ import { queryClient } from '@/lib/api/queryClient'
 import { platformRoleLabel } from '@/lib/format/platformRole'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import ModerationPage from '@/components/moderation/ModerationPage.vue'
+import RolePermissionsPanel from '@/components/moderation/RolePermissionsPanel.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
@@ -208,6 +209,8 @@ async function assign(userId: string, platformRole: 'moderator' | 'administrator
           </li>
         </ul>
       </section>
+
+      <RolePermissionsPanel v-if="isAdministrator" :may-change="isPrimordialAdmin" />
     </template>
 
     <p v-if="error" class="mt-3 text-[12.5px] text-destructive" role="alert">{{ error }}</p>

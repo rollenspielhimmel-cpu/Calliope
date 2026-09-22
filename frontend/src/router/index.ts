@@ -12,7 +12,7 @@ declare module 'vue-router' {
      * nothing would catch. Omitting it means `member`, so forgetting to mark a route locks
      * it rather than exposing it.
      */
-    access?: 'member' | 'guest' | 'anyone' | 'operator' | 'administrator'
+    access?: 'member' | 'guest' | 'anyone' | 'operator' | 'administrator' | 'preparePublications'
 
     /** Set by the forum page that is itself the tree, so `ForumLayout` does not show it twice. */
     listsForumContents?: boolean
@@ -52,7 +52,10 @@ router.beforeEach(async (to) => {
   // one — the API refuses an unverified session whatever role it holds.
   if (
     user !== undefined &&
-    (access === 'member' || access === 'operator' || access === 'administrator')
+    (access === 'member' ||
+      access === 'operator' ||
+      access === 'administrator' ||
+      access === 'preparePublications')
   ) {
     const addressIsUnconfirmed = user.emailAddressVerifiedAt === null
 
@@ -83,6 +86,16 @@ router.beforeEach(async (to) => {
         return { name: 'login', query: { redirect: to.fullPath } }
       }
       return user.platformRole === 'administrator' ? true : { name: 'home' }
+    }
+
+    // A permission a role is given rather than a role — today administrators and moderators, one
+    // day perhaps an event manager. The backend says who holds it, on the session, so the
+    // interface cannot come to disagree with `mayPreparePublications` about administrators.
+    case 'preparePublications': {
+      if (user === undefined) {
+        return { name: 'login', query: { redirect: to.fullPath } }
+      }
+      return user.mayPreparePublications ? true : { name: 'home' }
     }
 
     case 'operator': {

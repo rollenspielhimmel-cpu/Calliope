@@ -5,7 +5,10 @@ import { USER_SCHEMA } from "@/src/database/schema.ts";
 import { TEXT_LIMIT, TEXT_MINIMUM } from "@/src/text_limit.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
+import {
+  authorizedAsAdministrator,
+  authorizedToPreparePublications,
+} from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import { assertUnreachable } from "@/src/util/assert_unreachable.ts";
 import {
@@ -20,8 +23,8 @@ import {
  * Which accounts a broadcast may be sent as, released and withdrawn.
  *
  * **Reading and changing are not equally restricted here**, unlike the Blind-Date desk next door.
- * Every administrator has to read this list — it is what they pick a sender from when they write a
- * mail — while only the root administrator may change it. Restricting the reading too would mean
+ * Everybody who may prepare a publication has to read this list — it is what they pick a sender
+ * from when they write one — while only the root administrator may change it. Restricting the reading too would mean
  * nobody but one person could compose anything.
  *
  * The change is checked in the handler rather than by a middleware, for the reason the Blind-Date
@@ -57,9 +60,9 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Which accounts a broadcast may be sent as",
       description:
-        "The first administrator, which is always available, followed by every released account in the order they are offered. Readable by every administrator, because this is the list a broadcast's sender is chosen from.",
+        "The first administrator, which is always available, followed by every released account in the order they are offered. Readable by every role that may prepare publications, because this is the list a sender is chosen from.",
       operationId: "listBroadcastSenders",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "The accounts available as senders",

@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import app from "@/src/app.ts";
+import { db } from "@/src/database/client.ts";
 import { clearRateLimits, deleteUsers } from "@/src/test/support.ts";
 import { authFixture, sessionCookie } from "@/src/test/auth.ts";
 
@@ -26,6 +27,7 @@ Deno.test("GET /api/auth/me reports the signed-in user", async () => {
     "emailAddressVerifiedAt",
     "id",
     "isPrimordialAdmin",
+    "mayPreparePublications",
     "platformRole",
     "unreadNotifications",
     "username",
@@ -33,6 +35,7 @@ Deno.test("GET /api/auth/me reports the signed-in user", async () => {
   assertEquals(body.unreadNotifications, 0);
   // Null for an ordinary member, which is what a freshly registered account is.
   assertEquals(body.platformRole, null);
+  assertEquals(body.mayPreparePublications, false);
 });
 
 Deno.test("GET /api/auth/me rejects a request without a session", async () => {
@@ -64,4 +67,24 @@ Deno.test("GET /api/auth/me treats a malformed session cookie as no session", as
     // deno-lint-ignore no-await-in-loop -- sequential on purpose, one case per iteration
     await response.body?.cancel();
   }
+});
+
+/**
+ * **Die Berechtigung kommt aus der Tabelle, nicht aus dem Rollennamen.** Ein Mod hat sie, weil die
+ * Migration `moderator` die Zeile gegeben hat — gelesen mit der Sitzung, auf dem Weg, den jede
+ * Prüfung nimmt. Die Gegenprobe ist das Mitglied im ersten Test.
+ */
+Deno.test("GET /api/auth/me tells a moderator they may prepare publications", async () => {
+  const cookie = sessionCookie(await register());
+  await db
+    .updateTable("user")
+    .set({ platformRole: "moderator" })
+    .where("username", "=", username)
+    .execute();
+
+  const response = await app.request("/api/auth/me", { headers: { cookie } });
+  const body = await response.json();
+
+  assertEquals(body.platformRole, "moderator");
+  assertEquals(body.mayPreparePublications, true);
 });

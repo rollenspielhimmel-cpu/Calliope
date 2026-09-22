@@ -29,8 +29,9 @@ const OTHER = "bt-other";
 const MODERATOR = "bt-moderator";
 const PERSONA = "bt-persona";
 const SECOND_PERSONA = "bt-persona-two";
+const MEMBER = "bt-member";
 
-const USERS = [TESTER, OTHER, MODERATOR, PERSONA, SECOND_PERSONA];
+const USERS = [TESTER, OTHER, MODERATOR, PERSONA, SECOND_PERSONA, MEMBER];
 
 const SUBJECT = "Test-Rundmail-Test";
 const BODY = "So sähe sie aus.";
@@ -60,6 +61,7 @@ function fixture() {
       tester: await registerUser(TESTER),
       other: await registerUser(OTHER),
       moderator: await registerUser(MODERATOR),
+      member: await registerUser(MEMBER),
     };
 
     await registerUser(PERSONA);
@@ -345,12 +347,29 @@ Deno.test("unter einem nicht freigeschalteten Namen wird nicht getestet", async 
   }
 });
 
-Deno.test("die Moderation erreicht die Test-Rundmail nicht", async () => {
+/** Wer vorbereiten darf, darf testen — und auch beim Mod kommt sie nur bei ihm selbst an. */
+Deno.test("ein Mod testet, und nur er bekommt sie", async () => {
+  const cookies = await fixture();
+
+  try {
+    const response = await sendTest(cookies.moderator);
+    assertEquals(response.status, STATUS_CODE.OK);
+    const { chatGroupId } = await response.json();
+
+    const copies = await everyCopy();
+    assertEquals(copies.length, 1);
+    assertEquals(await membersOf(chatGroupId), [MODERATOR]);
+  } finally {
+    await cleanUp();
+  }
+});
+
+Deno.test("ein Mitglied ohne Rolle erreicht die Test-Rundmail nicht", async () => {
   const cookies = await fixture();
 
   try {
     assertEquals(
-      (await sendTest(cookies.moderator)).status,
+      (await sendTest(cookies.member)).status,
       STATUS_CODE.Forbidden,
     );
     assertEquals(await everyCopy(), []);

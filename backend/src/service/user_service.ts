@@ -1,5 +1,5 @@
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
-import type { Selectable } from "kysely";
+import { type ExpressionBuilder, type Selectable, sql } from "kysely";
 import { db } from "@/src/database/client.ts";
 import { withAvatar } from "@/src/query/user_avatar.ts";
 import { avatarUrlOf } from "@/src/http/avatar_url.ts";
@@ -14,32 +14,60 @@ import {
   searchPattern,
 } from "@/src/list/list_endpoint_query.ts";
 import type {
+  DB,
+  PlatformPermission,
   User as DatabaseUser,
   UserSession as DatabaseUserSession,
 } from "@/src/database/schema.ts";
 
-export type User = Pick<
-  Selectable<DatabaseUser>,
-  | "id"
-  | "username"
-  | "emailAddress"
-  | "emailAddressVerifiedAt"
-  // Carried on the session user so an authorisation check costs no query of its own — the
-  // reason the role is a column rather than a table of its own.
-  | "platformRole"
-  // Belt to the braces: banning ends every session, so a banned member should have none. This
-  // refuses the one that somehow outlived it, and costs nothing to check.
-  | "bannedAt"
-  // Carried for the same reason: a suspension is checked on every request, and reading it off
-  // the session user is what keeps that check free.
-  | "suspendedUntil"
-  | "suspensionReason"
-  // The level above the roles: only this account grants and revokes the administrator role.
-  | "isPrimordialAdmin"
-  // Carried for the same reason the role is: the Blind-Date desk checks it on every request it
-  // guards, and a right that costs a query would be a right somebody optimises away.
-  | "mayManageBlindDate"
->;
+export type User =
+  & Pick<
+    Selectable<DatabaseUser>,
+    | "id"
+    | "username"
+    | "emailAddress"
+    | "emailAddressVerifiedAt"
+    // Carried on the session user so an authorisation check costs no query of its own — the
+    // reason the role is a column rather than a table of its own.
+    | "platformRole"
+    // Belt to the braces: banning ends every session, so a banned member should have none. This
+    // refuses the one that somehow outlived it, and costs nothing to check.
+    | "bannedAt"
+    // Carried for the same reason: a suspension is checked on every request, and reading it off
+    // the session user is what keeps that check free.
+    | "suspendedUntil"
+    | "suspensionReason"
+    // The level above the roles: only this account grants and revokes the administrator role.
+    | "isPrimordialAdmin"
+    // Carried for the same reason the role is: the Blind-Date desk checks it on every request it
+    // guards, and a right that costs a query would be a right somebody optimises away.
+    | "mayManageBlindDate"
+  >
+  & {
+    /**
+     * What the account's role may do beyond its name, read from `platform_role_permission`.
+     * Carried for the reason the role is: a right that costs a query would be a right somebody
+     * optimises away. Administrators have no rows and need none — `platform_authorization.ts`
+     * gives them everything, rather than this list.
+     */
+    permissions: PlatformPermission[];
+  };
+
+/**
+ * The role's permissions as one column of the account's row. `::text` because the driver parses
+ * an array of text but not an array of an enum it has never seen — that would arrive as the
+ * literal string `{prepare_publications}`.
+ */
+function permissionsOfRole(eb: ExpressionBuilder<DB, "user">) {
+  return eb.fn.coalesce(
+    sql<PlatformPermission[]>`(
+      SELECT array_agg(permission::text ORDER BY permission)
+      FROM platform_role_permission
+      WHERE role = "user".platform_role
+    )`,
+    sql<PlatformPermission[]>`'{}'::text[]`,
+  ).as("permissions");
+}
 
 /** What one member may see of another. Deliberately narrower than {@link User}. */
 export type PublicUser =
@@ -114,7 +142,7 @@ async function insertUser(
   emailAddress: string,
   invitedBy?: string,
 ): Promise<User | undefined> {
-  return await db
+  const user = await db
     .insertInto("user")
     .values({
       username,
@@ -136,6 +164,9 @@ async function insertUser(
       "mayManageBlindDate",
     ])
     .executeTakeFirst();
+
+  // A new account has no role, so its role grants nothing: no query to ask.
+  return user === undefined ? undefined : { ...user, permissions: [] };
 }
 
 async function selectUser(
@@ -157,6 +188,7 @@ async function selectUser(
       "mayManageBlindDate",
       "hashedPassword",
     ])
+    .select(permissionsOfRole)
     // Addresses are stored lower-cased by the register route, so the comparison has to
     // match that or a differently cased address would never be found.
     .where((eb) =>
@@ -189,6 +221,7 @@ async function selectUser(
     suspensionReason: user.suspensionReason,
     isPrimordialAdmin: user.isPrimordialAdmin,
     mayManageBlindDate: user.mayManageBlindDate,
+    permissions: user.permissions,
   };
 }
 
@@ -264,6 +297,7 @@ async function selectUserForSession(
       "isPrimordialAdmin",
       "mayManageBlindDate",
     ])
+    .select(permissionsOfRole)
     .where("id", "=", databaseUserSession.userId)
     .executeTakeFirst();
 }

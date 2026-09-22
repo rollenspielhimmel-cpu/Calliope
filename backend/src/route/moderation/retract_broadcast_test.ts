@@ -330,8 +330,11 @@ Deno.test("was noch wartet, wird verworfen, nicht zurückgezogen", async () => {
   const cookies = await fixture();
 
   try {
-    // Von einer gewöhnlichen Administration eingereicht: Sie wartet auf eine Freigabe.
-    const { publicationId } = await submit(cookies.other);
+    // Von einer gewöhnlichen Administration mit Termin eingereicht: freigegeben, aber noch nicht
+    // raus. Ohne Termin ginge sie sofort, seit Administrationen mit dem Schreiben freigeben.
+    const { publicationId } = await submit(cookies.other, {
+      scheduledFor: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
 
     assertEquals(
       (await retract(cookies.root, publicationId)).status,

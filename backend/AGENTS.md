@@ -185,6 +185,15 @@ middleware: [authenticated, authorizedAsModerator] as const,  // two or more, al
 401 if it is missing rather than throwing. The names say which of the two a middleware is, which
 is the whole reason they are not all called `require…`.
 
+**A right a role is given is a permission, not a role.** `authorizedAsModerator` and
+`authorizedAsAdministrator` ask for a role; `authorizedToPreparePublications` asks whether the
+user's role holds `prepare_publications` in `platform_role_permission`, which the first
+administrator switches per role. Administrators hold every permission without a row — the database
+refuses one — so they cannot be locked out. The permissions ride on the session user like the
+role, so a check costs no query. A new right that a future role (an event manager) might or might
+not get belongs there, not in another `platformRole === …` in a handler. Approving what others
+prepared stays `authorizedAsAdministrator`: it is deliberately not a permission.
+
 Mount literal segments before parameters, or `/me` is swallowed by `/:userId`.
 
 ## Every declared response needs a content schema

@@ -23,8 +23,9 @@ const PRIMORDIAL = "senders-test-root";
 const ADMINISTRATOR = "senders-test-admin";
 const MODERATOR = "senders-test-moderator";
 const PERSONA = "senders-test-persona";
+const MEMBER = "senders-test-member";
 
-const USERNAMES = [PRIMORDIAL, ADMINISTRATOR, MODERATOR, PERSONA];
+const USERNAMES = [PRIMORDIAL, ADMINISTRATOR, MODERATOR, PERSONA, MEMBER];
 
 async function setRole(
   username: string,
@@ -48,6 +49,7 @@ function fixture() {
       primordial: await registerUser(PRIMORDIAL),
       administrator: await registerUser(ADMINISTRATOR),
       moderator: await registerUser(MODERATOR),
+      member: await registerUser(MEMBER),
     };
 
     // The persona is a plain account and stays one: nobody signs in as it, and it holds no role.
@@ -120,16 +122,44 @@ Deno.test("an ordinary administrator cannot release a sender", async () => {
   assertEquals(response.status, STATUS_CODE.Forbidden);
 });
 
-Deno.test("a moderator cannot reach this at all", async () => {
+/**
+ * A moderator prepares broadcasts and so picks a sender from this list — but releasing one stays
+ * the first administrator's.
+ */
+Deno.test("a moderator reads the list and changes nothing", async () => {
   const cookies = await fixture();
 
-  const response = await request(
-    "GET",
-    "/api/moderation/broadcast/senders",
-    cookies.moderator,
+  assertEquals(
+    (await request(
+      "GET",
+      "/api/moderation/broadcast/senders",
+      cookies.moderator,
+    )).status,
+    STATUS_CODE.OK,
   );
 
-  assertEquals(response.status, STATUS_CODE.Forbidden);
+  assertEquals(
+    (await request(
+      "POST",
+      "/api/moderation/broadcast/senders",
+      cookies.moderator,
+      { username: PERSONA },
+    )).status,
+    STATUS_CODE.Forbidden,
+  );
+});
+
+Deno.test("an ordinary member cannot read the list", async () => {
+  const cookies = await fixture();
+
+  assertEquals(
+    (await request(
+      "GET",
+      "/api/moderation/broadcast/senders",
+      cookies.member,
+    )).status,
+    STATUS_CODE.Forbidden,
+  );
 });
 
 /**

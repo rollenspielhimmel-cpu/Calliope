@@ -3,7 +3,10 @@ import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
+import {
+  authorizedAsAdministrator,
+  authorizedToPreparePublications,
+} from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastQueueService } from "@/src/service/broadcast_queue_service.ts";
 import { isToEveryone } from "@/src/service/broadcast_service.ts";
 import { assertUnreachable } from "@/src/util/assert_unreachable.ts";
@@ -128,6 +131,8 @@ const BROADCAST_RESPONSE = BROADCAST_BODY.extend({
    * jemand anderes draufsteht — das ist der Sinn der Sache, und die Liste ist ohnehin nur für die
    * Administration sichtbar.
    */
+  /** Die Kennung neben dem Namen: Ohne Administration bearbeitet und verwirft man nur das Eigene. */
+  writtenBy: z.uuidv7().nullable(),
   writtenByUsername: z.string().nullable(),
   writtenAt: z.iso.datetime({ offset: true }),
   approvedByUsername: z.string().nullable(),
@@ -169,6 +174,9 @@ const publicationId = z.object({ publicationId: z.uuidv7() });
 const NOT_A_SENDER =
   "Unter diesem Konto darf nicht gesendet werden. Freigeschaltet wird es vom Ur-Admin.";
 
+const NOT_YOURS =
+  "Diese Rundmail hat jemand anderes eingereicht. Ändern oder verwerfen kann sie die Administration.";
+
 export default new OpenAPIHono()
   .openapi(
     createRoute({
@@ -179,7 +187,7 @@ export default new OpenAPIHono()
       description:
         "The oldest first, so nothing is left at the bottom — the same order the abuse reports have. The count of these is the red number on the moderation overview.",
       operationId: "listBroadcastQueue",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "Everything waiting",
@@ -201,7 +209,7 @@ export default new OpenAPIHono()
       description:
         "The newest first, each with the account it went out as and — for the team's own eyes — who wrote it and who approved it.",
       operationId: "listReleasedBroadcasts",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       responses: {
         [STATUS_CODE.OK]: {
           description: "What was sent",
@@ -221,9 +229,9 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Submit a broadcast for approval",
       description:
-        "From the first administrator it is approved by the writing and goes out at once; from anybody else it waits for a second pair of eyes.",
+        "Open to every role that may prepare publications. From an administrator it is approved by the writing and, without a schedule, goes out at once; from any other role it waits for an administrator.",
       operationId: "submitBroadcast",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       request: {
         body: { required: true, content: jsonContent(BROADCAST_BODY) },
       },
@@ -259,7 +267,7 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Approve a waiting broadcast, which sends it",
       description:
-        "Any administrator, but not the one who submitted it: a second pair of eyes is the whole point, and approving one's own would make the queue a formality. Approval and release are one act for now; the schedule arrives later.",
+        "Administrators only — approving is not a permission a role can be given. What waits here was last touched by a role without administration, so there is no own submission to refuse. Without a schedule, approving sends it; with one, the clock does.",
       operationId: "approveBroadcast",
       middleware: [authenticated, authorizedAsAdministrator] as const,
       request: { params: publicationId },
@@ -274,10 +282,6 @@ export default new OpenAPIHono()
         },
         [STATUS_CODE.Conflict]: {
           description: "It is not waiting for an approval",
-          content: jsonContent(ERROR_RESPONSE),
-        },
-        [STATUS_CODE.Forbidden]: {
-          description: "Nobody approves their own submission",
           content: jsonContent(ERROR_RESPONSE),
         },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
@@ -300,14 +304,6 @@ export default new OpenAPIHono()
             { error: "Diese Rundmail wartet nicht auf eine Freigabe." },
             STATUS_CODE.Conflict,
           );
-        case "own_submission":
-          return c.json(
-            {
-              error:
-                "Deine eigene Einreichung kann jemand anderes aus der Administration freigeben.",
-            },
-            STATUS_CODE.Forbidden,
-          );
         default:
           return assertUnreachable(refusal);
       }
@@ -320,17 +316,18 @@ export default new OpenAPIHono()
       tags: [MODERATION_TAG],
       summary: "Change a broadcast, which takes back its approval",
       description:
-        "Text, subject, audience and sender alike: an approval is about a whole message, and letting the harmless half be approved and the rest swapped afterwards would be the same as sending something else.",
+        "Text, subject, audience and sender alike: an approval is about a whole message, and letting the harmless half be approved and the rest swapped afterwards would be the same as sending something else. From a role without administration it waits again, and that role may change only its own; from an administrator the new version is approved by the saving and, without a schedule, goes out at once.",
       operationId: "editBroadcast",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       request: {
         params: publicationId,
         body: { required: true, content: jsonContent(BROADCAST_BODY) },
       },
       responses: {
         [STATUS_CODE.OK]: {
-          description: "Changed, and waiting for an approval again",
-          content: jsonContent(OK_RESPONSE),
+          description:
+            "The entry as it now stands — waiting again, or approved (and perhaps already sent) when an administrator saved it",
+          content: jsonContent(BROADCAST_RESPONSE),
         },
         [STATUS_CODE.NotFound]: {
           description: "No broadcast has this id",
@@ -341,7 +338,8 @@ export default new OpenAPIHono()
           content: jsonContent(ERROR_RESPONSE),
         },
         [STATUS_CODE.Forbidden]: {
-          description: "That account has not been released as a sender",
+          description:
+            "That account has not been released as a sender, or it is somebody else's and the editor has no administration",
           content: jsonContent(ERROR_RESPONSE),
         },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
@@ -350,15 +348,17 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await BroadcastQueueService.edit(
+      const edited = await BroadcastQueueService.edit(
         c.req.valid("param").publicationId,
         c.req.valid("json"),
         c.get("user"),
       );
 
-      switch (refusal) {
-        case undefined:
-          return c.json({ ok: true } as const, STATUS_CODE.OK);
+      if (typeof edited !== "string") {
+        return c.json(edited, STATUS_CODE.OK);
+      }
+
+      switch (edited) {
         case "not_found":
           return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
         case "already_out":
@@ -371,8 +371,10 @@ export default new OpenAPIHono()
           );
         case "sender_not_released":
           return c.json({ error: NOT_A_SENDER }, STATUS_CODE.Forbidden);
+        case "not_yours":
+          return c.json({ error: NOT_YOURS }, STATUS_CODE.Forbidden);
         default:
-          return assertUnreachable(refusal);
+          return assertUnreachable(edited);
       }
     },
   )
@@ -385,7 +387,7 @@ export default new OpenAPIHono()
       description:
         "It stays as a trace rather than disappearing: what was submitted is part of what the queue says about the team's work.",
       operationId: "discardBroadcast",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       request: { params: publicationId },
       responses: {
         [STATUS_CODE.OK]: {
@@ -400,6 +402,11 @@ export default new OpenAPIHono()
           description: "It has already gone out",
           content: jsonContent(ERROR_RESPONSE),
         },
+        [STATUS_CODE.Forbidden]: {
+          description:
+            "It is somebody else's, and the one discarding has no administration",
+          content: jsonContent(ERROR_RESPONSE),
+        },
         [STATUS_CODE.Unauthorized]: NO_SESSION_RESPONSE,
         ...COMMON_RESPONSES,
       },
@@ -407,6 +414,7 @@ export default new OpenAPIHono()
     async (c) => {
       const refusal = await BroadcastQueueService.discard(
         c.req.valid("param").publicationId,
+        c.get("user"),
       );
 
       switch (refusal) {
@@ -419,6 +427,8 @@ export default new OpenAPIHono()
             { error: "Diese Rundmail ist verschickt." },
             STATUS_CODE.Conflict,
           );
+        case "not_yours":
+          return c.json({ error: NOT_YOURS }, STATUS_CODE.Forbidden);
         default:
           return assertUnreachable(refusal);
       }

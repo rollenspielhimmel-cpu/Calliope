@@ -22,6 +22,7 @@ import { useListAdminInbox, useListBroadcastQueue } from '@/api/moderation/moder
 import { GetCurrentUser200PlatformRole } from '@/api/models'
 import type { ListReportsBody } from '@/api/models'
 import { formatCount } from '@/lib/format/formatNumber'
+import { assertUnreachable } from '@/lib/assertUnreachable'
 import {
   Eye,
   FileText,
@@ -43,16 +44,20 @@ type Tile = {
   description: string
   icon: Component
   to: RouteLocationRaw
-  /** Administrator-only tiles are left out for a moderator rather than shown as refused. */
-  administratorOnly?: boolean
+  /**
+   * Who the tile is for, when not every operator: tiles somebody may not open are left out rather
+   * than shown as refused. `preparePublications` is a permission a role is given, not a role —
+   * the same check the route makes.
+   */
+  only?: 'administrator' | 'preparePublications'
   /**
    * How many things behind this tile are waiting for somebody. Absent — not zero — where there is
    * nothing that waits: a count that is always there stops being read, and the design rules keep
    * numbers for what is still to be done.
    *
-   * Only the reports and the broadcast queue have one, and both are seen only by the people who
-   * can act on them: the queue's endpoint is administrator-only, so a moderator's request answers
-   * nothing and the number never appears.
+   * The reports, the inbox and the broadcast queue have one, and each is shown only to the people
+   * who can act on it: moderators read the broadcast queue but cannot approve, so for them the
+   * number is left at nothing — see `waitingBroadcasts`.
    */
   waiting?: Readonly<{ value: number }>
 }
@@ -78,13 +83,16 @@ const openReportCount = computed<number>(() =>
  * Wie viele Rundmails auf eine Freigabe warten.
  *
  * Aus der Warteschlange selbst, damit die Zahl nicht von dem abweichen kann, was die Seite dahinter
- * zeigt — dieselbe Regel wie bei den Missbrauchsmeldungen. Die Abfrage ist der Administration
- * vorbehalten; für die Moderation antwortet sie nicht, und die Zahl erscheint gar nicht erst.
+ * zeigt — dieselbe Regel wie bei den Missbrauchsmeldungen.
+ *
+ * **Nur für die Administration.** Die Mods lesen die Warteschlange mit, seit sie Rundmails
+ * vorbereiten — freigeben können sie nicht, und eine Zahl über etwas, das man nicht erledigen kann,
+ * ist Lärm. Die Gestaltungsregeln halten Zahlen für das, was noch zu tun ist.
  */
 const { data: queue } = useListBroadcastQueue()
 
 const waitingBroadcasts = computed<number>(() =>
-  queue.value?.status === 200
+  queue.value?.status === 200 && isAdministrator.value
     ? // Nur die, die auf jemanden warten. Was freigegeben ist und auf die Uhr wartet, steht in
       // derselben Liste, ist aber niemandes Aufgabe mehr.
       queue.value.data.filter((entry) => entry.status === 'awaiting_approval').length
@@ -113,6 +121,23 @@ const isAdministrator = computed<boolean>(
     data.value.data.platformRole === GetCurrentUser200PlatformRole.administrator,
 )
 
+const mayPreparePublications = computed<boolean>(
+  () => data.value?.status === 200 && data.value.data.mayPreparePublications,
+)
+
+function mayOpen(tile: Tile): boolean {
+  switch (tile.only) {
+    case undefined:
+      return true
+    case 'administrator':
+      return isAdministrator.value
+    case 'preparePublications':
+      return mayPreparePublications.value
+    default:
+      return assertUnreachable(tile.only)
+  }
+}
+
 const SECTIONS: Section[] = [
   {
     title: 'Mitglieder und Sicherheit',
@@ -137,7 +162,7 @@ const SECTIONS: Section[] = [
           'Wörter, die nirgends gedruckt werden, und Anbieter, mit denen sich niemand anmelden kann.',
         icon: MailX,
         to: { name: 'moderationContentFilters' },
-        administratorOnly: true,
+        only: 'administrator',
       },
       {
         title: 'Benutzergruppen',
@@ -177,7 +202,7 @@ const SECTIONS: Section[] = [
         description: 'Was an die Administration geschrieben wurde, an einem Ort.',
         icon: Inbox,
         to: { name: 'moderationInbox' },
-        administratorOnly: true,
+        only: 'administrator',
         waiting: waitingConversations,
       },
       {
@@ -185,7 +210,7 @@ const SECTIONS: Section[] = [
         description: 'Eine Nachricht an alle Mitglieder oder an eine Teilmenge von ihnen.',
         icon: Megaphone,
         to: { name: 'moderationBroadcast' },
-        administratorOnly: true,
+        only: 'preparePublications',
         waiting: waitingBroadcasts,
       },
       // Hier stand „Erinnerungen an unbestätigte Adressen", das auf dieselbe Seite führte wie der
@@ -212,7 +237,7 @@ const SECTIONS: Section[] = [
         description: 'Regelwerk, FAQ und andere feste Textseiten anlegen und bearbeiten.',
         icon: FileText,
         to: { name: 'moderationPages' },
-        administratorOnly: true,
+        only: 'administrator',
       },
       // Hier stand „Forum-Struktur", das Kategorien und Unterforen anlegte. Beim Wechsel auf das
       // Forum aus Calliope ist diese Seite entfallen — dort wird die Struktur auf der Forumsseite
@@ -223,7 +248,7 @@ const SECTIONS: Section[] = [
         description: 'Welche Fragen das Profil stellt, und welche Antworten zur Auswahl stehen.',
         icon: ListChecks,
         to: { name: 'moderationProfileFields' },
-        administratorOnly: true,
+        only: 'administrator',
       },
     ],
   },
@@ -232,7 +257,7 @@ const SECTIONS: Section[] = [
 const sections = computed<Section[]>(() =>
   SECTIONS.map((section) => ({
     title: section.title,
-    tiles: section.tiles.filter((tile) => !tile.administratorOnly || isAdministrator.value),
+    tiles: section.tiles.filter((tile) => mayOpen(tile)),
   })).filter((section) => section.tiles.length > 0),
 )
 </script>

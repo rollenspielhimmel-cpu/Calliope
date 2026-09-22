@@ -12,7 +12,9 @@ import ModerationView from '@/views/ModerationView.vue'
  */
 
 const reports = { value: { status: 200, data: { totalResults: 0 } } }
-const currentUser = { value: { status: 200, data: { platformRole: 'administrator' } } }
+const currentUser = {
+  value: { status: 200, data: { platformRole: 'administrator', mayPreparePublications: true } },
+}
 
 /** Die zweite Zahl auf dieser Seite: Rundmails, die auf eine Freigabe warten. */
 const broadcastQueue: { value: { status: number; data: unknown[] } } = {
@@ -56,7 +58,10 @@ function moderationView() {
 
 beforeEach(() => {
   reports.value = { status: 200, data: { totalResults: 0 } }
-  currentUser.value = { status: 200, data: { platformRole: 'administrator' } }
+  currentUser.value = {
+    status: 200,
+    data: { platformRole: 'administrator', mayPreparePublications: true },
+  }
   broadcastQueue.value = { status: 200, data: [] }
   adminInbox.value = { status: 200, data: { results: [] } }
 })
@@ -108,7 +113,10 @@ describe('ModerationView', () => {
   })
 
   it('still hides the administrator-only tiles from a moderator', () => {
-    currentUser.value = { status: 200, data: { platformRole: 'moderator' } }
+    currentUser.value = {
+      status: 200,
+      data: { platformRole: 'moderator', mayPreparePublications: true },
+    }
 
     const text = moderationView().text()
 
@@ -158,9 +166,35 @@ describe('Warteschlange der Rundmails', () => {
   })
 
   /**
-   * Für die Moderation antwortet die Abfrage nicht — die Route ist der Administration vorbehalten.
-   * Eine nicht geladene Warteschlange heißt „nichts zu tun", nicht „unbekannt": Die Kachel ist für
-   * sie ohnehin nicht da, und eine Zahl aus einer fehlgeschlagenen Abfrage wäre schlimmer als keine.
+   * Mods bereiten Rundmails vor und finden die Kachel deshalb — aber ohne Zahl. Freigeben können
+   * sie nicht, und eine rote Zahl über etwas, das man nicht erledigen kann, ist Lärm.
+   */
+  it('zeigt einem Mod die Kachel, aber nicht die Zahl', () => {
+    currentUser.value = {
+      status: 200,
+      data: { platformRole: 'moderator', mayPreparePublications: true },
+    }
+    broadcastQueue.value = { status: 200, data: [{ status: 'awaiting_approval' }] }
+
+    const text = moderationView().text()
+
+    expect(text).toContain('Rundmail')
+    expect(text).not.toContain('1 offen')
+  })
+
+  /** Die Kachel hängt an der Berechtigung, nicht an der Rolle: ohne sie auch für einen Mod nicht. */
+  it('zeigt die Kachel keinem, dem die Berechtigung fehlt', () => {
+    currentUser.value = {
+      status: 200,
+      data: { platformRole: 'moderator', mayPreparePublications: false },
+    }
+
+    expect(moderationView().text()).not.toContain('Eine Nachricht an alle Mitglieder')
+  })
+
+  /**
+   * Eine nicht geladene Warteschlange heißt „nichts zu tun", nicht „unbekannt": Eine Zahl aus einer
+   * fehlgeschlagenen Abfrage wäre schlimmer als keine.
    */
   it('liest eine Warteschlange, die sie nicht laden konnte, als nichts', () => {
     broadcastQueue.value = { status: 403, data: [] }

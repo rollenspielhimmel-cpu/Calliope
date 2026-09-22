@@ -18,6 +18,7 @@ const member: User = {
   suspensionReason: null,
   isPrimordialAdmin: false,
   mayManageBlindDate: false,
+  permissions: [],
 };
 
 const operator: User = { ...member, platformRole: "moderator" };

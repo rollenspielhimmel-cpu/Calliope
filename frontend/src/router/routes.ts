@@ -201,7 +201,7 @@ export const routes: Array<RouteRecordRaw> = [
     path: '/moderation/broadcast',
     name: 'moderationBroadcast',
     component: () => import('../views/moderation/BroadcastView.vue'),
-    meta: { access: 'administrator' },
+    meta: { access: 'preparePublications' },
   },
   {
     path: '/moderation/inbox',

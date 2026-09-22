@@ -13,6 +13,7 @@ const member: User = {
   suspensionReason: null,
   isPrimordialAdmin: false,
   mayManageBlindDate: false,
+  permissions: [],
 };
 
 const other = "22222222-2222-7222-8222-222222222222";

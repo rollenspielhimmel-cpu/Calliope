@@ -1436,6 +1436,7 @@
                       "enum": ["administrator", "moderator", null]
                     },
                     "isPrimordialAdmin": { "type": "boolean" },
+                    "mayPreparePublications": { "type": "boolean" },
                     "avatarUrl": { "type": ["string", "null"] },
                     "unreadNotifications": { "type": "integer" }
                   },
@@ -1446,6 +1447,7 @@
                     "emailAddressVerifiedAt",
                     "platformRole",
                     "isPrimordialAdmin",
+                    "mayPreparePublications",
                     "avatarUrl",
                     "unreadNotifications"
                   ]
@@ -45954,7 +45956,7 @@
       "get": {
         "tags": ["moderation"],
         "summary": "Which accounts a broadcast may be sent as",
-        "description": "The first administrator, which is always available, followed by every released account in the order they are offered. Readable by every administrator, because this is the list a broadcast's sender is chosen from.",
+        "description": "The first administrator, which is always available, followed by every released account in the order they are offered. Readable by every role that may prepare publications, because this is the list a sender is chosen from.",
         "operationId": "listBroadcastSenders",
         "responses": {
           "200": {
@@ -46779,6 +46781,10 @@
                         ]
                       },
                       "sendAsUsername": { "type": ["string", "null"] },
+                      "writtenBy": {
+                        "type": ["string", "null"],
+                        "format": "uuid"
+                      },
                       "writtenByUsername": { "type": ["string", "null"] },
                       "writtenAt": { "type": "string", "format": "date-time" },
                       "approvedByUsername": { "type": ["string", "null"] },
@@ -46833,6 +46839,7 @@
                       "broadcastId",
                       "status",
                       "sendAsUsername",
+                      "writtenBy",
                       "writtenByUsername",
                       "writtenAt",
                       "approvedByUsername",
@@ -47014,7 +47021,7 @@
       "post": {
         "tags": ["moderation"],
         "summary": "Submit a broadcast for approval",
-        "description": "From the first administrator it is approved by the writing and goes out at once; from anybody else it waits for a second pair of eyes.",
+        "description": "Open to every role that may prepare publications. From an administrator it is approved by the writing and, without a schedule, goes out at once; from any other role it waits for an administrator.",
         "operationId": "submitBroadcast",
         "requestBody": {
           "required": true,
@@ -47133,6 +47140,10 @@
                       ]
                     },
                     "sendAsUsername": { "type": ["string", "null"] },
+                    "writtenBy": {
+                      "type": ["string", "null"],
+                      "format": "uuid"
+                    },
                     "writtenByUsername": { "type": ["string", "null"] },
                     "writtenAt": { "type": "string", "format": "date-time" },
                     "approvedByUsername": { "type": ["string", "null"] },
@@ -47187,6 +47198,7 @@
                     "broadcastId",
                     "status",
                     "sendAsUsername",
+                    "writtenBy",
                     "writtenByUsername",
                     "writtenAt",
                     "approvedByUsername",
@@ -47508,6 +47520,10 @@
                         ]
                       },
                       "sendAsUsername": { "type": ["string", "null"] },
+                      "writtenBy": {
+                        "type": ["string", "null"],
+                        "format": "uuid"
+                      },
                       "writtenByUsername": { "type": ["string", "null"] },
                       "writtenAt": { "type": "string", "format": "date-time" },
                       "approvedByUsername": { "type": ["string", "null"] },
@@ -47562,6 +47578,7 @@
                       "broadcastId",
                       "status",
                       "sendAsUsername",
+                      "writtenBy",
                       "writtenByUsername",
                       "writtenAt",
                       "approvedByUsername",
@@ -47745,7 +47762,7 @@
       "post": {
         "tags": ["moderation"],
         "summary": "Approve a waiting broadcast, which sends it",
-        "description": "Any administrator, but not the one who submitted it: a second pair of eyes is the whole point, and approving one's own would make the queue a formality. Approval and release are one act for now; the schedule arrives later.",
+        "description": "Administrators only — approving is not a permission a role can be given. What waits here was last touched by a role without administration, so there is no own submission to refuse. Without a schedule, approving sends it; with one, the clock does.",
         "operationId": "approveBroadcast",
         "parameters": [
           {
@@ -47770,45 +47787,6 @@
           },
           "401": {
             "description": "No valid session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "issues": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "path": { "type": "string" },
-                          "message": { "type": "string" }
-                        },
-                        "required": ["path", "message"]
-                      }
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "invalid_credentials",
-                        "account_banned",
-                        "account_suspended",
-                        "password_breached",
-                        "email_domain_blocked",
-                        "page_changed",
-                        "folder_not_empty",
-                        "folder_too_deep",
-                        "folder_cycle"
-                      ]
-                    }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Nobody approves their own submission",
             "content": {
               "application/json": {
                 "schema": {
@@ -48049,7 +48027,7 @@
       "put": {
         "tags": ["moderation"],
         "summary": "Change a broadcast, which takes back its approval",
-        "description": "Text, subject, audience and sender alike: an approval is about a whole message, and letting the harmless half be approved and the rest swapped afterwards would be the same as sending something else.",
+        "description": "Text, subject, audience and sender alike: an approval is about a whole message, and letting the harmless half be approved and the rest swapped afterwards would be the same as sending something else. From a role without administration it waits again, and that role may change only its own; from an administrator the new version is approved by the saving and, without a schedule, goes out at once.",
         "operationId": "editBroadcast",
         "parameters": [
           {
@@ -48121,13 +48099,134 @@
         },
         "responses": {
           "200": {
-            "description": "Changed, and waiting for an approval again",
+            "description": "The entry as it now stands — waiting again, or approved (and perhaps already sent) when an administrator saved it",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean", "enum": [true] } },
-                  "required": ["ok"]
+                  "properties": {
+                    "subject": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200,
+                      "pattern": "\\S"
+                    },
+                    "body": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 10000,
+                      "pattern": "\\S"
+                    },
+                    "audienceRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["administrator", "moderator", "member"]
+                      }
+                    },
+                    "memberIds": {
+                      "type": "array",
+                      "items": { "type": "string", "format": "uuid" },
+                      "maxItems": 50
+                    },
+                    "includeUnverified": { "type": "boolean" },
+                    "deliverToInbox": { "type": "boolean" },
+                    "deliverByEmail": { "type": "boolean" },
+                    "publishInArchive": { "type": "boolean" },
+                    "sendAsUserId": {
+                      "type": ["string", "null"],
+                      "format": "uuid"
+                    },
+                    "scheduledFor": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "publicationId": { "type": "string", "format": "uuid" },
+                    "broadcastId": { "type": "string", "format": "uuid" },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "awaiting_approval",
+                        "approved",
+                        "released",
+                        "discarded"
+                      ]
+                    },
+                    "sendAsUsername": { "type": ["string", "null"] },
+                    "writtenBy": {
+                      "type": ["string", "null"],
+                      "format": "uuid"
+                    },
+                    "writtenByUsername": { "type": ["string", "null"] },
+                    "writtenAt": { "type": "string", "format": "date-time" },
+                    "approvedByUsername": { "type": ["string", "null"] },
+                    "approvedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "editedByUsername": { "type": ["string", "null"] },
+                    "editedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "releasedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "retractedByUsername": { "type": ["string", "null"] },
+                    "retractedAt": {
+                      "type": ["string", "null"],
+                      "format": "date-time"
+                    },
+                    "recipientCount": { "type": ["integer", "null"] },
+                    "emailRecipientCount": { "type": ["integer", "null"] },
+                    "archivePostId": {
+                      "type": ["string", "null"],
+                      "format": "uuid"
+                    },
+                    "namedRecipients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "username": { "type": "string" }
+                        },
+                        "required": ["id", "username"]
+                      }
+                    }
+                  },
+                  "required": [
+                    "subject",
+                    "body",
+                    "audienceRoles",
+                    "memberIds",
+                    "includeUnverified",
+                    "deliverToInbox",
+                    "deliverByEmail",
+                    "publishInArchive",
+                    "sendAsUserId",
+                    "scheduledFor",
+                    "publicationId",
+                    "broadcastId",
+                    "status",
+                    "sendAsUsername",
+                    "writtenBy",
+                    "writtenByUsername",
+                    "writtenAt",
+                    "approvedByUsername",
+                    "approvedAt",
+                    "editedByUsername",
+                    "editedAt",
+                    "releasedAt",
+                    "retractedByUsername",
+                    "retractedAt",
+                    "recipientCount",
+                    "emailRecipientCount",
+                    "archivePostId",
+                    "namedRecipients"
+                  ]
                 }
               }
             }
@@ -48211,7 +48310,7 @@
             }
           },
           "403": {
-            "description": "That account has not been released as a sender",
+            "description": "That account has not been released as a sender, or it is somebody else's and the editor has no administration",
             "content": {
               "application/json": {
                 "schema": {
@@ -48475,6 +48574,45 @@
           },
           "401": {
             "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "It is somebody else's, and the one discarding has no administration",
             "content": {
               "application/json": {
                 "schema": {
@@ -49081,6 +49219,761 @@
           },
           "409": {
             "description": "Not sent yet, or already retracted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderation/role-permissions": {
+      "get": {
+        "tags": ["moderation"],
+        "summary": "What each role may do beyond its name",
+        "description": "Every administrator may read it; only the first administrator changes it. Administrators are not listed — they may everything.",
+        "operationId": "listRolePermissions",
+        "responses": {
+          "200": {
+            "description": "The roles, the permissions, and which is granted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roles": {
+                      "type": "array",
+                      "items": { "type": "string", "enum": ["moderator"] }
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["prepare_publications"]
+                      }
+                    },
+                    "granted": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": { "type": "string", "enum": ["moderator"] },
+                          "permission": {
+                            "type": "string",
+                            "enum": ["prepare_publications"]
+                          },
+                          "grantedByUsername": { "type": ["string", "null"] },
+                          "grantedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "permission",
+                          "grantedByUsername",
+                          "grantedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["roles", "permissions", "granted"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderation/role-permissions/{role}/{permission}": {
+      "put": {
+        "tags": ["moderation"],
+        "summary": "Give a role a permission",
+        "description": "Only the first administrator. Idempotent; the first grant's who and when are kept. Takes effect with the next request of everybody in the role.",
+        "operationId": "grantRolePermission",
+        "parameters": [
+          {
+            "schema": { "type": "string", "enum": ["moderator"] },
+            "required": true,
+            "name": "role",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "string", "enum": ["prepare_publications"] },
+            "required": true,
+            "name": "permission",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Granted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean", "enum": [true] } },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the first administrator may change this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["moderation"],
+        "summary": "Take a permission from a role",
+        "description": "Only the first administrator. What the role already prepared stays where it is; it can no longer be reached by that role.",
+        "operationId": "revokeRolePermission",
+        "parameters": [
+          {
+            "schema": { "type": "string", "enum": ["moderator"] },
+            "required": true,
+            "name": "role",
+            "in": "path"
+          },
+          {
+            "schema": { "type": "string", "enum": ["prepare_publications"] },
+            "required": true,
+            "name": "permission",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean", "enum": [true] } },
+                  "required": ["ok"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the first administrator may change this",
             "content": {
               "application/json": {
                 "schema": {

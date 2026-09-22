@@ -3,6 +3,7 @@ import type { User } from "@/src/service/user_service.ts";
 import {
   mayAdministerPlatform,
   mayModeratePlatform,
+  mayPreparePublications,
 } from "@/src/service/platform_authorization.ts";
 
 /**
@@ -19,7 +20,7 @@ import {
  * not help. It says nothing about whether the route exists — the repository is public, so a
  * 404 would hide nothing worth hiding.
  */
-function authorizedAs(permitted: (role: User["platformRole"]) => boolean) {
+function authorizedAs(permitted: (user: User) => boolean) {
   return createMiddleware<{ Variables: { user: User } }>(async (c, next) => {
     // Defensive: reachable only by listing this without an authentication middleware before
     // it, which would otherwise throw on undefined and answer 500 instead of refusing.
@@ -29,7 +30,7 @@ function authorizedAs(permitted: (role: User["platformRole"]) => boolean) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    if (!permitted(user.platformRole)) {
+    if (!permitted(user)) {
       return c.json({ error: "Forbidden" }, 403);
     }
 
@@ -39,7 +40,19 @@ function authorizedAs(permitted: (role: User["platformRole"]) => boolean) {
 }
 
 /** For acting on content and accounts: a moderator, or an administrator above them. */
-export const authorizedAsModerator = authorizedAs(mayModeratePlatform);
+export const authorizedAsModerator = authorizedAs((user) =>
+  mayModeratePlatform(user.platformRole)
+);
 
 /** For what changes the platform itself, granting a role included. */
-export const authorizedAsAdministrator = authorizedAs(mayAdministerPlatform);
+export const authorizedAsAdministrator = authorizedAs((user) =>
+  mayAdministerPlatform(user.platformRole)
+);
+
+/**
+ * For writing broadcasts and official threads and reading their queue. A permission rather than a
+ * role — see `mayPreparePublications` — which is why this reads the whole user and not its role.
+ */
+export const authorizedToPreparePublications = authorizedAs(
+  mayPreparePublications,
+);

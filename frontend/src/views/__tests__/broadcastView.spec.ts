@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import BroadcastView from '@/views/moderation/BroadcastView.vue'
 
@@ -12,6 +12,9 @@ import BroadcastView from '@/views/moderation/BroadcastView.vue'
  * hält die Oberflächen-Hälfte fest; die Datenbank-Hälfte steht in
  * `database/test/broadcast_audience_test.ts`.
  */
+
+/** Wer die Einträge geschrieben hat, wenn nichts anderes gesagt ist: nicht, wer angemeldet ist. */
+const SOMEONE_ELSE = '01900000-0000-7000-8000-0000000000bb'
 
 function entry(overrides: Record<string, unknown>) {
   return {
@@ -30,6 +33,7 @@ function entry(overrides: Record<string, unknown>) {
     sendAsUserId: null,
     sendAsUsername: null,
     scheduledFor: null,
+    writtenBy: SOMEONE_ELSE,
     writtenByUsername: 'federkiel',
     writtenAt: '2026-09-21T10:00:00.000Z',
     approvedByUsername: null,
@@ -62,14 +66,27 @@ const { sendTest, retract, released, viewer } = vi.hoisted(() => ({
   sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   retract: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   released: { value: { status: 200, data: [] as unknown[] } },
-  viewer: { isPrimordialAdmin: false },
+  viewer: {
+    isPrimordialAdmin: false,
+    platformRole: 'administrator',
+    id: '01900000-0000-7000-8000-0000000000aa',
+  },
 }))
 
-// Wer angemeldet ist — zählt nur beim Zurückziehen, das allein der Ur-Admin darf.
+// Wer angemeldet ist. Voreingestellt eine Administration; die Mod-Tests stellen es um und zurück.
 vi.mock('@/api/auth/auth', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useGetCurrentUser: () => ({
-    data: { value: { status: 200, data: { isPrimordialAdmin: viewer.isPrimordialAdmin } } },
+    data: {
+      value: {
+        status: 200,
+        data: {
+          isPrimordialAdmin: viewer.isPrimordialAdmin,
+          platformRole: viewer.platformRole,
+          id: viewer.id,
+        },
+      },
+    },
   }),
 }))
 
@@ -513,3 +530,72 @@ describe('BroadcastView, eine Rundmail zurückziehen', () => {
 function buttonsLabelledOrNone(wrapper: ReturnType<typeof broadcastView>, text: string) {
   return wrapper.findAll('button').filter((each) => each.text() === text)
 }
+
+const OWN = entry({ publicationId: '01900000-0000-7000-8000-0000000000c1', subject: 'Meine' })
+const FOREIGN = entry({ publicationId: '01900000-0000-7000-8000-0000000000c2', subject: 'Fremde' })
+
+/** Die Warteschlange mit einem eigenen und einem fremden Eintrag, gesehen mit dieser Rolle. */
+async function queueAs(platformRole: string) {
+  viewer.platformRole = platformRole
+  queue.value.data = [{ ...OWN, writtenBy: viewer.id }, FOREIGN]
+  const wrapper = broadcastView()
+  await openQueue(wrapper)
+  return wrapper
+}
+
+/** Den eigenen Eintrag bearbeiten und bis zur Bestätigung gehen, wo der Knopf seinen Namen hat. */
+async function confirmingOwnEditAs(platformRole: string) {
+  viewer.platformRole = platformRole
+  queue.value.data = [{ ...NAMES_ONLY, writtenBy: viewer.id }]
+  const wrapper = broadcastView()
+  await openQueue(wrapper)
+
+  await buttonsLabelled(wrapper, 'Bearbeiten')[0]?.trigger('click')
+  await flushPromises()
+  await wrapper.find('form').trigger('submit')
+  await flushPromises()
+
+  return wrapper
+}
+
+/**
+ * Was ein Mod auf dieser Seite darf: vorbereiten, einreichen, das Eigene ändern — nicht freigeben,
+ * und nichts von anderen anfassen. Das Backend prüft es selbst; hier geht es darum, dass die Seite
+ * keine Knöpfe anbietet, die jedes Drücken abweisen.
+ */
+describe('BroadcastView, was ein Mod darf und eine Administration', () => {
+  afterEach(() => {
+    viewer.platformRole = 'administrator'
+  })
+
+  it('bietet einem Mod kein Freigeben an und Ändern nur beim Eigenen', async () => {
+    const wrapper = await queueAs('moderator')
+
+    expect(buttonsLabelledOrNone(wrapper, 'Freigeben und senden')).toHaveLength(0)
+    expect(buttonsLabelledOrNone(wrapper, 'Bearbeiten')).toHaveLength(1)
+    expect(buttonsLabelledOrNone(wrapper, 'Verwerfen')).toHaveLength(1)
+  })
+
+  it('bietet der Administration Freigeben und Ändern an beidem an', async () => {
+    const wrapper = await queueAs('administrator')
+
+    expect(buttonsLabelledOrNone(wrapper, 'Freigeben und senden')).toHaveLength(2)
+    expect(buttonsLabelledOrNone(wrapper, 'Bearbeiten')).toHaveLength(2)
+  })
+
+  /** Der Knopf sagt, was geschieht: Bei der Administration folgt kein zweites Augenpaar mehr. */
+  it('nennt das Speichern einer Administration beim Namen: senden', async () => {
+    const wrapper = await confirmingOwnEditAs('administrator')
+
+    expect(buttonsLabelledOrNone(wrapper, 'Speichern und senden')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Sie geht sofort raus, ohne weitere Freigabe')
+  })
+
+  it('lässt einen Mod nur speichern, und die Freigabe steht noch aus', async () => {
+    const wrapper = await confirmingOwnEditAs('moderator')
+
+    expect(buttonsLabelledOrNone(wrapper, 'Änderung speichern')).toHaveLength(1)
+    expect(buttonsLabelledOrNone(wrapper, 'Speichern und senden')).toHaveLength(0)
+    expect(wrapper.text()).toContain('sobald die Administration sie freigibt')
+  })
+})

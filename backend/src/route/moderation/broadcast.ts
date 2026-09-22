@@ -2,7 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
+import { authorizedToPreparePublications } from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastService } from "@/src/service/broadcast_service.ts";
 import {
   BAD_REQUEST_RESPONSE,
@@ -42,7 +42,7 @@ export default new OpenAPIHono()
       description:
         "So the form can say how many before anybody presses send. A moment's truth rather than a promise: somebody may register in between.",
       operationId: "countBroadcastRecipients",
-      middleware: [authenticated, authorizedAsAdministrator] as const,
+      middleware: [authenticated, authorizedToPreparePublications] as const,
       // Flattened, because a query string carries no object: the roles arrive as one
       // comma-separated value rather than as a nested shape that would have to be encoded.
       request: {

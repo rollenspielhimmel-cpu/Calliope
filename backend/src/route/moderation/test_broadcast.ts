@@ -3,7 +3,7 @@ import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
-import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
+import { authorizedToPreparePublications } from "@/src/middleware/authorized_as_platform_role.ts";
 import { BroadcastService } from "@/src/service/broadcast_service.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
 import {
@@ -49,7 +49,7 @@ export default new OpenAPIHono().openapi(
     description:
       "Arrives exactly as the broadcast would, marked as a test, and only for the caller. No publication, no approval, no archive, and nothing counts as sent.",
     operationId: "sendTestBroadcast",
-    middleware: [authenticated, authorizedAsAdministrator] as const,
+    middleware: [authenticated, authorizedToPreparePublications] as const,
     request: {
       body: { required: true, content: jsonContent(TEST_BROADCAST_BODY) },
     },
