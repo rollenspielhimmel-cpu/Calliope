@@ -46,9 +46,25 @@ vi.mock('@/api/auth/auth', async (importOriginal) => ({
   useGetCurrentUser: () => ({ data: ref(undefined) }),
 }))
 
+// Eine Nachricht, wie der Test-Faden sie trägt: mit Betreff, ohne Rundmail-Kennung.
+const { shown } = vi.hoisted(() => ({
+  shown: [
+    {
+      id: '01900000-0000-7000-8000-000000000b01',
+      chatGroupId: '01900000-0000-7000-8000-000000000001',
+      text: 'So sähe sie aus.',
+      createdBy: '01900000-0000-7000-8000-00000000000c',
+      createdAt: '2026-09-22T08:00:00.000Z',
+      subject: 'Wartung',
+      createdByUsername: 'Admin',
+      isBroadcast: false,
+    },
+  ],
+}))
+
 vi.mock('@/composables/useChatMessages', () => ({
   useChatMessages: () => ({
-    fetched: ref([]),
+    fetched: ref(shown),
     hasLoaded: ref(true),
     isPending: ref(false),
     isError: ref(false),
@@ -122,5 +138,28 @@ describe('ChatConversation, ein Test-Faden', () => {
 
     expect(wrapper.find('input[name="message"]').exists()).toBe(true)
     expect(wrapper.find('[data-invite]').exists()).toBe(true)
+  })
+})
+
+describe('ChatConversation, die Markierung', () => {
+  it('steht im Test-Faden vor dem Betreff, und die Nachricht trägt die Kante', async () => {
+    const wrapper = conversation(true)
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('Test-Rundmail')
+    // Das Erste, was man liest: vor dem Betreff, nicht irgendwo darunter.
+    expect(text.indexOf('Test-Rundmail')).toBeLessThan(text.indexOf('Wartung'))
+    // Sie soll aussehen wie später — also die Kante wie an der echten Rundmail, obwohl die
+    // Nachricht keine Rundmail-Kennung trägt.
+    expect(wrapper.find('.border-oak').exists()).toBe(true)
+  })
+
+  it('fehlt in einem gewöhnlichen Gespräch', async () => {
+    const wrapper = conversation(false)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Test-Rundmail')
+    expect(wrapper.find('.border-oak').exists()).toBe(false)
   })
 })

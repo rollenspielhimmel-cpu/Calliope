@@ -17,6 +17,7 @@ import { listOnlyFilter } from '@/lib/api/queryKeys'
 import { useChatStream } from '@/composables/useChatStream'
 import { useOwnChatMembership } from '@/composables/useOwnChatMembership'
 import ChatConversation from '@/components/chat/ChatConversation.vue'
+import TestBroadcastMark from '@/components/chat/TestBroadcastMark.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -334,7 +335,7 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
               <!-- Hervorgehoben wie die echte, damit sie aussieht wie später — aber mit ihrem
                    eigenen Wort, damit niemand sie für die echte hält. -->
               <template v-else-if="chat.isTestBroadcast">
-                <span class="font-medium text-ink-4">Test-Rundmail</span> ·
+                <TestBroadcastMark class="text-ink-3" /> ·
               </template>
               {{ formatActivityTime(chat.lastActivityAt) }}
             </span>

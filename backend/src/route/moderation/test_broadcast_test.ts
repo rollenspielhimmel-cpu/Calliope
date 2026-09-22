@@ -9,7 +9,7 @@ import {
 } from "@/src/test/support.ts";
 import { deleteMailFor, waitForMail } from "@/src/test/mailpit.ts";
 import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
-import { TEST_MARK } from "@/src/service/broadcast_service.ts";
+import { MAIL_TEST_MARK } from "@/src/service/broadcast_service.ts";
 
 /**
  * Die Test-Rundmail.
@@ -146,9 +146,10 @@ Deno.test("eine Test-Rundmail kommt nur bei der Person an, die testet", async ()
     assertEquals(copy.chatGroupId, chatGroupId);
     assertEquals(await membersOf(chatGroupId), [TESTER]);
 
-    // So, wie sie ankäme: derselbe Absender und Betreff, der Text mit der Marke davor.
+    // So, wie sie ankäme: derselbe Absender, derselbe Text. **Ohne Markierung im Text** — die
+    // zeichnet die Oberfläche am Test-Faden, fett und gesperrt; gespeichert stünde sie doppelt.
     assertEquals(copy.senderUsername, PERSONA);
-    assertEquals(copy.text, `${TEST_MARK}\n\n${BODY}`);
+    assertEquals(copy.text, BODY);
     assert(copy.isTestBroadcast);
   } finally {
     await cleanUp();
@@ -303,7 +304,7 @@ Deno.test("den Test-Faden darf man verlassen", async () => {
   }
 });
 
-Deno.test("mit E-Mail geht die Test-Mail an die eigene Adresse, mit [TEST] im Betreff", async () => {
+Deno.test("mit E-Mail geht die Test-Mail an die eigene Adresse, markiert im Betreff", async () => {
   const cookies = await fixture();
 
   try {
@@ -312,8 +313,14 @@ Deno.test("mit E-Mail geht die Test-Mail an die eigene Adresse, mit [TEST] im Be
 
     // Gemessen an Mailpit, nicht angenommen: Die Mail ist wirklich angekommen, und so sieht sie aus.
     const mail = await waitForMail(`${TESTER}@example.com`);
-    assertEquals(mail.subject, `[TEST] ${SUBJECT}`);
-    assert(mail.text.includes(TEST_MARK), "die Marke steht auch in der Mail");
+    // So nah an der Markierung im Postfach, wie es in einer Betreffzeile geht: Großbuchstaben,
+    // aber keine Leerzeichen zwischen den Buchstaben — sonst läse ein Vorleseprogramm sie einzeln.
+    assertEquals(mail.subject, `${MAIL_TEST_MARK} ${SUBJECT}`);
+    assertEquals(MAIL_TEST_MARK, "— TEST-RUNDMAIL —");
+    assert(
+      mail.text.startsWith(MAIL_TEST_MARK),
+      "die Marke steht auch vor dem Mailtext",
+    );
     assert(mail.text.includes(BODY));
   } finally {
     await deleteMailFor([`${TESTER}@example.com`]);

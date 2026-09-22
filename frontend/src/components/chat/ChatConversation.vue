@@ -21,6 +21,7 @@ import { listOnlyFilter } from '@/lib/api/queryKeys'
 import ChatInvite from '@/components/chat/ChatInvite.vue'
 import LeaveChatDialog from '@/components/chat/LeaveChatDialog.vue'
 import MessageText from '@/components/chat/MessageText.vue'
+import TestBroadcastMark from '@/components/chat/TestBroadcastMark.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -393,7 +394,18 @@ async function submit() {
                Die Kante nur an der Rundmail selbst, nicht an den Antworten — auch nicht an denen
                der Administration. Dieselbe Farbe wie im Postfach, damit es dieselbe Aussage ist:
                „das kam vom Team". -->
-          <div :class="row.message.isBroadcast ? 'border-l-2 border-oak pl-2.5' : ''">
+          <!-- Im Test-Faden ist jede Nachricht eine Test-Rundmail. Sie trägt keine Rundmail-Kennung
+               — es gibt keine Rundmail, nur ihren Inhalt —, bekommt die Kante aber trotzdem: Sie
+               soll aussehen wie später. -->
+          <div
+            :class="
+              row.message.isBroadcast || isTestBroadcast ? 'border-l-2 border-oak pl-2.5' : ''
+            "
+          >
+            <!-- Vor dem Betreff, damit es das Erste ist, was man liest. -->
+            <p v-if="isTestBroadcast" class="mb-1 text-[12px] text-ink-2">
+              <TestBroadcastMark />
+            </p>
             <!-- Der Betreff war der Titel des Gesprächs, solange jede Rundmail ihren eigenen Faden
                  hatte. Jetzt trägt ein Faden viele, also steht er über der Nachricht, zu der er
                  gehört — als Überschrift und nicht in den Text geklebt. -->

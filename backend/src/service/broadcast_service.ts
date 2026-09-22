@@ -574,8 +574,16 @@ async function send(
   };
 }
 
-/** Was vor dem Text einer Test-Rundmail steht, im Postfach wie in der Mail. */
-export const TEST_MARK = "— TEST-Rundmail —";
+/**
+ * Die Markierung einer Test-Rundmail, **nur für die Mail**.
+ *
+ * Im Postfach zeichnet die Oberfläche sie selbst, fett und gesperrt, aus dem Test-Faden heraus —
+ * ein gespeichertes Textstück könnte weder das eine noch das andere. Eine Betreffzeile und reiner
+ * Mailtext können es auch nicht, also steht sie dort so nah daran, wie es geht: in Großbuchstaben,
+ * aber **ohne Leerzeichen zwischen den Buchstaben**. Die sähen gesperrt aus, ließen ein
+ * Vorleseprogramm aber Buchstabe für Buchstabe lesen, und die Suche fände das Wort nicht.
+ */
+export const MAIL_TEST_MARK = "— TEST-RUNDMAIL —";
 
 /** Was eine Test-Rundmail braucht: der Inhalt, wie er rausginge — ein Empfänger kommt nicht vor. */
 export type TestBroadcast = {
@@ -610,7 +618,7 @@ export type TestOutcome =
  * gekennzeichnet (`is_test_broadcast`) und nur für sie da.
  *
  * **Sonst wie der Ernstfall:** derselbe aufgelöste Absender, derselbe Betreff, dieselbe Glocke,
- * dieselbe Mail-Vorlage — nur mit `TEST_MARK` davor und „[TEST]" im Betreff der Mail. Keine
+ * dieselbe Mail-Vorlage — nur als Test markiert (siehe `MAIL_TEST_MARK`). Keine
  * Veröffentlichung, keine Freigabe, keine Empfängerzahl, kein Archiv.
  *
  * Der Absender wird geprüft wie bei einer echten Rundmail. Sonst ließe sich über den Test ausprobieren,
@@ -624,7 +632,9 @@ async function sendTest(
     return "sender_not_released";
   }
 
-  const text = `${TEST_MARK}\n\n${input.body}`;
+  // **Nur der Text, ohne Markierung.** Die zeichnet die Oberfläche am Test-Faden — gespeichert
+  // stünde sie weder fett noch gesperrt im Text und doppelt neben der gezeichneten.
+  const text = input.body;
   const now = new Date().toISOString();
   const messageId = generateUuidV7();
 
@@ -721,8 +731,8 @@ async function sendTest(
   Mailer.sendInBackground(
     broadcastMail({
       emailAddress: tester.emailAddress,
-      subject: `[TEST] ${input.subject}`,
-      body: text,
+      subject: `${MAIL_TEST_MARK} ${input.subject}`,
+      body: `${MAIL_TEST_MARK}\n\n${text}`,
     }),
   );
 
