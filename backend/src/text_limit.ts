@@ -37,6 +37,8 @@ export const TEXT_LIMIT = {
    */
   storyMetadataText: 500,
   threadTitle: 120,
+  /** Warum eine freigegebene Aussage geändert oder gelöscht wurde: ein, zwei Sätze fürs Protokoll. */
+  officialRevisionReason: 500,
   /** A page's name in the tree, on one line, like a thread's. */
   pageTitle: 120,
   folderTitle: 120,

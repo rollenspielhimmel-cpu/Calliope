@@ -1,3 +1,5 @@
+import { OfficialThreadService } from "@/src/service/official_thread_service.ts";
+import { REVISION_REASON } from "@/src/route/moderation/official_thread_changes.ts";
 import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { FORUM_TAG } from "@/src/open_api_specification.ts";
@@ -33,7 +35,12 @@ export default new OpenAPIHono().openapi(
       "Whoever wrote it, and only while they may still write in the thread. Discarding an unpublished draft is this endpoint too.",
     operationId: "deleteForumPost",
     middleware: authenticated,
-    request: { params: POST_PARAMS },
+    request: {
+      params: POST_PARAMS,
+      // Warum — nur bei einem offiziellen Beitrag, und dort Pflicht; mit dem gelöschten Text im
+      // Protokoll. In der Adresse, weil ein DELETE keinen Körper trägt.
+      query: z.object({ reason: REVISION_REASON.optional() }),
+    },
     responses: {
       [STATUS_CODE.OK]: {
         description: "The post is gone",
@@ -82,6 +89,31 @@ export default new OpenAPIHono().openapi(
         { error: "You cannot remove this post" },
         STATUS_CODE.Forbidden,
       );
+    }
+
+    // Offiziell: nur mit Grund, und der gelöschte Text steht danach im Protokoll.
+    if (post.isOfficial) {
+      const { reason } = c.req.valid("query");
+      if (reason === undefined) {
+        return c.json(
+          {
+            error:
+              "Einen offiziellen Beitrag löscht man mit einem Grund; er steht mit dem Text im Protokoll.",
+          },
+          STATUS_CODE.BadRequest,
+        );
+      }
+
+      const refusal = await OfficialThreadService.deleteOfficialPost(
+        threadId,
+        postId,
+        reason,
+        user,
+      );
+      if (refusal !== undefined) {
+        return c.json({ error: "Post not found" }, STATUS_CODE.NotFound);
+      }
+      return c.json({ ok: true } as const, STATUS_CODE.OK);
     }
 
     const removed = await WritingPostService.deletePost(postId);

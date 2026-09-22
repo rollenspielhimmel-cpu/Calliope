@@ -18,6 +18,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { computed, ref } from 'vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{
@@ -25,8 +28,23 @@ const props = defineProps<{
   authorName?: string
   pending: boolean
   error?: string
+  /**
+   * Ein offizieller Beitrag geht nur mit Grund; der steht mit dem gelöschten Text im Protokoll.
+   * Gesetzt heißt: fragen, mit dieser Obergrenze.
+   */
+  reasonMaxLength?: number
 }>()
-defineEmits<{ confirmed: [] }>()
+const emit = defineEmits<{ confirmed: [reason: string | undefined] }>()
+
+const reason = ref<string>('')
+const asksForReason = computed<boolean>(() => props.reasonMaxLength !== undefined)
+const missingReason = computed<boolean>(
+  () => asksForReason.value && reason.value.trim().length === 0,
+)
+
+function confirm() {
+  emit('confirmed', asksForReason.value ? reason.value.trim() : undefined)
+}
 </script>
 
 <template>
@@ -49,13 +67,27 @@ defineEmits<{ confirmed: [] }>()
           Du löschst, was jemand anderes geschrieben hat. Das lässt sich nicht zurückholen.
         </p>
         <p v-else>Das lässt sich nicht zurückholen.</p>
+
+        <Field v-if="asksForReason">
+          <FieldLabel for="delete-post-reason">Grund</FieldLabel>
+          <Input
+            id="delete-post-reason"
+            v-model="reason"
+            :maxlength="props.reasonMaxLength"
+            :disabled="pending"
+          />
+          <p class="text-control text-ink-5">
+            Ein offizieller Beitrag verschwindet nicht spurlos: Grund und Text bleiben im Protokoll,
+            das nur die Administration liest.
+          </p>
+        </Field>
       </div>
 
       <DialogFooter>
         <Button type="button" variant="outline" :disabled="pending" @click="open = false">
           Abbrechen
         </Button>
-        <Button type="button" :disabled="pending" @click="$emit('confirmed')">
+        <Button type="button" :disabled="pending || missingReason" @click="confirm">
           <Spinner v-if="pending" />
           Beitrag löschen
         </Button>

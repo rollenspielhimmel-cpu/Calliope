@@ -10,6 +10,8 @@ import { emptyDocument } from '@/lib/document/emptyDocument'
 import { sameDocument } from '@/lib/document/sameDocument'
 import PostBody from '@/components/thread/PostBody.vue'
 import PostEditor from '@/components/thread/PostEditor.vue'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 
 const props = defineProps<{
   post: ListPosts200ResultsItem
@@ -24,13 +26,18 @@ const props = defineProps<{
   editing?: boolean
   saving?: boolean
   error?: string
+  /**
+   * Ein offizieller Beitrag ändert sich nur mit Grund; er steht im Protokoll. Die Obergrenze kommt
+   * aus der Route, die ihn annimmt.
+   */
+  reasonMaxLength?: number
 }>()
 
 const emit = defineEmits<{
   report: []
   edit: []
   cancel: []
-  save: [document: PostDocument, text: string]
+  save: [document: PostDocument, text: string, reason: string | undefined]
   delete: []
   favouriteChanged: []
 }>()
@@ -78,6 +85,7 @@ const mayModify = computed<boolean>(() => {
  */
 const draft = ref<PostDocument>(emptyDocument())
 const draftText = ref<string>('')
+const reason = ref<string>('')
 
 const postEditor = useTemplateRef<{ focus: () => void }>('postEditor')
 
@@ -89,6 +97,7 @@ watch(
     // so editing a post with a heading or a bold word would silently flatten it.
     draft.value = props.post.document
     draftText.value = props.post.text
+    reason.value = ''
     await nextTick()
     // Focus follows the opening, as it does for the composer: open and type is one gesture.
     postEditor.value?.focus()
@@ -98,6 +107,16 @@ watch(
 
 /** Compared as documents: re-bolding a word changes no prose, and Speichern must still light up. */
 const unchanged = computed<boolean>(() => sameDocument(draft.value, props.post.document))
+
+/** Nur bei einem offiziellen Beitrag gefragt, und dort ohne ihn kein Speichern. */
+const asksForReason = computed<boolean>(() => props.post.isOfficial)
+const missingReason = computed<boolean>(
+  () => asksForReason.value && reason.value.trim().length === 0,
+)
+
+function save() {
+  emit('save', draft.value, draftText.value, asksForReason.value ? reason.value.trim() : undefined)
+}
 
 /**
  * Named only when somebody other than the author edited it — an administrator may, and that is
@@ -138,6 +157,20 @@ const meta = computed<string>(() => {
         framed
       />
 
+      <Field v-if="asksForReason">
+        <FieldLabel :for="`reason-${post.id}`">Grund der Änderung</FieldLabel>
+        <Input
+          :id="`reason-${post.id}`"
+          v-model="reason"
+          :maxlength="reasonMaxLength"
+          :disabled="saving"
+        />
+        <p class="text-control text-ink-5">
+          Ein offizieller Beitrag ändert sich nicht unbemerkt: Der Grund steht mit dem Text vorher
+          und nachher im Protokoll, das nur die Administration liest.
+        </p>
+      </Field>
+
       <Alert v-if="error" variant="destructive" role="alert">
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
@@ -169,8 +202,8 @@ const meta = computed<string>(() => {
         <button
           type="button"
           class="flex min-h-11 items-center font-medium text-oak-deep disabled:opacity-50 md:min-h-0"
-          :disabled="saving || unchanged"
-          @click="emit('save', draft, draftText)"
+          :disabled="saving || unchanged || missingReason"
+          @click="save"
         >
           {{ saving ? 'Wird gespeichert …' : 'Speichern' }}
         </button>

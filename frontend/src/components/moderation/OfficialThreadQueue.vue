@@ -8,6 +8,10 @@
  *
  * Bearbeitet werden Titel, Eröffnungsbeitrag und Termin. Absender, Unterforum und der Haken „nur
  * für die Administration" bleiben, wie sie eingereicht wurden; sie mitzuschicken hält sie fest.
+ *
+ * Eine Einreichung für einen Thread, der schon im Forum steht, tauscht nur den Namen am
+ * Eröffnungsbeitrag. Da gibt es nichts zu bearbeiten: Titel und Text stehen fest, einen Termin hat
+ * sie nicht. Sie steht mit einem Hinweis da und verlinkt den Thread, der ja schon zu lesen ist.
  */
 import { computed, ref } from 'vue'
 import {
@@ -201,12 +205,15 @@ function statusSentence(entry: Entry): string {
         <template v-else>
           <p class="text-row text-ink-2">
             <RouterLink
-              v-if="mode === 'released'"
+              v-if="mode === 'released' || entry.forExistingThread"
               :to="{ name: 'forumThread', params: { threadId: entry.threadId } }"
               class="underline-offset-[5px] hover:underline"
               >{{ entry.title }}</RouterLink
             >
             <template v-else>{{ entry.title }}</template>
+          </p>
+          <p v-if="entry.forExistingThread" class="mt-0.5 text-[12px] text-ink-5">
+            Steht schon im Forum · tauscht nur den Namen am Eröffnungsbeitrag
           </p>
           <p v-if="entry.administrationOnly" class="mt-0.5 text-[12px] text-ink-5">
             Nur für die Administration sichtbar
@@ -229,10 +236,16 @@ function statusSentence(entry: Entry): string {
               :disabled="isApproving || isDiscarding"
               @click="approve(entry)"
             >
-              {{ entry.scheduledFor === null ? 'Freigeben und veröffentlichen' : 'Freigeben' }}
+              {{
+                entry.forExistingThread
+                  ? 'Freigeben und Namen tauschen'
+                  : entry.scheduledFor === null
+                    ? 'Freigeben und veröffentlichen'
+                    : 'Freigeben'
+              }}
             </Button>
             <Button
-              v-if="mayChange(entry)"
+              v-if="mayChange(entry) && !entry.forExistingThread"
               variant="outline"
               size="sm"
               :disabled="isApproving || isDiscarding"

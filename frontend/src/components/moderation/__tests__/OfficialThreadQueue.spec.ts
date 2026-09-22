@@ -103,3 +103,26 @@ describe('OfficialThreadQueue', () => {
     expect(labelled(wrapper, 'Bearbeiten')).toHaveLength(2)
   })
 })
+
+/**
+ * Eine Einreichung für einen Thread, der schon im Forum steht, tauscht nur den Namen: Titel und
+ * Text stehen fest, einen Termin hat sie nicht — also gibt es nichts zu bearbeiten.
+ */
+describe('OfficialThreadQueue, nachträglich offiziell', () => {
+  it('bietet kein Bearbeiten an und sagt, was die Freigabe tut', () => {
+    mocks.viewer.platformRole = 'administrator'
+    mocks.queue.value = {
+      status: 200,
+      data: [{ ...entry('p-later', OWN, 'Schon im Forum'), forExistingThread: true }],
+    }
+    const wrapper = mount(OfficialThreadQueue, {
+      props: { mode: 'waiting' },
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+
+    expect(labelled(wrapper, 'Bearbeiten')).toHaveLength(0)
+    expect(labelled(wrapper, 'Verwerfen')).toHaveLength(1)
+    expect(labelled(wrapper, 'Freigeben und Namen tauschen')).toHaveLength(1)
+    expect(wrapper.text()).toContain('tauscht nur den Namen am Eröffnungsbeitrag')
+  })
+})

@@ -6,6 +6,7 @@ import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import { visibleTo } from "@/src/service/publication_visibility.ts";
 import { theAdministration } from "@/src/service/root_admin_service.ts";
+import type { PostDocument } from "@/src/document/document_schema.ts";
 import {
   documentToPlainText,
   plainTextToDocument,
@@ -64,6 +65,12 @@ export type QueuedThread = OfficialThreadInput & {
   editedByUsername: string | null;
   editedAt: string | null;
   releasedAt: string | null;
+  /**
+   * Für einen Thread, der schon im Forum steht: tauscht beim Freigeben nur den Namen am
+   * Eröffnungsbeitrag. Titel und Text lassen sich in dieser Einreichung nicht ändern — sonst würde
+   * mit der Freigabe unbemerkt ein anderer Text öffentlich.
+   */
+  forExistingThread: boolean;
 };
 
 /** Was noch zu ändern ist: weder draußen noch verworfen. */
@@ -92,6 +99,7 @@ function rows(executor: typeof db | Transaction = db) {
       "publication.approvedAt",
       "publication.editedAt",
       "publication.releasedAt",
+      "publication.forExistingThread",
       "sender.username as sendAsUsername",
       "author.username as writtenByUsername",
       "approver.username as approvedByUsername",
@@ -108,9 +116,7 @@ function rows(executor: typeof db | Transaction = db) {
         WHERE opening.writing_thread_id = writing_thread.id
         ORDER BY opening.created_at, opening.id LIMIT 1)`.as("text"),
     )
-    .where("publication.kind", "=", "forum_thread")
-    // Nur die als offizieller Thread geschriebenen, nicht die nachträglich gesetzten (2b).
-    .where("writingThread.shownAsSetAt", "is not", null);
+    .where("publication.kind", "=", "forum_thread");
 }
 
 type Row = Awaited<
@@ -277,7 +283,8 @@ export type EditRefusal =
   | ThreadRefusal
   | "not_found"
   | "already_out"
-  | "not_yours";
+  | "not_yours"
+  | "content_fixed";
 
 /** Ohne Administration nur das Eigene — beim Bearbeiten wie beim Verwerfen. */
 function mayTouch(publication: { writtenBy: string | null }, actor: User) {
@@ -307,6 +314,18 @@ async function edit(
   }
   if (!mayTouch(existing, editor)) {
     return "not_yours";
+  }
+
+  // **Bei einem Thread, der schon im Forum steht, tauscht die Einreichung nur den Namen.** Titel,
+  // Text oder Ort in derselben Einreichung zu ändern hieße, mit der Freigabe unbemerkt einen
+  // anderen Text öffentlich zu machen. Wer das will, ändert ihn danach als Administration — mit
+  // Grund und im Protokoll.
+  if (
+    existing.forExistingThread &&
+    (input.title !== existing.title || input.text !== existing.text ||
+      input.folderId !== existing.folderId)
+  ) {
+    return "content_fixed";
   }
 
   const checked = await checkInput(editor, input, existing.administrationOnly);
@@ -339,6 +358,12 @@ async function edit(
 
       if (changed === undefined) {
         throw new NoLongerOpen();
+      }
+
+      // Ein bestehender Thread bekommt seinen Absender erst beim Freigeben; hier ändert sich an ihm
+      // nichts.
+      if (existing.forExistingThread) {
+        return;
       }
 
       await transaction
@@ -465,11 +490,16 @@ async function release(publicationId: string): Promise<boolean> {
       .where("id", "=", publicationId)
       .where("kind", "=", "forum_thread")
       .where("status", "=", "approved")
-      .returning("id")
+      .returning(["forExistingThread", "sendAsUserId", "writtenBy"])
       .executeTakeFirst();
 
     if (claimed === undefined) {
       return false;
+    }
+
+    if (claimed.forExistingThread) {
+      await makeExistingOfficial(transaction, publicationId, claimed, now);
+      return true;
     }
 
     const thread = await transaction
@@ -490,6 +520,67 @@ async function release(publicationId: string): Promise<boolean> {
 
     return true;
   });
+}
+
+/**
+ * Ein Thread, der schon im Forum steht, wird offiziell: **nur der Eröffnungsbeitrag** — und der
+ * Thread selbst, dessen Eröffner er ist — erscheint ab jetzt unter dem Absender. Spätere Antworten
+ * derselben Person bleiben unter ihrem Namen, und keine Zeit ändert sich: Der Thread ist nicht neu.
+ *
+ * Der Absender wird hier aufgelöst, nicht beim Einreichen: „Admin" ist das Konto, das die
+ * Plattform zum Zeitpunkt der Freigabe trägt.
+ */
+async function makeExistingOfficial(
+  transaction: Transaction,
+  publicationId: string,
+  publication: { sendAsUserId: string | null; writtenBy: string | null },
+  now: string,
+): Promise<void> {
+  const shownAs = publication.sendAsUserId ??
+    (await transaction
+      .selectFrom("user")
+      .select("id")
+      .where("isPrimordialAdmin", "=", true)
+      .executeTakeFirst())?.id;
+
+  if (shownAs === undefined) {
+    // Ohne Konto der Plattform gibt es „Admin" gerade nicht. Zurückrollen, damit sie freigegeben
+    // bleibt und der nächste Takt es noch einmal versucht.
+    throw new Error("There is no platform account to show the thread as");
+  }
+
+  const thread = await transaction
+    .updateTable("writingThread")
+    .set({
+      shownAsUserId: shownAs,
+      shownAsSetBy: publication.writtenBy,
+      shownAsSetAt: now,
+    })
+    .where("publicationId", "=", publicationId)
+    .where("shownAsSetAt", "is", null)
+    .returning("id")
+    .executeTakeFirstOrThrow();
+
+  // Der Eröffnungsbeitrag ist der erste des Threads.
+  await transaction
+    .updateTable("writingPost")
+    .set({
+      shownAsUserId: shownAs,
+      shownAsSetBy: publication.writtenBy,
+      shownAsSetAt: now,
+    })
+    .where(
+      "id",
+      "=",
+      (eb) =>
+        eb.selectFrom("writingPost as opening")
+          .select("opening.id")
+          .where("opening.writingThreadId", "=", thread.id)
+          .orderBy("opening.createdAt")
+          .orderBy("opening.id")
+          .limit(1),
+    )
+    .execute();
 }
 
 /** Was fällig ist, erscheint. Der Taktgeber ruft das jede Minute, wie bei den Rundmails. */
@@ -545,12 +636,363 @@ async function listReleased(viewer: User): Promise<QueuedThread[]> {
   return found.map(toQueued);
 }
 
+// ── Nachträglich offiziell ──────────────────────────────────────────────────────────────────
+
+export type ExistingThreadInput = {
+  threadId: string;
+  sendAsUserId: string | null;
+  administrationOnly: boolean;
+};
+
+export type ExistingRefusal =
+  | ThreadRefusal
+  | "thread_not_found"
+  | "not_the_opener"
+  | "opening_post_not_by_team"
+  | "already_official"
+  | "already_pending";
+
+/**
+ * Macht einen Thread offiziell, der schon im Forum steht.
+ *
+ * **Wer:** der Eröffner selbst oder eine Administration, sonst niemand — sonst könnte jemand den
+ * Beitrag eines anderen zur offiziellen Aussage machen. **Wessen:** nur, wenn der Eröffnungsbeitrag
+ * von jemandem aus dem Team stammt, heute; wer das Team verlassen hat, dessen alte Beiträge bleiben
+ * unter dem eigenen Namen.
+ *
+ * Läuft durch die Warteschlange, ohne Termin; bis zur Freigabe bleibt der eigene Name stehen. Von
+ * einer Administration ist es sofort freigegeben. Titel und Text ändern sich dabei nicht.
+ */
+async function submitForExisting(
+  actor: User,
+  input: ExistingThreadInput,
+): Promise<QueuedThread | ExistingRefusal> {
+  const thread = await db
+    .selectFrom("writingThread")
+    .leftJoin("publication", "publication.id", "writingThread.publicationId")
+    .select([
+      "writingThread.id",
+      "writingThread.title",
+      "writingThread.folderId",
+      "writingThread.createdBy",
+      "writingThread.awaitingRelease",
+      "writingThread.shownAsSetAt",
+      "publication.status as publicationStatus",
+    ])
+    .where("writingThread.id", "=", input.threadId)
+    .where("writingThread.writingGroupId", "is", null)
+    .executeTakeFirst();
+
+  if (thread === undefined || thread.awaitingRelease) {
+    return "thread_not_found";
+  }
+  if (thread.shownAsSetAt !== null) {
+    return "already_official";
+  }
+  // Eine offene Einreichung für diesen Thread gibt es schon; eine verworfene steht nicht im Weg.
+  if (
+    thread.publicationStatus !== null &&
+    thread.publicationStatus !== "discarded"
+  ) {
+    return "already_pending";
+  }
+  if (
+    !mayAdministerPlatform(actor.platformRole) && thread.createdBy !== actor.id
+  ) {
+    return "not_the_opener";
+  }
+
+  const opening = await db
+    .selectFrom("writingPost")
+    .leftJoin("user", "user.id", "writingPost.createdBy")
+    .select(["writingPost.text", "user.platformRole"])
+    .where("writingPost.writingThreadId", "=", thread.id)
+    .orderBy("writingPost.createdAt")
+    .orderBy("writingPost.id")
+    .limit(1)
+    .executeTakeFirst();
+
+  if (opening === undefined || opening.platformRole === null) {
+    return "opening_post_not_by_team";
+  }
+
+  const checked = await checkInput(actor, {
+    title: thread.title,
+    text: opening.text,
+    folderId: thread.folderId,
+    sendAsUserId: input.sendAsUserId,
+    scheduledFor: null,
+    administrationOnly: input.administrationOnly,
+  }, false);
+  if (typeof checked === "string") {
+    return checked;
+  }
+
+  const now = new Date().toISOString();
+  const givesOwnApproval = mayAdministerPlatform(actor.platformRole);
+
+  const publicationId = await db.transaction().execute(async (transaction) => {
+    const publication = await transaction
+      .insertInto("publication")
+      .values({
+        kind: "forum_thread",
+        forExistingThread: true,
+        status: givesOwnApproval ? "approved" : "awaiting_approval",
+        sendAsUserId: input.sendAsUserId,
+        scheduledFor: null,
+        administrationOnly: input.administrationOnly,
+        writtenBy: actor.id,
+        writtenAt: now,
+        approvedBy: givesOwnApproval ? actor.id : null,
+        approvedAt: givesOwnApproval ? now : null,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    await transaction
+      .updateTable("writingThread")
+      .set({ publicationId: publication.id })
+      .where("id", "=", thread.id)
+      .execute();
+
+    return publication.id;
+  });
+
+  if (givesOwnApproval) {
+    await release(publicationId);
+  }
+
+  return await selectOneOrThrow(publicationId);
+}
+
+// ── Nach dem Erscheinen: Ändern nur mit Grund, und im Protokoll ─────────────────────────────
+
+export type RevisionRefusal = "not_found" | "not_official" | "unchanged";
+
+/** Ein erschienener offizieller Thread: sichtbar und verdeckt. */
+async function officialThread(threadId: string, executor: Transaction) {
+  return await executor
+    .selectFrom("writingThread")
+    .select(["id", "title"])
+    .where("id", "=", threadId)
+    .where("writingGroupId", "is", null)
+    .where("awaitingRelease", "=", false)
+    .where("shownAsSetAt", "is not", null)
+    .executeTakeFirst();
+}
+
+/**
+ * Ändert die Überschrift eines offiziellen Threads — nur eine Administration (die Route), nur mit
+ * Grund, und mit Titel vorher und nachher im Protokoll. In einer Transaktion: Eine Änderung ohne
+ * Protokolleintrag kann es so nicht geben.
+ */
+async function changeTitle(
+  threadId: string,
+  title: string,
+  reason: string,
+  editor: User,
+): Promise<RevisionRefusal | { title: string }> {
+  return await db.transaction().execute(async (transaction) => {
+    const thread = await transaction
+      .selectFrom("writingThread")
+      .select(["id", "title", "shownAsSetAt", "awaitingRelease"])
+      .where("id", "=", threadId)
+      .where("writingGroupId", "is", null)
+      .forUpdate()
+      .executeTakeFirst();
+
+    if (thread === undefined || thread.awaitingRelease) {
+      return "not_found";
+    }
+    if (thread.shownAsSetAt === null) {
+      return "not_official";
+    }
+    if (thread.title === title) {
+      return "unchanged";
+    }
+
+    await transaction.updateTable("writingThread").set({ title })
+      .where("id", "=", threadId).execute();
+
+    await transaction
+      .insertInto("officialRevision")
+      .values({
+        kind: "title_changed",
+        writingThreadId: threadId,
+        editedBy: editor.id,
+        reason,
+        titleBefore: thread.title,
+        titleAfter: title,
+      })
+      .execute();
+
+    return { title };
+  });
+}
+
+/**
+ * Ändert einen offiziellen Beitrag — nur eine Administration (die Route), nur mit Grund, Text
+ * vorher und nachher im Protokoll, in einer Transaktion.
+ *
+ * Ein eigener Weg neben `WritingPostService.updatePost`, nicht durch ihn: Der gehört dem Forum und
+ * den Gruppen, und das Protokoll muss in derselben Transaktion stehen wie die Änderung.
+ */
+async function editOfficialPost(
+  threadId: string,
+  postId: string,
+  document: PostDocument,
+  reason: string,
+  editor: User,
+): Promise<RevisionRefusal | undefined> {
+  return await db.transaction().execute(async (transaction) => {
+    if (await officialThread(threadId, transaction) === undefined) {
+      return "not_found";
+    }
+
+    const before = await transaction
+      .selectFrom("writingPost")
+      .select(["text", "document", "shownAsSetAt"])
+      .where("id", "=", postId)
+      .where("writingThreadId", "=", threadId)
+      .forUpdate()
+      .executeTakeFirst();
+
+    if (before === undefined) {
+      return "not_found";
+    }
+    if (before.shownAsSetAt === null) {
+      return "not_official";
+    }
+
+    const text = documentToPlainText(document);
+    if (text === before.text) {
+      return "unchanged";
+    }
+
+    await transaction
+      .updateTable("writingPost")
+      .set({
+        document,
+        text,
+        editedAt: new Date().toISOString(),
+        editedBy: editor.id,
+      })
+      .where("id", "=", postId)
+      .execute();
+
+    await transaction
+      .insertInto("officialRevision")
+      .values({
+        kind: "post_edited",
+        writingThreadId: threadId,
+        writingPostId: postId,
+        editedBy: editor.id,
+        reason,
+        textBefore: before.text,
+        textAfter: text,
+        documentBefore: JSON.stringify(before.document),
+        documentAfter: JSON.stringify(document),
+      })
+      .execute();
+
+    return undefined;
+  });
+}
+
+/** Löscht einen offiziellen Beitrag — mit Grund, und mit dem gelöschten Text im Protokoll. */
+async function deleteOfficialPost(
+  threadId: string,
+  postId: string,
+  reason: string,
+  editor: User,
+): Promise<RevisionRefusal | undefined> {
+  return await db.transaction().execute(async (transaction) => {
+    if (await officialThread(threadId, transaction) === undefined) {
+      return "not_found";
+    }
+
+    const before = await transaction
+      .selectFrom("writingPost")
+      .select(["text", "document", "shownAsSetAt"])
+      .where("id", "=", postId)
+      .where("writingThreadId", "=", threadId)
+      .forUpdate()
+      .executeTakeFirst();
+
+    if (before === undefined) {
+      return "not_found";
+    }
+    if (before.shownAsSetAt === null) {
+      return "not_official";
+    }
+
+    // Zuerst ins Protokoll, dann löschen: Die Zeile verweist danach auf keinen Beitrag mehr
+    // (`ON DELETE SET NULL`), aber der Text steht in ihr selbst.
+    await transaction
+      .insertInto("officialRevision")
+      .values({
+        kind: "post_deleted",
+        writingThreadId: threadId,
+        writingPostId: postId,
+        editedBy: editor.id,
+        reason,
+        textBefore: before.text,
+        documentBefore: JSON.stringify(before.document),
+      })
+      .execute();
+
+    await transaction.deleteFrom("writingPost").where("id", "=", postId)
+      .execute();
+
+    return undefined;
+  });
+}
+
+export type OfficialRevision = {
+  id: string;
+  kind: "title_changed" | "post_edited" | "post_deleted";
+  editedByUsername: string | null;
+  editedAt: string;
+  reason: string;
+  titleBefore: string | null;
+  titleAfter: string | null;
+  textBefore: string | null;
+  textAfter: string | null;
+};
+
+/** Das Protokoll eines offiziellen Threads, die neuesten zuerst. Nur für die Administration. */
+async function listRevisions(threadId: string): Promise<OfficialRevision[]> {
+  return await db
+    .selectFrom("officialRevision")
+    .leftJoin("user", "user.id", "officialRevision.editedBy")
+    .select([
+      "officialRevision.id",
+      "officialRevision.kind",
+      "user.username as editedByUsername",
+      "officialRevision.editedAt",
+      "officialRevision.reason",
+      "officialRevision.titleBefore",
+      "officialRevision.titleAfter",
+      "officialRevision.textBefore",
+      "officialRevision.textAfter",
+    ])
+    .where("officialRevision.writingThreadId", "=", threadId)
+    .orderBy("officialRevision.editedAt", "desc")
+    .orderBy("officialRevision.id", "desc")
+    .execute();
+}
+
 export const OfficialThreadService = {
   submit,
+  submitForExisting,
   edit,
   discard,
   approve,
   releaseDue,
   listWaiting,
   listReleased,
+  changeTitle,
+  editOfficialPost,
+  deleteOfficialPost,
+  listRevisions,
 };

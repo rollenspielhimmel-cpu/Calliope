@@ -44,6 +44,9 @@ const data = scopedTestData({
       .select("id")
       .where("username", "in", USERS);
 
+    await transaction.deleteFrom("officialRevision")
+      .where("editedBy", "in", ids)
+      .execute();
     await transaction.deleteFrom("publication").where("writtenBy", "in", ids)
       .execute();
   },
@@ -364,8 +367,10 @@ Deno.test("einen offiziellen Beitrag ändert und löscht nur die Administration"
   }
 
   assertEquals(
-    (await request("PATCH", path, cookies.admin, postBody("Korrigiert.")))
-      .status,
+    (await request("PATCH", path, cookies.admin, {
+      ...postBody("Korrigiert."),
+      reason: "Tippfehler",
+    })).status,
     STATUS_CODE.OK,
   );
 
@@ -497,4 +502,394 @@ Deno.test("die Bearbeitung eines Mods nimmt die Freigabe zurück", async () => {
   );
   assertEquals(edited.status, STATUS_CODE.OK);
   assertEquals((await edited.json()).status, "awaiting_approval");
+});
+
+// ── 2b: nachträglich offiziell, und das Protokoll ───────────────────────────────────────────
+
+/** Ein gewöhnlicher Forum-Thread mit Eröffnungsbeitrag, von dieser Person eröffnet. */
+async function ordinaryThread(cookie: string, folderId: string) {
+  const created = await request("POST", "/api/forum/threads", cookie, {
+    title: `${TITLE}-gewoehnlich`,
+    folderId,
+  });
+  assertEquals(created.status, STATUS_CODE.Created);
+  const { id: threadId } = await created.json() as { id: string };
+
+  const opening = await request(
+    "POST",
+    `/api/forum/threads/${threadId}/posts`,
+    cookie,
+    postBody(`${TEXT}-eroeffnung`),
+  );
+  assertEquals(opening.status, STATUS_CODE.Created);
+  return { threadId };
+}
+
+async function postsAsSeenBy(cookie: string, threadId: string) {
+  const posts = await (await request(
+    "QUERY",
+    `/api/forum/threads/${threadId}/posts`,
+    cookie,
+    { limit: 50, offset: 0 },
+  )).json() as {
+    results: Array<{ createdByUsername: string | null; isOfficial: boolean }>;
+  };
+  return posts.results;
+}
+
+async function makeOfficial(cookie: string, threadId: string) {
+  return await request(
+    "POST",
+    "/api/moderation/official-threads/existing",
+    cookie,
+    { threadId, sendAsUserId: await getUserId(FLAMINGO) },
+  );
+}
+
+/**
+ * **Nachträglich offiziell:** Bis zur Freigabe bleibt der eigene Name stehen, danach steht der
+ * Absender am Eröffnungsbeitrag — und spätere Antworten derselben Person bleiben unter ihrem Namen.
+ */
+Deno.test("nachträglich offiziell: bis zur Freigabe der eigene Name, danach nur der Eröffnungsbeitrag unter dem Absender", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-2b", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+
+  const submittedLater = await makeOfficial(cookies.mod, threadId);
+  assertEquals(submittedLater.status, STATUS_CODE.Created);
+  const { publicationId, status } = await submittedLater.json() as {
+    publicationId: string;
+    status: string;
+  };
+  assertEquals(status, "awaiting_approval");
+
+  const before = await postsAsSeenBy(cookies.member, threadId);
+  assertEquals(before[0]?.createdByUsername, MOD, "bis zur Freigabe");
+  assertEquals(before[0]?.isOfficial, false);
+
+  // Eine Antwort derselben Person, noch vor der Freigabe: Die Freigabe darf nur den
+  // Eröffnungsbeitrag umbenennen, nicht alles, was sie im Thread geschrieben hat.
+  await request(
+    "POST",
+    `/api/forum/threads/${threadId}/posts`,
+    cookies.mod,
+    postBody("Eine spätere Antwort."),
+  );
+
+  assertEquals(
+    (await request(
+      "POST",
+      `/api/moderation/official-threads/${publicationId}/approval`,
+      cookies.admin,
+    )).status,
+    STATUS_CODE.OK,
+  );
+
+  const after = await postsAsSeenBy(cookies.member, threadId);
+  assertEquals(after[0]?.createdByUsername, FLAMINGO, "der Eröffnungsbeitrag");
+  assertEquals(after[0]?.isOfficial, true);
+  assertEquals(after[1]?.createdByUsername, MOD, "die Antwort bleibt beim Mod");
+  assertEquals(after[1]?.isOfficial, false);
+
+  const thread = await (await request(
+    "GET",
+    `/api/forum/threads/${threadId}`,
+    cookies.member,
+  )).text();
+  assert(!thread.includes(MOD), "am Thread steht der Mod auch nicht mehr");
+  assert(thread.includes(`${TITLE}-gewoehnlich`), "Überschrift unverändert");
+});
+
+Deno.test("nachträglich offiziell macht nur der Eröffner oder die Administration", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-2b", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+
+  // Ein anderer aus dem Team, mit demselben Absender — aber nicht der Eröffner.
+  await db.updateTable("user").set({ platformRole: "moderator" })
+    .where("username", "=", MEMBER).execute();
+  assertEquals(
+    (await makeOfficial(cookies.member, threadId)).status,
+    STATUS_CODE.Forbidden,
+  );
+
+  const byAdmin = await makeOfficial(cookies.admin, threadId);
+  assertEquals(byAdmin.status, STATUS_CODE.Created);
+  assertEquals(
+    (await byAdmin.json() as { status: string }).status,
+    "released",
+    "von der Administration sofort",
+  );
+  assertEquals(
+    (await postsAsSeenBy(cookies.flamingo, threadId))[0]?.createdByUsername,
+    FLAMINGO,
+  );
+});
+
+/** Einem Mitglied lassen sich keine Worte als offizielle Aussage unterschieben. */
+Deno.test("nachträglich offiziell nur, wenn der Eröffnungsbeitrag heute aus dem Team stammt", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-2b", "write");
+  const { threadId } = await ordinaryThread(cookies.member, open.id);
+
+  assertEquals(
+    (await makeOfficial(cookies.admin, threadId)).status,
+    STATUS_CODE.Forbidden,
+    "von einem Mitglied",
+  );
+
+  // Wer das Team verlassen hat: dessen alte Beiträge bleiben unter dem eigenen Namen.
+  const { threadId: fromFormerMod } = await ordinaryThread(
+    cookies.mod,
+    open.id,
+  );
+  await setRole(MOD, null);
+  assertEquals(
+    (await makeOfficial(cookies.admin, fromFormerMod)).status,
+    STATUS_CODE.Forbidden,
+    "von jemandem, der nicht mehr im Team ist",
+  );
+});
+
+/** Die Einreichung tauscht nur den Namen: Titel und Text lassen sich darin nicht ändern. */
+Deno.test("nachträglich offiziell: Titel und Text sind in der Einreichung nicht änderbar", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-2b", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+  const { publicationId } = await (await makeOfficial(cookies.mod, threadId))
+    .json() as { publicationId: string };
+  const path = `/api/moderation/official-threads/${publicationId}`;
+
+  const body = {
+    title: `${TITLE}-gewoehnlich`,
+    text: `${TEXT}-eroeffnung`,
+    folderId: open.id,
+    sendAsUserId: await getUserId(FLAMINGO),
+    scheduledFor: null,
+  };
+
+  assertEquals(
+    (await request("PUT", path, cookies.mod, { ...body, text: "Anders." }))
+      .status,
+    STATUS_CODE.Conflict,
+    "anderer Text",
+  );
+  assertEquals(
+    (await request("PUT", path, cookies.mod, { ...body, title: "Anders" }))
+      .status,
+    STATUS_CODE.Conflict,
+    "andere Überschrift",
+  );
+  assertEquals(
+    (await request("PUT", path, cookies.mod, body)).status,
+    STATUS_CODE.OK,
+    "derselbe Inhalt, anderes nicht",
+  );
+  assertEquals(
+    (await makeOfficial(cookies.mod, threadId)).status,
+    STATUS_CODE.Conflict,
+    "zweimal einreichen nicht",
+  );
+});
+
+/** Ein erschienener offizieller Thread und die Kennung seines Eröffnungsbeitrags. */
+async function releasedOfficial(cookies: Awaited<ReturnType<typeof fixture>>) {
+  const { threadId } = await submitted(cookies.admin);
+  const { id: postId } = await db.selectFrom("writingPost").select("id")
+    .where("writingThreadId", "=", threadId).executeTakeFirstOrThrow();
+  return { threadId, postId };
+}
+
+type Revision = {
+  kind: string;
+  reason: string;
+  editedByUsername: string | null;
+  titleBefore: string | null;
+  titleAfter: string | null;
+  textBefore: string | null;
+  textAfter: string | null;
+};
+
+async function revisions(cookie: string, threadId: string) {
+  return await request(
+    "GET",
+    `/api/moderation/official-threads/threads/${threadId}/revisions`,
+    cookie,
+  );
+}
+
+async function revisionsOf(cookies: { admin: string }, threadId: string) {
+  return await (await revisions(cookies.admin, threadId)).json() as Revision[];
+}
+
+/** Eine freigegebene Aussage ändert sich nicht ohne Grund, und nicht ohne Spur. */
+Deno.test("einen offiziellen Beitrag ändern: nur mit Grund, Text vorher und nachher im Protokoll", async () => {
+  const cookies = await fixture();
+  const { threadId, postId } = await releasedOfficial(cookies);
+  const path = `/api/forum/threads/${threadId}/posts/${postId}`;
+
+  assertEquals(
+    (await request("PATCH", path, cookies.admin, postBody("Ohne Grund.")))
+      .status,
+    STATUS_CODE.BadRequest,
+    "ohne Grund",
+  );
+  assertEquals(
+    (await request("PATCH", path, cookies.admin, {
+      ...postBody("Ohne Grund."),
+      reason: "   ",
+    })).status,
+    STATUS_CODE.BadRequest,
+    "mit leerem Grund",
+  );
+  assertEquals((await revisionsOf(cookies, threadId)).length, 0);
+
+  assertEquals(
+    (await request("PATCH", path, cookies.admin, {
+      ...postBody("Korrigiert."),
+      reason: "Tippfehler im Datum",
+    })).status,
+    STATUS_CODE.OK,
+  );
+
+  const log = await revisionsOf(cookies, threadId);
+  assertEquals(log.length, 1);
+  assertEquals(log[0]?.kind, "post_edited");
+  assertEquals(log[0]?.reason, "Tippfehler im Datum");
+  assertEquals(log[0]?.textBefore, TEXT);
+  assertEquals(log[0]?.textAfter, "Korrigiert.");
+  assertEquals(log[0]?.editedByUsername, ADMIN);
+});
+
+Deno.test("die Überschrift ändert die Administration, mit Grund und im Protokoll", async () => {
+  const cookies = await fixture();
+  const { threadId } = await releasedOfficial(cookies);
+  const path = `/api/moderation/official-threads/threads/${threadId}/title`;
+
+  assertEquals(
+    (await request("PUT", path, cookies.mod, {
+      title: "Vom Mod",
+      reason: "Weil",
+    })).status,
+    STATUS_CODE.Forbidden,
+    "nicht der Mod",
+  );
+  assertEquals(
+    (await request("PUT", path, cookies.admin, { title: "Neu" })).status,
+    STATUS_CODE.BadRequest,
+    "nicht ohne Grund",
+  );
+  assertEquals(
+    (await request("PUT", path, cookies.admin, {
+      title: `${TITLE}-neu`,
+      reason: "Klarer",
+    })).status,
+    STATUS_CODE.OK,
+  );
+
+  const thread = await (await request(
+    "GET",
+    `/api/forum/threads/${threadId}`,
+    cookies.member,
+  )).json() as { title: string };
+  assertEquals(thread.title, `${TITLE}-neu`);
+
+  const log = await revisionsOf(cookies, threadId);
+  assertEquals(log.length, 1);
+  assertEquals(log[0]?.kind, "title_changed");
+  assertEquals(log[0]?.titleBefore, TITLE);
+  assertEquals(log[0]?.titleAfter, `${TITLE}-neu`);
+  assertEquals(log[0]?.reason, "Klarer");
+});
+
+Deno.test("die Überschrift eines gewöhnlichen Threads ändert dieser Weg nicht", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-offen-2b", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+
+  assertEquals(
+    (await request(
+      "PUT",
+      `/api/moderation/official-threads/threads/${threadId}/title`,
+      cookies.admin,
+      { title: "Übernommen", reason: "Weil" },
+    )).status,
+    STATUS_CODE.Conflict,
+  );
+});
+
+Deno.test("einen offiziellen Beitrag löschen: nur mit Grund, der gelöschte Text steht im Protokoll", async () => {
+  const cookies = await fixture();
+  const { threadId, postId } = await releasedOfficial(cookies);
+  const path = `/api/forum/threads/${threadId}/posts/${postId}`;
+
+  assertEquals(
+    (await request("DELETE", path, cookies.admin)).status,
+    STATUS_CODE.BadRequest,
+    "ohne Grund",
+  );
+  assert(
+    await db.selectFrom("writingPost").select("id").where("id", "=", postId)
+      .executeTakeFirst() !== undefined,
+    "noch da",
+  );
+
+  assertEquals(
+    (await request(
+      "DELETE",
+      `${path}?reason=${encodeURIComponent("Doppelt veröffentlicht")}`,
+      cookies.admin,
+    )).status,
+    STATUS_CODE.OK,
+  );
+  assertEquals(
+    await db.selectFrom("writingPost").select("id").where("id", "=", postId)
+      .executeTakeFirst(),
+    undefined,
+    "der Beitrag ist weg",
+  );
+
+  const log = await revisionsOf(cookies, threadId);
+  assertEquals(log.length, 1);
+  assertEquals(log[0]?.kind, "post_deleted");
+  assertEquals(log[0]?.reason, "Doppelt veröffentlicht");
+  assertEquals(log[0]?.textBefore, TEXT, "der Text bleibt im Protokoll");
+  assertEquals(log[0]?.textAfter, null);
+});
+
+Deno.test("das Protokoll lesen nur Administrationen", async () => {
+  const cookies = await fixture();
+  const { threadId } = await releasedOfficial(cookies);
+
+  for (const cookie of [cookies.mod, cookies.member, cookies.flamingo]) {
+    // deno-lint-ignore no-await-in-loop -- drei, nacheinander
+    const read = await revisions(cookie, threadId);
+    assertEquals(read.status, STATUS_CODE.Forbidden);
+  }
+  assertEquals(
+    (await revisions(cookies.admin, threadId)).status,
+    STATUS_CODE.OK,
+  );
+});
+
+/** Die Datenbank selbst lässt keinen Eintrag ohne Grund und ohne Inhalt zu. */
+Deno.test("die Datenbank verlangt Grund und Inhalt im Protokoll", async () => {
+  await fixture();
+  let refused = 0;
+  for (
+    const values of [
+      { kind: "title_changed", reason: " ", titleBefore: "a", titleAfter: "b" },
+      { kind: "title_changed", reason: "x", titleBefore: "a" },
+      { kind: "post_edited", reason: "x", textBefore: "a" },
+      { kind: "post_deleted", reason: "x", textBefore: "a", textAfter: "b" },
+    ] as const
+  ) {
+    try {
+      // deno-lint-ignore no-await-in-loop -- jeder für sich
+      await db.insertInto("officialRevision").values(values).execute();
+    } catch {
+      refused++;
+    }
+  }
+  assertEquals(refused, 4);
 });

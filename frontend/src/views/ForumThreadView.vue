@@ -24,7 +24,7 @@ import {
   useUpdateForumPost,
 } from '@/api/forum/forum'
 import type { GetForumThread200, ListForumPosts200ResultsItem, PostDocument } from '@/api/models'
-import { Flag, ShieldCheck } from '@lucide/vue'
+import { BadgeCheck, Flag, Pencil, ScrollText, ShieldCheck } from '@lucide/vue'
 import { useForumTree } from '@/composables/useForumTree'
 import { useIsOperator } from '@/composables/useIsOperator'
 import { mayWriteInForum } from '@/lib/forum/permission'
@@ -42,6 +42,9 @@ import { firstMessage, postSchema } from '@/lib/validation/fieldSchemas'
 import { useDraft } from '@/composables/useDraft'
 import PostComposer from '@/components/thread/PostComposer.vue'
 import DeletePostDialog from '@/components/thread/DeletePostDialog.vue'
+import MakeOfficialDialog from '@/components/thread/MakeOfficialDialog.vue'
+import OfficialTitleDialog from '@/components/thread/OfficialTitleDialog.vue'
+import OfficialRevisionsDialog from '@/components/thread/OfficialRevisionsDialog.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { useGetCurrentUser } from '@/api/auth/auth'
@@ -76,6 +79,32 @@ const currentUserId = computed<string | undefined>(() =>
 const isAdministrator = computed<boolean>(
   () => userData.value?.status === 200 && userData.value.data.platformRole === 'administrator',
 )
+
+/**
+ * „Offiziell machen" bietet sich dem Eröffner an, wenn er vorbereiten darf, und der Administration
+ * — nur bei einem Thread, der es noch nicht ist. Ob der Eröffnungsbeitrag aus dem Team stammt,
+ * weiß erst die API; sie sagt es, wenn nicht.
+ */
+const mayMakeOfficial = computed<boolean>(() => {
+  if (thread.value === undefined || thread.value.isOfficial || userData.value?.status !== 200) {
+    return false
+  }
+  return (
+    isAdministrator.value ||
+    (userData.value.data.mayPreparePublications && thread.value.createdBy === currentUserId.value)
+  )
+})
+const makingOfficial = ref<boolean>(false)
+
+/** Überschrift und Protokoll eines offiziellen Threads: nur die Administration. */
+const administersOfficial = computed<boolean>(
+  () => thread.value?.isOfficial === true && isAdministrator.value,
+)
+const changingTitle = ref<boolean>(false)
+const readingRevisions = ref<boolean>(false)
+
+/** Beim offiziellen Beitrag verlangt die API einen Grund, bis zu dieser Länge. */
+const REASON_MAX_LENGTH = TEXT_LIMIT.updateForumPost.reason.maxLength
 
 /** A member's action rather than moderation, so it waits for neither #62 nor slice 7. */
 const reportedPost = ref<ListForumPosts200ResultsItem | undefined>(undefined)
@@ -253,14 +282,23 @@ async function refreshReplies(): Promise<void> {
   })
 }
 
-async function saveEdit(postId: string, document: PostDocument, text: string) {
+async function saveEdit(
+  postId: string,
+  document: PostDocument,
+  text: string,
+  reason: string | undefined,
+) {
   editError.value = firstMessage(EDITED_POST.safeParse(text))
   if (editError.value !== undefined) {
     return
   }
 
   try {
-    await saveReply({ threadId: threadId.value, postId, data: { document } })
+    await saveReply({
+      threadId: threadId.value,
+      postId,
+      data: reason === undefined ? { document } : { document, reason },
+    })
   } catch (error) {
     editError.value = failureMessage(
       error,
@@ -291,13 +329,17 @@ const deletingPostAuthor = computed<string | undefined>(() =>
     : undefined,
 )
 
-async function confirmDeletePost() {
+async function confirmDeletePost(reason: string | undefined) {
   const post = deletingPost.value
   if (post === undefined) return
 
   deletePostError.value = undefined
   try {
-    await removeReply({ threadId: threadId.value, postId: post.id })
+    await removeReply({
+      threadId: threadId.value,
+      postId: post.id,
+      params: reason === undefined ? undefined : { reason },
+    })
   } catch (error) {
     deletePostError.value = failureMessage(
       error,
@@ -319,6 +361,12 @@ async function confirmDeletePost() {
 async function refresh(): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: getGetForumThreadQueryKey(threadId) })
   await queryClient.invalidateQueries(exactKeyFilter(getListForumThreadsQueryKey()))
+}
+
+/** Offiziell gemacht oder umbenannt: Thread, Liste und die Namen an den Beiträgen. */
+async function refreshOfficial(): Promise<void> {
+  await refresh()
+  await refreshReplies()
 }
 </script>
 
@@ -374,6 +422,35 @@ async function refresh(): Promise<void> {
               <ShieldCheck :size="14" :stroke-width="1.5" aria-hidden="true" />
               Rechte
             </button>
+
+            <button
+              v-if="mayMakeOfficial"
+              type="button"
+              class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+              @click="makingOfficial = true"
+            >
+              <BadgeCheck :size="14" :stroke-width="1.5" aria-hidden="true" />
+              Offiziell machen
+            </button>
+
+            <template v-if="administersOfficial">
+              <button
+                type="button"
+                class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+                @click="changingTitle = true"
+              >
+                <Pencil :size="14" :stroke-width="1.5" aria-hidden="true" />
+                Überschrift ändern
+              </button>
+              <button
+                type="button"
+                class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+                @click="readingRevisions = true"
+              >
+                <ScrollText :size="14" :stroke-width="1.5" aria-hidden="true" />
+                Protokoll
+              </button>
+            </template>
           </div>
         </div>
 
@@ -391,10 +468,11 @@ async function refresh(): Promise<void> {
           :editing="editingPostId === post.id"
           :saving="savingReply"
           :error="editingPostId === post.id ? editError : undefined"
+          :reason-max-length="REASON_MAX_LENGTH"
           @report="reportedPost = post"
           @edit="startEditing(post.id)"
           @cancel="stopEditing"
-          @save="(document, text) => saveEdit(post.id, document, text)"
+          @save="(document, text, reason) => saveEdit(post.id, document, text, reason)"
           @delete="deletingPost = post"
         />
 
@@ -428,7 +506,29 @@ async function refresh(): Promise<void> {
     :author-name="deletingPostAuthor"
     :pending="removingReply"
     :error="deletePostError"
+    :reason-max-length="deletingPost.isOfficial ? REASON_MAX_LENGTH : undefined"
     @confirmed="confirmDeletePost"
+  />
+
+  <MakeOfficialDialog
+    v-if="thread && makingOfficial"
+    v-model:open="makingOfficial"
+    :thread-id="thread.id"
+    @changed="refreshOfficial"
+  />
+
+  <OfficialTitleDialog
+    v-if="thread && changingTitle"
+    v-model:open="changingTitle"
+    :thread-id="thread.id"
+    :title="thread.title"
+    @changed="refreshOfficial"
+  />
+
+  <OfficialRevisionsDialog
+    v-if="thread && readingRevisions"
+    v-model:open="readingRevisions"
+    :thread-id="thread.id"
   />
 
   <ReportDialog

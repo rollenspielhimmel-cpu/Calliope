@@ -19,6 +19,7 @@ import retractBroadcast from "./moderation/retract_broadcast.ts";
 import rolePermissions from "./moderation/role_permissions.ts";
 import senderGrants from "./moderation/sender_grants.ts";
 import officialThreads from "./moderation/official_threads.ts";
+import officialThreadChanges from "./moderation/official_thread_changes.ts";
 import adminInbox from "./moderation/admin_inbox.ts";
 
 /**
@@ -48,6 +49,9 @@ export default new OpenAPIHono()
   .route("/", retractBroadcast)
   .route("/", rolePermissions)
   .route("/", senderGrants)
+  // Vor den Routen mit `{publicationId}`: `/official-threads/existing` und `/official-threads/threads`
+  // sind feste Wörter, die sonst als Kennung gelesen würden.
+  .route("/", officialThreadChanges)
   .route("/", officialThreads)
   // Lesbar für die ganze Moderation, anders als der Rest des Rundmail-Bereichs — die Route sagt es
   // selbst über ihre Middleware.

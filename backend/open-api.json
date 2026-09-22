@@ -51524,6 +51524,915 @@
         }
       }
     },
+    "/api/moderation/official-threads/existing": {
+      "post": {
+        "tags": ["moderation"],
+        "summary": "Make a thread that is already in the forum official",
+        "description": "The opener or an administrator, and only where the opening post is by somebody on the team. Swaps the name on the opening post once approved; title and text do not change. From an administrator it is approved at once.",
+        "operationId": "submitExistingOfficialThread",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "threadId": { "type": "string", "format": "uuid" },
+                  "sendAsUserId": {
+                    "type": ["string", "null"],
+                    "format": "uuid"
+                  },
+                  "administrationOnly": { "type": "boolean", "default": false }
+                },
+                "required": ["threadId", "sendAsUserId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Waiting, or already official",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "publicationId": { "type": "string", "format": "uuid" },
+                    "threadId": { "type": "string", "format": "uuid" },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "awaiting_approval",
+                        "approved",
+                        "released",
+                        "discarded"
+                      ]
+                    }
+                  },
+                  "required": ["publicationId", "threadId", "status"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not the opener, the opening post is not by the team, or the sender or mark is not theirs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such forum thread",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already official, or already waiting to become so",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderation/official-threads/threads/{threadId}/title": {
+      "put": {
+        "tags": ["moderation"],
+        "summary": "Change the title of an official thread",
+        "description": "Administrators only, with a reason. The protocol keeps who, when, why, and the title before and after.",
+        "operationId": "changeOfficialThreadTitle",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "required": true,
+            "name": "threadId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "pattern": "\\S"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "pattern": "\\S"
+                  }
+                },
+                "required": ["title", "reason"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "title": { "type": "string" } },
+                  "required": ["title"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such thread in the forum",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not an official thread, or the title is the same",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderation/official-threads/threads/{threadId}/revisions": {
+      "get": {
+        "tags": ["moderation"],
+        "summary": "The change protocol of an official thread",
+        "description": "Administrators only. Every change to the title and to official posts after the thread appeared, newest first — who, when, why, before and after.",
+        "operationId": "listOfficialThreadRevisions",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "required": true,
+            "name": "threadId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The protocol",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "format": "uuid" },
+                      "kind": {
+                        "type": "string",
+                        "enum": ["title_changed", "post_edited", "post_deleted"]
+                      },
+                      "editedByUsername": { "type": ["string", "null"] },
+                      "editedAt": { "type": "string", "format": "date-time" },
+                      "reason": { "type": "string" },
+                      "titleBefore": { "type": ["string", "null"] },
+                      "titleAfter": { "type": ["string", "null"] },
+                      "textBefore": { "type": ["string", "null"] },
+                      "textAfter": { "type": ["string", "null"] }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "editedByUsername",
+                      "editedAt",
+                      "reason",
+                      "titleBefore",
+                      "titleAfter",
+                      "textBefore",
+                      "textAfter"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/moderation/official-threads/queue": {
       "get": {
         "tags": ["moderation"],
@@ -51601,7 +52510,8 @@
                       "releasedAt": {
                         "type": ["string", "null"],
                         "format": "date-time"
-                      }
+                      },
+                      "forExistingThread": { "type": "boolean" }
                     },
                     "required": [
                       "title",
@@ -51621,7 +52531,8 @@
                       "approvedAt",
                       "editedByUsername",
                       "editedAt",
-                      "releasedAt"
+                      "releasedAt",
+                      "forExistingThread"
                     ]
                   }
                 }
@@ -51865,7 +52776,8 @@
                       "releasedAt": {
                         "type": ["string", "null"],
                         "format": "date-time"
-                      }
+                      },
+                      "forExistingThread": { "type": "boolean" }
                     },
                     "required": [
                       "title",
@@ -51885,7 +52797,8 @@
                       "approvedAt",
                       "editedByUsername",
                       "editedAt",
-                      "releasedAt"
+                      "releasedAt",
+                      "forExistingThread"
                     ]
                   }
                 }
@@ -52168,7 +53081,8 @@
                     "releasedAt": {
                       "type": ["string", "null"],
                       "format": "date-time"
-                    }
+                    },
+                    "forExistingThread": { "type": "boolean" }
                   },
                   "required": [
                     "title",
@@ -52188,7 +53102,8 @@
                     "approvedAt",
                     "editedByUsername",
                     "editedAt",
-                    "releasedAt"
+                    "releasedAt",
+                    "forExistingThread"
                   ]
                 }
               }
@@ -52634,7 +53549,8 @@
                     "releasedAt": {
                       "type": ["string", "null"],
                       "format": "date-time"
-                    }
+                    },
+                    "forExistingThread": { "type": "boolean" }
                   },
                   "required": [
                     "title",
@@ -52654,7 +53570,8 @@
                     "approvedAt",
                     "editedByUsername",
                     "editedAt",
-                    "releasedAt"
+                    "releasedAt",
+                    "forExistingThread"
                   ]
                 }
               }
@@ -64000,7 +64917,13 @@
                 "type": "object",
                 "properties": {
                   "document": { "$ref": "#/components/schemas/PostDocument" },
-                  "isDraft": { "type": "boolean" }
+                  "isDraft": { "type": "boolean" },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "pattern": "\\S"
+                  }
                 }
               }
             }
@@ -64351,6 +65274,17 @@
             "required": true,
             "name": "postId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "\\S"
+            },
+            "required": false,
+            "name": "reason",
+            "in": "query"
           }
         ],
         "responses": {

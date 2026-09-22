@@ -8,14 +8,11 @@
  * Thread wird mit seinem Eröffnungsbeitrag auf einmal geschrieben, weil die Freigabe den Text
  * abdecken muss.
  *
- * Die Absenderliste ist die der Rundmails und zeigt nur, was diese Person nutzen darf. Ist „Admin"
- * nicht dabei, ist der erste eigene Absender vorgewählt — sonst ginge die Einreichung mit einer
- * Wahl zurück, die niemand getroffen hat.
+ * Die Absenderliste steht in `OfficialSenderSelect`, die auch „Offiziell machen" nutzt.
  */
-import { computed, watch } from 'vue'
-import { useListBroadcastSenders } from '@/api/moderation/moderation'
+import { computed } from 'vue'
 import { useGetCurrentUser } from '@/api/auth/auth'
-import type { ListBroadcastSenders200Item } from '@/api/models'
+import OfficialSenderSelect from '@/components/thread/OfficialSenderSelect.vue'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldLabel } from '@/components/ui/field'
@@ -39,27 +36,6 @@ const { data: currentUser } = useGetCurrentUser()
 const isAdministrator = computed<boolean>(
   () =>
     currentUser.value?.status === 200 && currentUser.value.data.platformRole === 'administrator',
-)
-
-const { data: senderData } = useListBroadcastSenders()
-
-const senders = computed<ListBroadcastSenders200Item[]>(() =>
-  senderData.value?.status === 200 ? senderData.value.data : [],
-)
-
-const permanentSender = computed(() => senders.value.find((sender) => sender.isPermanent))
-const releasedSenders = computed(() => senders.value.filter((sender) => !sender.isPermanent))
-
-// Ohne „Admin" in der eigenen Liste der erste eigene Absender — auch, wenn die Liste schon im
-// Zwischenspeicher lag und sich deshalb nie „ändert".
-watch(
-  [permanentSender, releasedSenders],
-  () => {
-    if (draft.value.sendAs === '' && permanentSender.value === undefined) {
-      draft.value = { ...draft.value, sendAs: releasedSenders.value[0]?.id ?? '' }
-    }
-  },
-  { immediate: true },
 )
 
 function update<Key extends keyof OfficialDraft>(key: Key, value: OfficialDraft[Key]) {
@@ -86,22 +62,11 @@ function update<Key extends keyof OfficialDraft>(key: Key, value: OfficialDraft[
         >
       </p>
 
-      <Field>
-        <FieldLabel for="official-sender">Erscheint als</FieldLabel>
-        <select
-          id="official-sender"
-          :value="draft.sendAs"
-          class="h-11 max-w-[320px] rounded-lg border border-input bg-transparent px-3 text-sm md:h-9"
-          @change="update('sendAs', ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-if="permanentSender !== undefined" value="">
-            {{ permanentSender.username }}
-          </option>
-          <option v-for="sender in releasedSenders" :key="sender.id" :value="sender.id">
-            {{ sender.username }}
-          </option>
-        </select>
-      </Field>
+      <OfficialSenderSelect
+        id="official-sender"
+        :model-value="draft.sendAs"
+        @update:model-value="(value) => update('sendAs', value)"
+      />
 
       <Field>
         <FieldLabel for="official-text">Eröffnungsbeitrag</FieldLabel>

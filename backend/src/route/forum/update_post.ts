@@ -1,3 +1,5 @@
+import { OfficialThreadService } from "@/src/service/official_thread_service.ts";
+import { REVISION_REASON } from "@/src/route/moderation/official_thread_changes.ts";
 import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { POST_RESPONSE } from "@/src/http/response_schema.ts";
@@ -30,6 +32,11 @@ const POST_PARAMS = z.object({
 const UPDATE_POST_BODY = z.object({
   document: DOCUMENT_SCHEMA.optional(),
   isDraft: WRITING_POST_SCHEMA.shape.isDraft.optional(),
+  /**
+   * Warum — nur bei einem offiziellen Beitrag, und dort Pflicht: Eine freigegebene Aussage ändert
+   * sich nicht ohne Grund, und der Grund steht mit dem Text vorher und nachher im Protokoll.
+   */
+  reason: REVISION_REASON.optional(),
 }).refine(
   (changes) => Object.values(changes).some((value) => value !== undefined),
   { message: "Provide at least one field to update" },
@@ -115,9 +122,45 @@ export default new OpenAPIHono().openapi(
       );
     }
 
+    // Offiziell: nur der Text, nur mit Grund, und in derselben Transaktion ins Protokoll.
+    if (post.isOfficial) {
+      if (changes.reason === undefined || changes.document === undefined) {
+        return c.json(
+          {
+            error:
+              "Einen offiziellen Beitrag ändert man mit einem Grund; er steht im Protokoll.",
+          },
+          STATUS_CODE.BadRequest,
+        );
+      }
+
+      const refusal = await OfficialThreadService.editOfficialPost(
+        threadId,
+        postId,
+        changes.document,
+        changes.reason,
+        user,
+      );
+      if (refusal === "not_found" || refusal === "not_official") {
+        return c.json({ error: "Post not found" }, STATUS_CODE.NotFound);
+      }
+
+      const edited = await WritingPostService.selectPost(
+        threadId,
+        postId,
+        user.id,
+      );
+      if (edited === undefined) {
+        return c.json({ error: "Post not found" }, STATUS_CODE.NotFound);
+      }
+      // `unchanged` antwortet mit dem Beitrag, wie er ist: Nichts geändert, nichts zu protokollieren.
+      return c.json(edited, STATUS_CODE.OK);
+    }
+
+    const { reason: _unused, ...plainChanges } = changes;
     const updated = await WritingPostService.updatePost(
       postId,
-      changes,
+      plainChanges,
       post.isDraft,
       // No group, so publishing announces nothing — #119 decides who hears.
       { writingGroupId: null, writingThreadId: threadId, actorId: user.id },

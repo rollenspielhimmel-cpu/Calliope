@@ -58,6 +58,11 @@ export type NotificationType =
   | "role_changed_in_writing_group"
   | "visibility_changed_in_writing_group";
 
+export type OfficialRevisionKind =
+  | "post_deleted"
+  | "post_edited"
+  | "title_changed";
+
 export type PlatformPermission = "prepare_publications" | "see_whole_queue";
 
 export type PlatformRole = "administrator" | "moderator";
@@ -495,6 +500,22 @@ export interface Notification {
   writingThreadId: string | null;
 }
 
+export interface OfficialRevision {
+  documentAfter: unknown | null;
+  documentBefore: unknown | null;
+  editedAt: Generated<string>;
+  editedBy: string | null;
+  id: Generated<string>;
+  kind: OfficialRevisionKind;
+  reason: string;
+  textAfter: string | null;
+  textBefore: string | null;
+  titleAfter: string | null;
+  titleBefore: string | null;
+  writingPostId: string | null;
+  writingThreadId: string | null;
+}
+
 export interface PlatformRolePermission {
   grantedAt: Generated<string>;
   grantedBy: string | null;
@@ -530,6 +551,7 @@ export interface Publication {
   approvedBy: string | null;
   editedAt: string | null;
   editedBy: string | null;
+  forExistingThread: Generated<boolean>;
   id: Generated<string>;
   kind: PublicationKind;
   releasedAt: string | null;
@@ -833,6 +855,7 @@ export interface DB {
   customPage: CustomPage;
   favourite: Favourite;
   notification: Notification;
+  officialRevision: OfficialRevision;
   platformRolePermission: PlatformRolePermission;
   profileAnswer: ProfileAnswer;
   profileQuestion: ProfileQuestion;
@@ -1216,6 +1239,13 @@ export const PLATFORM_PERMISSIONS = [
 ] as const;
 export const PLATFORM_PERMISSION_SCHEMA = z.enum(PLATFORM_PERMISSIONS);
 
+export const OFFICIAL_REVISION_KINDS = [
+  "post_deleted",
+  "post_edited",
+  "title_changed",
+] as const;
+export const OFFICIAL_REVISION_KIND_SCHEMA = z.enum(OFFICIAL_REVISION_KINDS);
+
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
   windowStart: z.iso.datetime({ offset: true }),
@@ -1420,6 +1450,22 @@ export const NOTIFICATION_SCHEMA = z.object({
   readAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
+export const OFFICIAL_REVISION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  kind: OFFICIAL_REVISION_KIND_SCHEMA,
+  writingThreadId: z.uuidv7().nullable(),
+  writingPostId: z.uuidv7().nullable(),
+  editedBy: z.uuidv7().nullable(),
+  editedAt: z.iso.datetime({ offset: true }),
+  reason: z.string(),
+  titleBefore: z.string().nullable(),
+  titleAfter: z.string().nullable(),
+  textBefore: z.string().nullable(),
+  textAfter: z.string().nullable(),
+  documentBefore: z.unknown().nullable(),
+  documentAfter: z.unknown().nullable(),
+});
+
 export const PLATFORM_ROLE_PERMISSION_SCHEMA = z.object({
   role: PLATFORM_ROLE_SCHEMA,
   permission: PLATFORM_PERMISSION_SCHEMA,
@@ -1465,6 +1511,7 @@ export const PUBLICATION_SCHEMA = z.object({
   retractedBy: z.uuidv7().nullable(),
   retractedAt: z.iso.datetime({ offset: true }).nullable(),
   administrationOnly: z.boolean(),
+  forExistingThread: z.boolean(),
 });
 
 export const REPORT_SCHEMA = z.object({

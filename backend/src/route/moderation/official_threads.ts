@@ -60,6 +60,8 @@ const THREAD_RESPONSE = THREAD_BODY.extend({
   editedByUsername: z.string().nullable(),
   editedAt: z.iso.datetime({ offset: true }).nullable(),
   releasedAt: z.iso.datetime({ offset: true }).nullable(),
+  /** Für einen Thread, der schon im Forum steht: tauscht nur den Namen am Eröffnungsbeitrag. */
+  forExistingThread: z.boolean(),
 });
 
 const PARAMS = z.object({ publicationId: z.uuidv7() });
@@ -266,6 +268,14 @@ export default new OpenAPIHono()
                 "Diesen Thread hat jemand anderes eingereicht. Ändern oder verwerfen kann ihn die Administration.",
             },
             STATUS_CODE.Forbidden,
+          );
+        case "content_fixed":
+          return c.json(
+            {
+              error:
+                "Dieser Thread steht schon im Forum. Die Einreichung tauscht nur den Absender; Titel und Text ändert danach die Administration, mit Grund.",
+            },
+            STATUS_CODE.Conflict,
           );
         default: {
           const { error, status } = refusalOf(edited);
