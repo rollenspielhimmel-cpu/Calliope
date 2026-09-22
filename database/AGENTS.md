@@ -22,6 +22,12 @@ Was davon bleibt: Jedes `migrate:down` muss sein `migrate:up` wirklich zurückne
 Enum-Typen und Auslöserfunktionen, und der Hin- und Rückweg wird gegen eine Wegwerf-Datenbank
 durchgespielt, nicht gegen die, in der gearbeitet wird.
 
+**Die eine Ausnahme ist eine Grenze in der Pipeline.** `20260906110000_unser_forum_raus.sql` hat
+mit Absicht keinen Rückweg. Die Pipeline rollt deshalb nur zurück, was jünger ist — die Grenze
+steht als `IRREVERSIBLE` in `.github/workflows/validate.yml`. Bis September 2026 rollte sie alles
+zurück, lief an dieser Stelle auf, und war damit vom ersten Lauf an rot. Wer eine weitere Migration
+ohne Rückweg schreibt, verschiebt die Grenze im selben Commit.
+
 ## Datenbank und `migration.schema_migration` laufen auseinander
 
 In beide Richtungen: eine Migration, die angewandt ist und nicht eingetragen, und ein Eintrag ohne

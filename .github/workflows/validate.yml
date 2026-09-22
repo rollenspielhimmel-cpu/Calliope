@@ -111,10 +111,22 @@ jobs:
 
       - name: Check the migrations roll back and forward again
         run: |
-          # One rollback per migration file, so this neither stops short of the oldest one
-          # nor runs past it. A failure here is a `migrate:down` that does not reverse its
-          # `migrate:up`, and it has to fail the step rather than be swallowed.
-          for migration in migrations/*.sql; do deno task migrations:rollback; done
+          # One rollback per migration file newer than the last one that declares it cannot be
+          # reversed, so this neither stops short nor runs past it. A failure here is a
+          # `migrate:down` that does not reverse its `migrate:up`, and it has to fail the step
+          # rather than be swallowed.
+          #
+          # **The barrier.** `20260906110000_unser_forum_raus.sql` has no way back on purpose
+          # (its `migrate:down` says so and does nothing): it dropped a forum whose four tables
+          # nobody meant to restate. Rolling past it, the older migrations' `migrate:down` reach
+          # for tables that are no longer there — and this step failed on every run from the
+          # first, which hid every other result behind it. An applied migration is never edited,
+          # so the barrier lives here. A future migration without a way back moves it.
+          IRREVERSIBLE=20260906110000
+          for migration in migrations/*.sql; do
+            version=$(basename "$migration" | cut -d_ -f1)
+            if [ "$version" -gt "$IRREVERSIBLE" ]; then deno task migrations:rollback; fi
+          done
           deno task migrations:migrate
 
       - name: Run tests

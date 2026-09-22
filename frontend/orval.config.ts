@@ -15,6 +15,12 @@ export default defineConfig({
       target: 'src/api/calliope.ts',
       schemas: 'src/api/models',
 
+      // **Vor dem Erzeugen leeren.** Ohne das bleiben Typen einer umbenannten oder entfernten
+      // Schnittstelle liegen, und der lokale Typcheck findet sie weiter — während die Pipeline,
+      // die frisch erzeugt, an genau diesem Import scheitert. So war es vom ersten Lauf an:
+      // `PagesView.vue` importierte einen Typ, den es nur noch in alten lokalen Dateien gab.
+      clean: true,
+
       override: {
         // The list endpoints use the HTTP QUERY method, and Orval classifies anything that
         // is not GET as a mutation — which would mean no caching, no query key and no fetch

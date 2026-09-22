@@ -1,9 +1,9 @@
 {
   "openapi": "3.2.0",
   "info": {
-    "title": "Rollenspielhimmel",
+    "title": "Calliope",
     "version": "0.1.0",
-    "description": "The API of Rollenspielhimmel, a community of private writing groups."
+    "description": "The API of Calliope, a community of private writing groups."
   },
   "tags": [
     {

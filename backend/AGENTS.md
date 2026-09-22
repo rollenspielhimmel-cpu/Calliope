@@ -620,8 +620,11 @@ deno task open-api:generate
 ```
 
 `open-api.json` is committed, and the frontend's client is generated from it, so regenerate
-that too when the shape changes. `HOST_URL` ends up in the `servers` entry, so generate with
-the same value CI uses — which is why CI copies `.example.env`.
+that too when the shape changes. `HOST_URL` ends up in the `servers` entry and `APP_NAME` in the
+title, so the task reads `.example.env` — the file CI copies — and never your own `.env`. It read
+`.env` until September 2026, and every CI run was red from the first: a local `APP_NAME` put
+„Rollenspielhimmel" into the committed title, CI generated „Calliope", and `open-api:check` saw
+the difference. The committed document describes the code, not one installation.
 
 `open-api:lint` is currently disabled in CI: the document declares `3.2.0` so the `query`
 operations are legal, and Spectral only understands up to 3.1, so it silently falls back to

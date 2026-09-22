@@ -13,7 +13,7 @@ import {
   useListCustomPages,
   useWriteCustomPage,
 } from '@/api/custom-pages/custom-pages'
-import type { ListPages200Item } from '@/api/models'
+import type { ListCustomPages200Item } from '@/api/models'
 import { queryClient } from '@/lib/api/queryClient'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { TEXT_LIMIT } from '@/api/textLimit'
@@ -31,7 +31,7 @@ const SLUG_MAX_LENGTH = 80
 
 const { data, isPending } = useListCustomPages()
 
-const pages = computed<ListPages200Item[]>(() =>
+const pages = computed<ListCustomPages200Item[]>(() =>
   data.value?.status === 200 ? data.value.data : [],
 )
 
@@ -57,7 +57,7 @@ function startNew() {
   error.value = undefined
 }
 
-async function startEdit(page: ListPages200Item) {
+async function startEdit(page: ListCustomPages200Item) {
   error.value = undefined
 
   // The list carries no body — a list of pages is read to pick one from — so the page itself
