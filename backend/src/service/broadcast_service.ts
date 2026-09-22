@@ -4,6 +4,7 @@ import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
 import { generate as generateUuidV7 } from "@std/uuid/v7";
 import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
+import { BroadcastSenderService } from "@/src/service/broadcast_sender_service.ts";
 import { publishChatEvent } from "@/src/event/chat_events.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 import {
@@ -573,8 +574,164 @@ async function send(
   };
 }
 
+/** Was vor dem Text einer Test-Rundmail steht, im Postfach wie in der Mail. */
+export const TEST_MARK = "— TEST-Rundmail —";
+
+/** Was eine Test-Rundmail braucht: der Inhalt, wie er rausginge — ein Empfänger kommt nicht vor. */
+export type TestBroadcast = {
+  subject: string;
+  body: string;
+  sendAsUserId: string | null;
+  deliverByEmail: boolean;
+};
+
+export type TestOutcome =
+  | "sender_not_released"
+  | {
+    chatGroupId: string;
+    /**
+     * Ob die Mail an die eigene Adresse rausging. Eine unbestätigte Adresse kommt dabei nicht vor:
+     * Ein Konto ohne bestätigte Adresse kommt an keine Route heran (`authenticated`), also auch an
+     * diese nicht.
+     */
+    email: "sent" | "not_chosen";
+  };
+
+/**
+ * Eine Test-Rundmail: so, wie sie ankommen wird, aber **nur bei der Person, die testet**.
+ *
+ * **Der Empfänger steht nicht im Aufruf.** Die Route reicht den Inhalt durch und die angemeldete
+ * Person — mehr nicht. Damit ist „nie an andere" keine Prüfung, die jemand vergessen kann, sondern
+ * eine Frage, die sich gar nicht stellt.
+ *
+ * **In einem eigenen Faden, nicht im echten.** Der echte Faden zwischen dieser Person und dem
+ * Absender steht im Postfach der Administration, alle Admins lesen seinen Verlauf, und eine
+ * Nachricht dort würde eine offene Frage derselben Person still schließen. Der Test-Faden ist
+ * gekennzeichnet (`is_test_broadcast`) und nur für sie da.
+ *
+ * **Sonst wie der Ernstfall:** derselbe aufgelöste Absender, derselbe Betreff, dieselbe Glocke,
+ * dieselbe Mail-Vorlage — nur mit `TEST_MARK` davor und „[TEST]" im Betreff der Mail. Keine
+ * Veröffentlichung, keine Freigabe, keine Empfängerzahl, kein Archiv.
+ *
+ * Der Absender wird geprüft wie bei einer echten Rundmail. Sonst ließe sich über den Test ausprobieren,
+ * wie eine Nachricht unter einem beliebigen Namen aussähe.
+ */
+async function sendTest(
+  tester: { id: string; emailAddress: string },
+  input: TestBroadcast,
+): Promise<TestOutcome> {
+  if (!await BroadcastSenderService.mayBeSender(input.sendAsUserId)) {
+    return "sender_not_released";
+  }
+
+  const text = `${TEST_MARK}\n\n${input.body}`;
+  const now = new Date().toISOString();
+  const messageId = generateUuidV7();
+
+  const delivered = await db.transaction().execute(async (transaction) => {
+    const sender = await resolveSender(transaction, input.sendAsUserId);
+
+    // Gefunden statt angelegt, wo es ihn schon gibt — dieselbe Form wie `findOrCreateThreads`:
+    // erst einfügen und den Konflikt übergehen, dann nachlesen, unter welcher Kennung er steht.
+    // Zweimal schnell hintereinander gedrückt, legte ein Nachsehen-dann-Anlegen sonst zwei an.
+    const created = await transaction
+      .insertInto("chatGroup")
+      .values({
+        title: sender?.username ?? "Administration",
+        createdBy: sender?.id ?? null,
+        administrationPartnerId: tester.id,
+        isTestBroadcast: true,
+      })
+      .onConflict((conflict) =>
+        conflict
+          .columns(["administrationPartnerId", "createdBy"])
+          .where("isTestBroadcast", "=", true)
+          .where("administrationPartnerId", "is not", null)
+          .doNothing()
+      )
+      .returning("id")
+      .executeTakeFirst();
+
+    const thread = created ?? await transaction
+      .selectFrom("chatGroup")
+      .select("id")
+      .where("isTestBroadcast", "=", true)
+      .where("administrationPartnerId", "=", tester.id)
+      // Ohne Absender — das dauerhafte Konto ist gerade niemand — gibt es keinen Faden zu teilen,
+      // und `= null` träfe ohnehin nichts.
+      .$if(sender !== null, (query) =>
+        // deno-lint-ignore no-non-null-assertion -- das `$if` läuft nur, wenn er gesetzt ist
+        query.where("createdBy", "=", sender!.id))
+      .executeTakeFirstOrThrow();
+
+    // `joined` wie bei der echten Rundmail: Man nimmt sie nicht an. Und doNothing, weil die
+    // Person im wiederverwendeten Faden schon sitzt.
+    await transaction
+      .insertInto("userInChatGroup")
+      .values({ chatGroupId: thread.id, userId: tester.id, status: "joined" })
+      .onConflict((conflict) => conflict.doNothing())
+      .execute();
+
+    await transaction
+      .insertInto("chatMessage")
+      .values({
+        id: messageId,
+        chatGroupId: thread.id,
+        text,
+        subject: input.subject,
+        createdBy: sender?.id ?? null,
+        // Keine Rundmail-Kennung: Es gibt keine Rundmail, nur ihren Inhalt.
+        broadcastId: null,
+        writtenBy: null,
+      })
+      .execute();
+
+    // Die Glocke, wie bei der echten — sie gehört zu dem, was man sehen will. Ohne Absender als
+    // Auslöser, wenn man sich selbst testet: `notification_actor_is_not_recipient`.
+    await transaction
+      .insertInto("notification")
+      .values({
+        recipientId: tester.id,
+        type: "broadcast_received",
+        chatGroupId: thread.id,
+        actorId: sender?.id === tester.id ? null : sender?.id ?? null,
+      })
+      .execute();
+
+    return { chatGroupId: thread.id, sender };
+  });
+
+  // Nach dem Festschreiben, wie bei der echten: Ein offenes Fenster erfährt es, sobald es stimmt.
+  // Anders als dort auch dann, wenn die Person sich selbst als Absender testet — sie will es sehen.
+  publishChatEvent([tester.id], {
+    chatGroupId: delivered.chatGroupId,
+    message: {
+      id: messageId,
+      text,
+      createdAt: now,
+      createdBy: delivered.sender?.id ?? null,
+      createdByUsername: delivered.sender?.username ?? null,
+    },
+  });
+
+  if (!input.deliverByEmail) {
+    return { chatGroupId: delivered.chatGroupId, email: "not_chosen" };
+  }
+
+  Mailer.sendInBackground(
+    broadcastMail({
+      emailAddress: tester.emailAddress,
+      subject: `[TEST] ${input.subject}`,
+      body: text,
+    }),
+  );
+
+  return { chatGroupId: delivered.chatGroupId, email: "sent" };
+}
+
 export const BroadcastService = {
   countRecipients,
   send,
+  sendTest,
   publishInArchive,
 };

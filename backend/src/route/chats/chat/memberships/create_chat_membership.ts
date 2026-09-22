@@ -128,6 +128,15 @@ export default new OpenAPIHono().openapi(
       );
     }
 
+    // Und in eine Test-Rundmail erst recht nicht: Sie ist nur für die Person da, die getestet hat.
+    // Wer hier jemanden hineinholte, schickte ihm eine Rundmail, die nie freigegeben wurde.
+    if (chat?.isTestBroadcast === true) {
+      return c.json(
+        { error: "Zu einer Test-Rundmail lässt sich niemand einladen." },
+        STATUS_CODE.Forbidden,
+      );
+    }
+
     /**
      * **Bei Admin nimmt niemand an, also wird aus der Einladung keine.**
      *

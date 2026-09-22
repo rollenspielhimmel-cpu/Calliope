@@ -14,6 +14,7 @@ import listBlindDateParticipation from "./moderation/list_blind_date_participati
 import blindDateManagers from "./moderation/blind_date_managers.ts";
 import broadcastSenders from "./moderation/broadcast_senders.ts";
 import broadcastQueue from "./moderation/broadcast_queue.ts";
+import broadcastTest from "./moderation/broadcast_test.ts";
 import adminInbox from "./moderation/admin_inbox.ts";
 
 /**
@@ -39,6 +40,7 @@ export default new OpenAPIHono()
   .route("/", operators)
   .route("/", broadcastSenders)
   .route("/", broadcastQueue)
+  .route("/", broadcastTest)
   // Lesbar für die ganze Moderation, anders als der Rest des Rundmail-Bereichs — die Route sagt es
   // selbst über ihre Middleware.
   .route("/", adminInbox)

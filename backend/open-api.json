@@ -8081,6 +8081,7 @@
                       "type": "string",
                       "format": "date-time"
                     },
+                    "isTestBroadcast": { "type": "boolean" },
                     "isFavourite": { "type": "boolean" },
                     "status": {
                       "type": "string",
@@ -8096,6 +8097,7 @@
                     "createdBy",
                     "createdAt",
                     "lastActivityAt",
+                    "isTestBroadcast",
                     "isFavourite",
                     "status",
                     "createdByUsername",
@@ -23924,6 +23926,7 @@
                       "type": "string",
                       "format": "date-time"
                     },
+                    "isTestBroadcast": { "type": "boolean" },
                     "isFavourite": { "type": "boolean" },
                     "status": {
                       "type": "string",
@@ -23939,6 +23942,7 @@
                     "createdBy",
                     "createdAt",
                     "lastActivityAt",
+                    "isTestBroadcast",
                     "isFavourite",
                     "status",
                     "createdByUsername",
@@ -31552,6 +31556,7 @@
                       "type": "string",
                       "format": "date-time"
                     },
+                    "isTestBroadcast": { "type": "boolean" },
                     "isFavourite": { "type": "boolean" },
                     "status": {
                       "type": "string",
@@ -31567,6 +31572,7 @@
                     "createdBy",
                     "createdAt",
                     "lastActivityAt",
+                    "isTestBroadcast",
                     "isFavourite",
                     "status",
                     "createdByUsername",
@@ -31887,6 +31893,7 @@
                             "type": "string",
                             "format": "date-time"
                           },
+                          "isTestBroadcast": { "type": "boolean" },
                           "isFavourite": { "type": "boolean" },
                           "status": {
                             "type": "string",
@@ -31902,6 +31909,7 @@
                           "createdBy",
                           "createdAt",
                           "lastActivityAt",
+                          "isTestBroadcast",
                           "isFavourite",
                           "status",
                           "createdByUsername",
@@ -48524,6 +48532,265 @@
           },
           "409": {
             "description": "It has already gone out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    },
+                    "scope": { "type": "string", "enum": ["read", "write"] }
+                  },
+                  "required": ["error", "scope"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderation/broadcast/test": {
+      "post": {
+        "tags": ["moderation"],
+        "summary": "Send a broadcast to yourself, as a test",
+        "description": "Arrives exactly as the broadcast would, marked as a test, and only for the caller. No publication, no approval, no archive, and nothing counts as sent.",
+        "operationId": "sendTestBroadcast",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "\\S"
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000,
+                    "pattern": "\\S"
+                  },
+                  "sendAsUserId": {
+                    "type": ["string", "null"],
+                    "format": "uuid"
+                  },
+                  "deliverByEmail": { "type": "boolean" }
+                },
+                "required": [
+                  "subject",
+                  "body",
+                  "sendAsUserId",
+                  "deliverByEmail"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "In the caller's own inbox",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "chatGroupId": { "type": "string", "format": "uuid" },
+                    "email": {
+                      "type": "string",
+                      "enum": ["sent", "not_chosen"]
+                    }
+                  },
+                  "required": ["chatGroupId", "email"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": { "type": "string" },
+                          "message": { "type": "string" }
+                        },
+                        "required": ["path", "message"]
+                      }
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "invalid_credentials",
+                        "account_banned",
+                        "account_suspended",
+                        "password_breached",
+                        "email_domain_blocked",
+                        "page_changed",
+                        "folder_not_empty",
+                        "folder_too_deep",
+                        "folder_cycle"
+                      ]
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "That account has not been released as a sender",
             "content": {
               "application/json": {
                 "schema": {

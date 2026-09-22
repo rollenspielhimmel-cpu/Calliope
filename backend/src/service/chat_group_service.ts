@@ -44,6 +44,12 @@ export type ChatGroup =
      * Einladen und Verlassen. Mehr braucht sie nicht.
      */
     isFromAdministration: boolean;
+    /**
+     * Ein Faden mit Test-Rundmails: Er sieht aus wie der echte, ist aber nur für die Person da, die
+     * getestet hat. Die Oberfläche nennt ihn so, verbirgt Einladen und Schreiben und lässt das
+     * Verlassen zu.
+     */
+    isTestBroadcast: boolean;
   };
 
 const SELECTED_COLUMNS = [
@@ -52,6 +58,7 @@ const SELECTED_COLUMNS = [
   "chatGroup.createdBy",
   "chatGroup.createdAt",
   "chatGroup.lastActivityAt",
+  "chatGroup.isTestBroadcast",
 ] as const;
 
 /**
@@ -162,6 +169,11 @@ export type ChatGroupGate = {
   status: UserInChatGroupStatus;
   /** Das Gespräch mit der Administration. Einladen und Verlassen sind dort verboten. */
   isFromAdministration: boolean;
+  /**
+   * Ein Faden mit Test-Rundmails. Einladen und Schreiben sind dort verboten — es sitzt nur die
+   * Person darin, die getestet hat, und eine Antwort ginge an niemanden. Verlassen darf man ihn.
+   */
+  isTestBroadcast: boolean;
 };
 
 /** Returns nothing when the chat does not exist or the user is not in it. */
@@ -175,6 +187,7 @@ async function selectChatGroup(
       "chatGroup.title",
       "chatGroup.createdBy",
       "userInChatGroup.status",
+      "chatGroup.isTestBroadcast",
     ])
     .select((eb) =>
       eb("chatGroup.addressedToAdministration", "=", true)

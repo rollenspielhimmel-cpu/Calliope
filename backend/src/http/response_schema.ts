@@ -455,6 +455,10 @@ export const CHAT_GROUP_RESPONSE = CHAT_GROUP_SCHEMA
   // neue Spalte steht ohne Zutun in der Antwort an jedes Mitglied. Beim ersten Mal hat der
   // Typprüfer es gemeldet, weil der Dienst sie nicht mitlieferte — sonst wäre es niemandem
   // aufgefallen. Verlassen sollte man sich darauf nicht.
+  //
+  // `isTestBroadcast` kommt dagegen mit, und zwar bewusst: Es beschreibt das Gespräch so, wie die
+  // Person es führt — ihr eigener Test-Faden, in dem sie weder einladen noch schreiben kann. Eine
+  // Auskunft über die Teamseite ist das nicht, denn der Faden steht in keinem Postfach des Teams.
   .omit({ addressedToAdministration: true, administrationPartnerId: true })
   .extend({
     ...OWN_FAVOURITE,

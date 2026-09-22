@@ -68,6 +68,16 @@ export default new OpenAPIHono().openapi(
         : c.json({ error: access.error }, STATUS_CODE.Forbidden);
     }
 
+    // **In einer Test-Rundmail wird nicht geantwortet.** Im Faden sitzt nur, wer getestet hat; der
+    // Absender nicht. Eine Antwort ginge an niemanden und sähe doch aus wie eine an `Admin`. Die
+    // Oberfläche zeigt dort kein Eingabefeld; verbindlich ist es hier.
+    if (access.chat.isTestBroadcast) {
+      return c.json(
+        { error: "In einer Test-Rundmail wird nicht geantwortet." },
+        STATUS_CODE.Forbidden,
+      );
+    }
+
     const message = await ChatMessageService.insertMessage(
       chatId,
       text,

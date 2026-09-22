@@ -57,6 +57,11 @@ const NAMES_ONLY = entry({
 
 const queue = { value: { status: 200, data: [NAMES_ONLY] } }
 
+// Gehoben, weil `vi.mock` vor allem anderen läuft und die Attrappe sonst noch nicht gäbe.
+const { sendTest } = vi.hoisted(() => ({
+  sendTest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+}))
+
 vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useListBroadcastQueue: () => ({ data: queue }),
@@ -79,6 +84,7 @@ vi.mock('@/api/moderation/moderation', async (importOriginal) => ({
     mutateAsync: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     isPending: false,
   }),
+  useSendTestBroadcast: () => ({ mutateAsync: sendTest, isPending: false }),
 }))
 
 function broadcastView() {
@@ -285,5 +291,83 @@ describe('BroadcastView, an alle und das Archiv', () => {
     await openQueue(wrapper)
 
     expect(wrapper.text()).toContain('An alle Mitglieder')
+  })
+})
+
+/** Alle Knöpfe mit diesem Text — so, wie jemand sie sieht. */
+function buttonsLabelled(wrapper: ReturnType<typeof broadcastView>, text: string) {
+  const found = wrapper.findAll('button').filter((each) => each.text() === text)
+  if (found.length === 0) {
+    throw new Error(`kein Knopf „${text}"`)
+  }
+  return found
+}
+
+/**
+ * Die Test-Rundmail, an beiden Knöpfen.
+ *
+ * **Was die Oberfläche hier zusagt:** Die Anfrage nennt keinen Empfänger, und der Satz danach sagt,
+ * dass sie sonst niemand bekommen hat — am Knopf, der sie ausgelöst hat, und nirgends sonst. Ein
+ * gemeinsamer Satz oben auf der Seite ließe offen, welcher Eintrag gemeint war.
+ */
+describe('BroadcastView, die Test-Rundmail', () => {
+  const SAID = 'Die Test-Rundmail liegt in deinem Postfach.'
+
+  it('geht aus dem Formular ohne Empfänger an den Server', async () => {
+    sendTest.mockReset()
+    sendTest.mockResolvedValue({
+      status: 200,
+      data: { chatGroupId: '01900000-0000-7000-8000-000000000009', email: 'not_chosen' },
+    })
+    queue.value.data = []
+    const wrapper = broadcastView()
+
+    const [test] = buttonsLabelled(wrapper, 'Test-Rundmail')
+    // Ohne Betreff und Text gibt es nichts zu testen.
+    expect(test?.attributes('disabled')).toBeDefined()
+
+    await wrapper.find('#broadcastSubject').setValue('Ein Betreff')
+    await wrapper.find('#broadcastBody').setValue('Ein Text.')
+    await buttonsLabelled(wrapper, 'Test-Rundmail')[0]?.trigger('click')
+    await flushPromises()
+
+    // **Kein Empfängerkreis in der Anfrage.** Der Server nimmt die angemeldete Person; was hier
+    // nicht mitgeht, kann auch nichts anderes behaupten.
+    expect(sendTest).toHaveBeenCalledWith({
+      data: {
+        subject: 'Ein Betreff',
+        body: 'Ein Text.',
+        sendAsUserId: null,
+        deliverByEmail: false,
+      },
+    })
+    expect(wrapper.text()).toContain(SAID)
+  })
+
+  it('schickt aus der Warteschlange den gespeicherten Stand und antwortet am Eintrag', async () => {
+    sendTest.mockReset()
+    sendTest.mockResolvedValue({
+      status: 200,
+      data: { chatGroupId: '01900000-0000-7000-8000-000000000009', email: 'sent' },
+    })
+    queue.value.data = [NAMES_ONLY]
+    const wrapper = broadcastView()
+    await openQueue(wrapper)
+
+    await buttonsLabelled(wrapper, 'Test-Rundmail')[0]?.trigger('click')
+    await flushPromises()
+
+    // Wer freigibt, soll sehen, was eingereicht wurde — nicht, was gerade im Formular steht.
+    expect(sendTest).toHaveBeenCalledWith({
+      data: {
+        subject: 'Zu zweit',
+        body: 'Nur für euch beide.',
+        sendAsUserId: null,
+        deliverByEmail: false,
+      },
+    })
+
+    const item = wrapper.findAll('li').find((each) => each.text().includes('Zu zweit'))
+    expect(item?.text()).toContain('eine Test-Mail ist an deine Adresse unterwegs')
   })
 })

@@ -310,7 +310,7 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
               chat.id === selectedId
                 ? 'bg-paper-3 font-medium text-ink-1'
                 : 'text-ink-4 hover:bg-paper-2 hover:text-ink-1',
-              chat.isFromAdministration ? 'border-oak' : 'border-line-4',
+              chat.isFromAdministration || chat.isTestBroadcast ? 'border-oak' : 'border-line-4',
             ]"
             @click="selectedId = chat.id"
           >
@@ -330,6 +330,11 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
             <span class="text-[11px] text-ink-6">
               <template v-if="chat.isFromAdministration">
                 <span class="font-medium text-ink-4">Administration</span> ·
+              </template>
+              <!-- Hervorgehoben wie die echte, damit sie aussieht wie später — aber mit ihrem
+                   eigenen Wort, damit niemand sie für die echte hält. -->
+              <template v-else-if="chat.isTestBroadcast">
+                <span class="font-medium text-ink-4">Test-Rundmail</span> ·
               </template>
               {{ formatActivityTime(chat.lastActivityAt) }}
             </span>
@@ -389,6 +394,7 @@ const selectedIsInvitation = computed<boolean>(() => selected.value?.status === 
               :live="liveByChat[selected.id] ?? []"
               :is-favourite="selected.isFavourite"
               :is-from-administration="selected.isFromAdministration"
+              :is-test-broadcast="selected.isTestBroadcast"
               @favourite-changed="refetch"
               @opened="openTheAdministration"
             />

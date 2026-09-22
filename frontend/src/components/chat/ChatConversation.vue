@@ -45,6 +45,12 @@ const props = defineProps<{
    * Versäumnis ein Uebersetzungsfehler.
    */
   isFromAdministration: boolean
+  /**
+   * Ein Faden mit Test-Rundmails. Darin sitzt nur, wer getestet hat, der Absender nicht — also
+   * kein Einladen und kein Eingabefeld, denn eine Antwort ginge an niemanden. Verlassen darf man
+   * ihn. Pflicht aus demselben Grund wie die Angabe darüber.
+   */
+  isTestBroadcast: boolean
 }>()
 
 const emit = defineEmits<{ favouriteChanged: []; opened: [chatGroupId: string] }>()
@@ -282,7 +288,7 @@ async function submit() {
              einlüde, holte eine dritte Person in einen Kanal, der ihm und dem Team gehört — sie
              läse mit, und die Zusage, dass niemand die Antwort eines anderen sieht, wäre dahin. -->
         <ChatInvite
-          v-if="!isFromAdministration"
+          v-if="!isFromAdministration && !isTestBroadcast"
           :chat-group-id="chatGroupId"
           :member-ids="memberIds"
           @opened="emit('opened', $event)"
@@ -424,7 +430,19 @@ async function submit() {
       <AlertDescription>{{ sendError }}</AlertDescription>
     </Alert>
 
-    <form class="mt-3 flex flex-none gap-2 border-t border-line-3 pt-3" @submit.prevent="submit">
+    <!-- **Eine Antwort ginge hier an niemanden.** Der Absender sitzt nicht im Test-Faden; ein
+         Eingabefeld sähe aus, als schriebe man ihm. Der Server lehnt es ohnehin ab. -->
+    <p
+      v-if="isTestBroadcast"
+      class="mt-3 flex-none border-t border-line-3 pt-3 text-control text-ink-5"
+    >
+      Das ist eine Test-Rundmail, nur für dich. Hier antwortet niemand, und niemand liest mit.
+    </p>
+    <form
+      v-else
+      class="mt-3 flex flex-none gap-2 border-t border-line-3 pt-3"
+      @submit.prevent="submit"
+    >
       <Input
         v-model="text"
         name="message"

@@ -1,4 +1,7 @@
-import { ChatGroupService } from "@/src/service/chat_group_service.ts";
+import {
+  type ChatGroupGate,
+  ChatGroupService,
+} from "@/src/service/chat_group_service.ts";
 import { UserInChatGroupService } from "@/src/service/user_in_chat_group_service.ts";
 import type { User } from "@/src/service/user_service.ts";
 
@@ -12,7 +15,9 @@ import type { User } from "@/src/service/user_service.ts";
  * actually declares.
  */
 export type ChatAccess =
-  | { allowed: true }
+  // Das Gespräch kommt mit, weil es ohnehin gelesen wurde: Wer danach noch etwas darüber wissen
+  // muss — ob es ein Test-Faden ist —, fragt nicht ein zweites Mal.
+  | { allowed: true; chat: ChatGroupGate }
   | { allowed: false; reason: "not-found" | "not-joined"; error: string };
 
 export async function checkJoinedChatMember(
@@ -37,5 +42,5 @@ export async function checkJoinedChatMember(
     };
   }
 
-  return { allowed: true };
+  return { allowed: true, chat };
 }

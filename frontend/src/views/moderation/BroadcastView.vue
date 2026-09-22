@@ -19,6 +19,7 @@ import {
   useListBroadcastQueue,
   useListBroadcastSenders,
   useListReleasedBroadcasts,
+  useSendTestBroadcast,
   useSubmitBroadcast,
 } from '@/api/moderation/moderation'
 import type {
@@ -434,6 +435,83 @@ async function submit() {
 
   await queryClient.invalidateQueries({ queryKey: getListBroadcastQueueQueryKey() })
 }
+
+const { mutateAsync: sendTestBroadcast, isPending: isTesting } = useSendTestBroadcast()
+
+/**
+ * Was nach einer Test-Rundmail gesagt wird — **am Knopf, der sie ausgelöst hat.**
+ *
+ * `where` ist `'compose'` für das Formular oder die Kennung eines Eintrags in der Warteschlange.
+ * Ein gemeinsamer Satz oben auf der Seite ließe offen, welcher Eintrag gemeint war, und stünde
+ * womöglich neben „Die Rundmail ist raus" — genau die Verwechslung, die hier nie passieren darf.
+ */
+const testOutcome = ref<{ where: string; sentence: string } | undefined>(undefined)
+
+/**
+ * Schickt eine Test-Rundmail an die Person, die gerade angemeldet ist, und an niemanden sonst.
+ *
+ * Der Inhalt kommt aus dem Formular oder aus dem gespeicherten Eintrag. Einen Empfänger gibt es in
+ * der Anfrage gar nicht: Der Server nimmt die angemeldete Person, und nur sie.
+ */
+async function sendTest(
+  where: string,
+  content: { subject: string; body: string; sendAsUserId: string | null; deliverByEmail: boolean },
+) {
+  testOutcome.value = undefined
+
+  try {
+    const answer = await sendTestBroadcast({ data: content })
+
+    if (answer.status === 200) {
+      testOutcome.value = {
+        where,
+        sentence:
+          answer.data.email === 'sent'
+            ? 'Die Test-Rundmail liegt in deinem Postfach, und eine Test-Mail ist an deine Adresse unterwegs. Sonst hat sie niemand bekommen.'
+            : 'Die Test-Rundmail liegt in deinem Postfach. Sonst hat sie niemand bekommen.',
+      }
+    }
+  } catch (failure) {
+    testOutcome.value = {
+      where,
+      sentence: failureMessage(failure, 'Die Test-Rundmail ging nicht. Versuch es noch einmal.'),
+    }
+  }
+}
+
+/** Die Test-Rundmail aus dem Formular, so wie es gerade dasteht. */
+function sendTestFromForm() {
+  return sendTest('compose', {
+    subject: subject.value.trim(),
+    body: body.value.trim(),
+    sendAsUserId: sendAs.value === '' ? null : sendAs.value,
+    deliverByEmail: deliverByEmail.value,
+  })
+}
+
+/**
+ * Die Test-Rundmail aus der Warteschlange — der gespeicherte Stand, nicht das Formular.
+ *
+ * Wer freigibt, soll sehen, was er freigibt. Das ist, was eingereicht wurde, und nicht, was
+ * zufällig gerade im Formular steht.
+ */
+function sendTestFromEntry(entry: ListBroadcastQueue200Item) {
+  return sendTest(entry.publicationId, {
+    subject: entry.subject,
+    body: entry.body,
+    sendAsUserId: entry.sendAsUserId,
+    deliverByEmail: entry.deliverByEmail,
+  })
+}
+
+/**
+ * Ob sich eine Test-Rundmail aus dem Formular schicken lässt: Betreff und Text genügen.
+ *
+ * Ein Empfängerkreis ist nicht nötig, anders als beim Abschicken — die Test-Rundmail hat keinen.
+ */
+const mayTest = computed<boolean>(
+  () => subject.value.trim().length > 0 && body.value.trim().length > 0,
+)
 
 /**
  * Speichert eine Bearbeitung.
@@ -859,9 +937,22 @@ function audienceOf(entry: {
             </Field>
           </FieldGroup>
 
-          <div>
+          <div class="flex flex-wrap items-center gap-3">
             <Button type="submit" :disabled="!isComplete || isPending">Weiter</Button>
+            <!-- **Ein Test braucht keinen Empfängerkreis, nur Betreff und Text.** Er geht an dich
+                 und an niemanden sonst — und er zählt nicht als gesendet. -->
+            <Button
+              type="button"
+              variant="outline"
+              :disabled="!mayTest || isTesting"
+              @click="sendTestFromForm"
+            >
+              Test-Rundmail
+            </Button>
           </div>
+          <p v-if="testOutcome?.where === 'compose'" class="text-control text-ink-4" role="status">
+            {{ testOutcome.sentence }}
+          </p>
         </form>
 
         <!-- The one thing here that cannot be undone gets said in full before it happens. -->
@@ -978,6 +1069,16 @@ function audienceOf(entry: {
               >
                 {{ entry.scheduledFor && !isOverdue(entry) ? 'Freigeben' : 'Freigeben und senden' }}
               </Button>
+              <!-- **Vor dem Freigeben sehen, wie sie ankommt.** Die Test-Rundmail geht an dich, nicht an
+                   den Empfängerkreis, und ändert an diesem Eintrag nichts. -->
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="isTesting"
+                @click="sendTestFromEntry(entry)"
+              >
+                Test-Rundmail
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -995,6 +1096,13 @@ function audienceOf(entry: {
                 Verwerfen
               </Button>
             </div>
+            <p
+              v-if="testOutcome?.where === entry.publicationId"
+              class="mt-1.5 text-[12px] text-ink-4"
+              role="status"
+            >
+              {{ testOutcome.sentence }}
+            </p>
           </li>
         </ul>
 
@@ -1028,6 +1136,14 @@ function audienceOf(entry: {
               </p>
 
               <div class="mt-3 flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="isTesting"
+                  @click="sendTestFromEntry(entry)"
+                >
+                  Test-Rundmail
+                </Button>
                 <!-- Bearbeiten nimmt die Freigabe zurück, und deshalb steht der Satz daneben: Wer
                      hier tippt, holt die Rundmail zurück in die Warteschlange und braucht wieder
                      ein zweites Augenpaar. Das soll niemand erst hinterher merken. -->
@@ -1048,6 +1164,13 @@ function audienceOf(entry: {
                   Verwerfen
                 </Button>
               </div>
+              <p
+                v-if="testOutcome?.where === entry.publicationId"
+                class="mt-1.5 text-[12px] text-ink-4"
+                role="status"
+              >
+                {{ testOutcome.sentence }}
+              </p>
               <p class="mt-1.5 text-[12px] text-ink-6">
                 Bearbeiten nimmt die Freigabe zurück — sie wandert dann wieder in die Warteschlange.
               </p>

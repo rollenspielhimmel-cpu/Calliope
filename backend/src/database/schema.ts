@@ -440,6 +440,7 @@ export interface ChatGroup {
   createdAt: Generated<string>;
   createdBy: string | null;
   id: Generated<string>;
+  isTestBroadcast: Generated<boolean>;
   lastActivityAt: Generated<string>;
   title: string;
 }
@@ -1332,6 +1333,7 @@ export const CHAT_GROUP_SCHEMA = z.object({
   lastActivityAt: z.iso.datetime({ offset: true }),
   addressedToAdministration: z.boolean(),
   administrationPartnerId: z.uuidv7().nullable(),
+  isTestBroadcast: z.boolean(),
 });
 
 export const CHAT_MESSAGE_SCHEMA = z.object({
