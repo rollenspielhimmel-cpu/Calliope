@@ -13,7 +13,8 @@
     "lint:check": "deno lint",
     "type-check": "deno check .",
     "validate:fix": "deno task format:fix && deno task lint:fix && deno task type-check",
-    "validate:check": "deno task format:check && deno task lint:check && deno task type-check",
+    "image-imports:check": "deno run --allow-read=. check_image_imports.ts",
+    "validate:check": "deno task format:check && deno task lint:check && deno task type-check && deno task image-imports:check",
     "db:seed": "deno run --permission-set=calliope --env-file=../.env seed.ts",
     // Takes <username> <role>, or <username> alone for revoke:
     //   deno task grant-role nachtschreiber administrator
