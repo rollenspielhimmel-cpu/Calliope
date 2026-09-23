@@ -543,6 +543,7 @@ export type ApprovalRefusal = "not_found" | "not_waiting";
  * eine Administration eingereicht hat, und genau dann muss die es freigeben dürfen.
  */
 async function approve(
+  transaction: Transaction,
   publicationId: string,
   approver: User,
 ): Promise<ApprovalRefusal | undefined> {
@@ -556,7 +557,7 @@ async function approve(
     return "not_waiting";
   }
 
-  await db
+  await transaction
     .updateTable("publication")
     .set({
       status: "approved",
@@ -567,13 +568,27 @@ async function approve(
     .where("status", "=", "awaiting_approval")
     .execute();
 
-  // Ohne Termin geht sie sofort raus; mit Termin ist die Freigabe erteilt und der Taktgeber holt
-  // sie ab, sobald die Uhr so weit ist. Deshalb heißt der Knopf auch nicht mehr nur „senden".
-  if (waiting.scheduledFor === null) {
+  // **Das Senden gehört hinter das Festschreiben.** Die Freigabe steht in der Transaktion des
+  // Aufrufers, und Post darf nicht aus einer offenen Transaktion heraus rausgehen. Der
+  // Einstiegspunkt ruft danach `releaseIfDue`.
+  return undefined;
+}
+
+/**
+ * Schickt, was freigegeben und fällig ist — nach dem Festschreiben der Freigabe. Ohne Termin heißt
+ * freigeben auch senden; mit Termin holt der Taktgeber es ab.
+ */
+async function releaseIfDue(publicationId: string): Promise<void> {
+  const waiting = await db
+    .selectFrom("publication")
+    .select("scheduledFor")
+    .where("id", "=", publicationId)
+    .where("status", "=", "approved")
+    .executeTakeFirst();
+
+  if (waiting !== undefined && waiting.scheduledFor === null) {
     await release(publicationId);
   }
-
-  return undefined;
 }
 
 export type EditRefusal =
@@ -741,6 +756,7 @@ async function applyEdit(
 export type DiscardRefusal = "not_found" | "already_out" | "not_yours";
 
 async function discard(
+  transaction: Transaction,
   publicationId: string,
   actor: User,
 ): Promise<DiscardRefusal | undefined> {
@@ -764,7 +780,7 @@ async function discard(
 
   // Die Bedingung aus demselben Grund wie beim Bearbeiten: Dazwischen kann der Taktgeber sie
   // versendet haben, und „verworfen" über einer verschickten wäre eine falsche Spur.
-  const discarded = await db
+  const discarded = await transaction
     .updateTable("publication")
     .set({ status: "discarded" })
     .where("id", "=", publicationId)
@@ -1013,6 +1029,7 @@ export const BroadcastQueueService = {
   retract,
   submit,
   approve,
+  releaseIfDue,
   releaseDue,
   edit,
   discard,

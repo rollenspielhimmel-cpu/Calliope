@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
@@ -264,8 +265,11 @@ export default new OpenAPIHono()
       },
     }),
     async (c) =>
-      await AdminInboxFolderService.deleteFolder(
-          c.req.valid("param").folderId,
+      await db.transaction().execute((transaction) =>
+          AdminInboxFolderService.deleteFolder(
+            transaction,
+            c.req.valid("param").folderId,
+          )
         ) === undefined
         ? c.json({ ok: true as const }, STATUS_CODE.OK)
         : c.json({ error: NO_SUCH_FOLDER }, STATUS_CODE.NotFound),
@@ -402,7 +406,12 @@ export default new OpenAPIHono()
       },
     }),
     async (c) =>
-      await AdminInboxFolderService.removeItem(c.req.valid("param").itemId) ===
+      await db.transaction().execute((transaction) =>
+          AdminInboxFolderService.removeItem(
+            transaction,
+            c.req.valid("param").itemId,
+          )
+        ) ===
           undefined
         ? c.json({ ok: true as const }, STATUS_CODE.OK)
         : c.json(

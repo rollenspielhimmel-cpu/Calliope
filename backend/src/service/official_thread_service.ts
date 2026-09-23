@@ -407,6 +407,7 @@ export type DiscardRefusal = "not_found" | "already_out" | "not_yours";
  * Verworfen, nicht gelöscht — wie eine Rundmail. Der Thread bleibt, wie er war: unsichtbar.
  */
 async function discard(
+  transaction: Transaction,
   publicationId: string,
   actor: User,
 ): Promise<DiscardRefusal | undefined> {
@@ -424,7 +425,7 @@ async function discard(
     return "not_yours";
   }
 
-  const discarded = await db
+  const discarded = await transaction
     .updateTable("publication")
     .set({ status: "discarded" })
     .where("id", "=", publicationId)
@@ -439,6 +440,7 @@ export type ApprovalRefusal = "not_found" | "not_waiting";
 
 /** Gibt frei; ohne Termin erscheint der Thread damit. Nur für die Administration (die Route). */
 async function approve(
+  transaction: Transaction,
   publicationId: string,
   approver: User,
 ): Promise<ApprovalRefusal | undefined> {
@@ -450,7 +452,7 @@ async function approve(
     return "not_waiting";
   }
 
-  const approved = await db
+  const approved = await transaction
     .updateTable("publication")
     .set({
       status: "approved",
@@ -466,13 +468,28 @@ async function approve(
     return "not_waiting";
   }
 
-  // Der Termin aus der Zeile, die gerade freigegeben wurde — nicht aus der, die vorher gelesen
-  // wurde: Dazwischen kann jemand ihn geändert haben.
-  if (approved.scheduledFor === null) {
+  // **Das Erscheinen gehört hinter das Festschreiben.** Die Freigabe steht in der Transaktion des
+  // Aufrufers; erschiene der Thread darin, sähe der Taktgeber eine Zeile, die noch zurückgerollt
+  // werden kann. Der Einstiegspunkt ruft danach `releaseIfDue`.
+  return undefined;
+}
+
+/**
+ * Lässt erscheinen, was freigegeben und fällig ist — nach dem Festschreiben der Freigabe, vom
+ * Einstiegspunkt aufgerufen. Ohne Termin heißt freigeben auch veröffentlichen; mit Termin holt der
+ * Taktgeber es ab.
+ */
+async function releaseIfDue(publicationId: string): Promise<void> {
+  const waiting = await db
+    .selectFrom("publication")
+    .select("scheduledFor")
+    .where("id", "=", publicationId)
+    .where("status", "=", "approved")
+    .executeTakeFirst();
+
+  if (waiting !== undefined && waiting.scheduledFor === null) {
     await release(publicationId);
   }
-
-  return undefined;
 }
 
 /**
@@ -1188,6 +1205,7 @@ export const OfficialThreadService = {
   edit,
   discard,
   approve,
+  releaseIfDue,
   releaseDue,
   listWaiting,
   listReleased,

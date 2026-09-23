@@ -136,9 +136,10 @@ async function renameFolder(
  * Plätze dahinter rücken nicht nach: Die Reihenfolge bleibt dieselbe, nur mit einer Lücke.
  */
 async function deleteFolder(
+  transaction: Transaction,
   folderId: string,
 ): Promise<"not_found" | undefined> {
-  const result = await db
+  const result = await transaction
     .deleteFrom("inboxFolder")
     .where("id", "=", folderId)
     .executeTakeFirst();
@@ -371,8 +372,11 @@ async function addItem(
 }
 
 /** Nimmt etwas aus dem Ordner — das Gespräch oder die Nachricht selbst bleibt im Postfach. */
-async function removeItem(itemId: string): Promise<"not_found" | undefined> {
-  const result = await db
+async function removeItem(
+  transaction: Transaction,
+  itemId: string,
+): Promise<"not_found" | undefined> {
+  const result = await transaction
     .deleteFrom("inboxFolderItem")
     .where("id", "=", itemId)
     .executeTakeFirst();

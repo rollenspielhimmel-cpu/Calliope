@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
@@ -316,7 +317,12 @@ export default new OpenAPIHono()
       },
     }),
     async (c) =>
-      await AdminInboxService.reopen(c.req.valid("param").chatGroupId) ===
+      await db.transaction().execute((transaction) =>
+          AdminInboxService.reopen(
+            transaction,
+            c.req.valid("param").chatGroupId,
+          )
+        ) ===
           undefined
         ? c.json({ ok: true as const }, STATUS_CODE.OK)
         : c.json({ error: NOT_IN_THE_INBOX }, STATUS_CODE.NotFound),

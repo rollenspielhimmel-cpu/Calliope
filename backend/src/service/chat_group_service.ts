@@ -1,6 +1,6 @@
 import { theAdministration } from "@/src/service/root_admin_service.ts";
 import type { Selectable } from "kysely";
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type {
   ChatGroup as DatabaseChatGroup,
   UserInChatGroupStatus,
@@ -283,8 +283,12 @@ async function selectMemberIds(chatGroupId: string): Promise<Array<string>> {
  * Everything up to now counts as read. Stamped from the application clock like the rest of
  * the writes here, so no raw SQL is needed for it.
  */
-async function markRead(chatGroupId: string, userId: string): Promise<void> {
-  await db
+async function markRead(
+  transaction: Transaction,
+  chatGroupId: string,
+  userId: string,
+): Promise<void> {
+  await transaction
     .updateTable("userInChatGroup")
     .set({ lastReadAt: Temporal.Now.instant().toString() })
     .where("chatGroupId", "=", chatGroupId)

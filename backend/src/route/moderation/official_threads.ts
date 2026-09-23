@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
@@ -317,9 +318,12 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await OfficialThreadService.discard(
-        c.req.valid("param").publicationId,
-        c.get("user"),
+      const refusal = await db.transaction().execute((transaction) =>
+        OfficialThreadService.discard(
+          transaction,
+          c.req.valid("param").publicationId,
+          c.get("user"),
+        )
       );
 
       switch (refusal) {
@@ -374,13 +378,16 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await OfficialThreadService.approve(
-        c.req.valid("param").publicationId,
-        c.get("user"),
+      const publicationId = c.req.valid("param").publicationId;
+
+      const refusal = await db.transaction().execute((transaction) =>
+        OfficialThreadService.approve(transaction, publicationId, c.get("user"))
       );
 
       switch (refusal) {
         case undefined:
+          // Erst festschreiben, dann erscheinen lassen — siehe releaseIfDue.
+          await OfficialThreadService.releaseIfDue(publicationId);
           return c.json({ ok: true } as const, STATUS_CODE.OK);
         case "not_found":
           return c.json({ error: "Not found" }, STATUS_CODE.NotFound);

@@ -253,8 +253,11 @@ async function markDone(
 }
 
 /** Nimmt „erledigt" zurück, falls es zu früh war. */
-async function reopen(chatGroupId: string): Promise<"not_found" | undefined> {
-  const result = await db
+async function reopen(
+  transaction: Transaction,
+  chatGroupId: string,
+): Promise<"not_found" | undefined> {
+  const result = await transaction
     .updateTable("chatGroup")
     .set({ inboxDoneThrough: null, inboxDoneBy: null, inboxDoneAt: null })
     .where("id", "=", chatGroupId)
