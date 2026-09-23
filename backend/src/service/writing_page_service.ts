@@ -180,8 +180,9 @@ async function selectPageForReader(
   writingGroupId: string,
   pageId: string,
   readerId: string,
+  executor: typeof db | Transaction = db,
 ): Promise<Page | undefined> {
-  return await pagesForReader(readerId)
+  return await pagesForReader(readerId, executor)
     .select((eb) =>
       eb.ref("writingPage.document").$castTo<PostDocument>().as("document")
     )
@@ -252,13 +253,14 @@ export type UpdateOutcome =
  * from. `undefined` means no such page in that group.
  */
 async function updatePage(
+  transaction: Transaction,
   writingGroupId: string,
   pageId: string,
   loadedAt: string,
   values: { title: string; document: PostDocument },
   updatedBy: string,
 ): Promise<UpdateOutcome | undefined> {
-  const written = await db
+  const written = await transaction
     .updateTable("writingPage")
     .set({
       title: values.title,
@@ -274,7 +276,12 @@ async function updatePage(
     .executeTakeFirst();
 
   // The editor's own favourite, because the response carries it like every other page does.
-  const page = await selectPageForReader(writingGroupId, pageId, updatedBy);
+  const page = await selectPageForReader(
+    writingGroupId,
+    pageId,
+    updatedBy,
+    transaction,
+  );
   if (page === undefined) {
     return undefined;
   }
@@ -286,26 +293,33 @@ async function updatePage(
  * `20260902160000_activity_ignores_a_move.sql`. `undefined` means no such page in that group.
  */
 async function movePage(
+  transaction: Transaction,
   writingGroupId: string,
   pageId: string,
   folderId: string | null,
   readerId: string,
 ): Promise<Page | undefined> {
-  await db
+  await transaction
     .updateTable("writingPage")
     .set({ folderId })
     .where("writingGroupId", "=", writingGroupId)
     .where("id", "=", pageId)
     .execute();
 
-  return await selectPageForReader(writingGroupId, pageId, readerId);
+  return await selectPageForReader(
+    writingGroupId,
+    pageId,
+    readerId,
+    transaction,
+  );
 }
 
 async function deletePage(
+  transaction: Transaction,
   writingGroupId: string,
   pageId: string,
 ): Promise<void> {
-  await db
+  await transaction
     .deleteFrom("writingPage")
     .where("writingGroupId", "=", writingGroupId)
     .where("id", "=", pageId)
