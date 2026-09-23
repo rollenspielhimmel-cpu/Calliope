@@ -15,6 +15,22 @@ import { plainTextToDocument } from "@/src/document/document_text.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 
 /**
+ * **Ein Test ist ein Einstiegspunkt wie eine Route**, also öffnet er die Transaktion, die ein
+ * schreibender Dienst von seinem Aufrufer erwartet:
+ * `await write((transaction) => WordFilterService.insertWord(transaction, …))`.
+ *
+ * Der erste Schritt des Umbaus aus `docs/transaktions-umbau.md`, übernommen von upstream
+ * (058fd7c). Solange ein Dienst noch selbst eine Transaktion öffnet, braucht ihn niemand — er
+ * steht hier, damit die Umstellung Dienst für Dienst laufen kann, ohne dass die Tests auf einen
+ * Schlag umgeschrieben werden müssen.
+ */
+export function write<T>(
+  task: (transaction: Transaction) => Promise<T>,
+): Promise<T> {
+  return db.transaction().execute(task);
+}
+
+/**
  * Registers a user, confirms their address, and returns the session cookie.
  *
  * The confirmation is part of the fixture because almost every test is about something else,

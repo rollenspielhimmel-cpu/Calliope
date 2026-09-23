@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type {
   PlatformPermission,
   PlatformRole,
@@ -45,11 +45,12 @@ async function list(): Promise<RolePermission[]> {
 
 /** Idempotent: granting what is already granted keeps the first grant's who and when. */
 async function grant(
+  transaction: Transaction,
   role: GrantableRole,
   permission: PlatformPermission,
   grantedBy: string,
 ): Promise<void> {
-  await db
+  await transaction
     .insertInto("platformRolePermission")
     .values({ role, permission, grantedBy })
     .onConflict((conflict) => conflict.doNothing())
@@ -61,10 +62,11 @@ async function grant(
  * session user, and the session user is read afresh each time.
  */
 async function revoke(
+  transaction: Transaction,
   role: GrantableRole,
   permission: PlatformPermission,
 ): Promise<void> {
-  await db
+  await transaction
     .deleteFrom("platformRolePermission")
     .where("role", "=", role)
     .where("permission", "=", permission)

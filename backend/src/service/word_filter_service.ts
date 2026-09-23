@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type {
   DocumentNode,
   PostDocument,
@@ -183,13 +183,20 @@ async function listBlockedWords(): Promise<BlockedWord[]> {
   }));
 }
 
-/** Adding a word already on the list only refreshes its note and who added it. */
+/**
+ * Adding a word already on the list only refreshes its note and who added it.
+ *
+ * **Schreibt in der Transaktion des Aufrufers** — der erste Dienst, der auf die Regel aus
+ * `docs/transaktions-umbau.md` umgestellt ist: Wer schreibt, bekommt die Transaktion von dem, der
+ * den Vorgang beginnt; geöffnet wird sie am Einstiegspunkt, also in der Route.
+ */
 async function blockWord(
+  transaction: Transaction,
   word: string,
   addedBy: string,
   note: string | null,
 ): Promise<void> {
-  await db
+  await transaction
     .insertInto("blockedWord")
     .values({ word: word.trim().toLowerCase(), addedBy, note })
     .onConflict((conflict) =>
@@ -200,8 +207,11 @@ async function blockWord(
   forgetCachedWords();
 }
 
-async function unblockWord(word: string): Promise<void> {
-  await db
+async function unblockWord(
+  transaction: Transaction,
+  word: string,
+): Promise<void> {
+  await transaction
     .deleteFrom("blockedWord")
     .where("word", "=", word.trim().toLowerCase())
     .execute();

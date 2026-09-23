@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
+import { db } from "@/src/database/client.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { authorizedAsAdministrator } from "@/src/middleware/authorized_as_platform_role.ts";
 import {
@@ -114,7 +115,9 @@ export default new OpenAPIHono()
       }
 
       const { role, permission } = c.req.valid("param");
-      await RolePermissionService.grant(role, permission, user.id);
+      await db.transaction().execute((transaction) =>
+        RolePermissionService.grant(transaction, role, permission, user.id)
+      );
 
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },
@@ -147,7 +150,9 @@ export default new OpenAPIHono()
       }
 
       const { role, permission } = c.req.valid("param");
-      await RolePermissionService.revoke(role, permission);
+      await db.transaction().execute((transaction) =>
+        RolePermissionService.revoke(transaction, role, permission)
+      );
 
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },

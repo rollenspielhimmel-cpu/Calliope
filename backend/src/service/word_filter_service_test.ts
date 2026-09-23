@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { db } from "@/src/database/client.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
+import { write } from "@/src/test/support.ts";
 
 /**
  * The masking, which is the whole of this feature — the list around it is a table with three
@@ -162,7 +163,9 @@ Deno.test("taking a word off the list gives the original text back", async () =>
   await block("dummkopf");
   assertEquals(await WordFilterService.maskText(written), "So ein ***.");
 
-  await WordFilterService.unblockWord("dummkopf");
+  await write((transaction) =>
+    WordFilterService.unblockWord(transaction, "dummkopf")
+  );
 
   // The reason the mask is a read-time filter: this is only possible because the row was never
   // touched. A filter that rewrote on save could not undo itself.

@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
+import { db } from "@/src/database/client.ts";
 import { USER_SCHEMA } from "@/src/database/schema.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { notBlank } from "@/src/http/request_schema.ts";
@@ -112,10 +113,13 @@ export default new OpenAPIHono()
     }),
     async (c) => {
       const { domain, note } = c.req.valid("json");
-      await BlockedEmailDomainService.addBlocked(
-        domain,
-        c.get("user").id,
-        note,
+      await db.transaction().execute((transaction) =>
+        BlockedEmailDomainService.addBlocked(
+          transaction,
+          domain,
+          c.get("user").id,
+          note,
+        )
       );
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },
@@ -142,7 +146,9 @@ export default new OpenAPIHono()
     }),
     async (c) => {
       const { domain } = c.req.valid("param");
-      await BlockedEmailDomainService.removeBlocked(domain);
+      await db.transaction().execute((transaction) =>
+        BlockedEmailDomainService.removeBlocked(transaction, domain)
+      );
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },
   );

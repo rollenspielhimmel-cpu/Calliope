@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 
 /**
  * Keeping an eye on somebody, independent of the report queue and of the strike ladder: not an
@@ -17,12 +17,13 @@ export type WatchlistEntry = {
 
 /** Adding somebody already on the list updates the note and the time: one row per member. */
 async function addToWatchlist(
+  transaction: Transaction,
   userId: string,
   note: string,
   addedBy: string,
 ): Promise<"not_found" | undefined> {
   // Checked rather than left to the foreign key, which would answer 500 for what is a 404.
-  const target = await db
+  const target = await transaction
     .selectFrom("user")
     .select("id")
     .where("id", "=", userId)
@@ -32,7 +33,7 @@ async function addToWatchlist(
     return "not_found";
   }
 
-  await db
+  await transaction
     .insertInto("watchlistEntry")
     .values({ userId, note, addedBy })
     .onConflict((conflict) =>
@@ -47,8 +48,12 @@ async function addToWatchlist(
   return undefined;
 }
 
-async function removeFromWatchlist(userId: string): Promise<void> {
-  await db.deleteFrom("watchlistEntry").where("userId", "=", userId).execute();
+async function removeFromWatchlist(
+  transaction: Transaction,
+  userId: string,
+): Promise<void> {
+  await transaction.deleteFrom("watchlistEntry").where("userId", "=", userId)
+    .execute();
 }
 
 async function isWatched(userId: string): Promise<boolean> {

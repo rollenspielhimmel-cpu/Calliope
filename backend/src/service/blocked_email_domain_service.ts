@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 
 /**
  * Which email domains may not register, kept in the database rather than in the code: new
@@ -64,11 +64,12 @@ async function listBlocked(): Promise<BlockedDomain[]> {
 
 /** Adding one already on the list updates its note rather than failing. */
 async function addBlocked(
+  transaction: Transaction,
   domain: string,
   addedBy: string,
   note: string | undefined,
 ): Promise<void> {
-  await db
+  await transaction
     .insertInto("blockedEmailDomain")
     .values({ domain: domain.toLowerCase(), addedBy, note: note ?? null })
     .onConflict((conflict) =>
@@ -77,8 +78,11 @@ async function addBlocked(
     .execute();
 }
 
-async function removeBlocked(domain: string): Promise<void> {
-  await db
+async function removeBlocked(
+  transaction: Transaction,
+  domain: string,
+): Promise<void> {
+  await transaction
     .deleteFrom("blockedEmailDomain")
     .where("domain", "=", domain.toLowerCase())
     .execute();
