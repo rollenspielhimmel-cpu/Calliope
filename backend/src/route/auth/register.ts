@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { TEXT_LIMIT, TEXT_MINIMUM } from "@/src/text_limit.ts";
 import { AUTH_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
@@ -108,28 +109,45 @@ export default new OpenAPIHono().openapi(
       );
     }
 
-    const user = await UserService.insertUser(
-      username,
-      password,
-      emailAddress,
-      invitedBy === undefined
-        ? undefined
-        : await UserService.selectInviterId(invitedBy),
-    );
+    const inviterId = invitedBy === undefined
+      ? undefined
+      : await UserService.selectInviterId(invitedBy);
 
-    if (user === undefined) {
+    // **Konto und Sitzung in einer Transaktion.** Genau dieser Fall steht in der Begründung des
+    // Umbaus: Ohne sie konnte ein Konto entstehen, dessen Sitzung nicht entstand.
+    const registered = await db.transaction().execute(async (transaction) => {
+      const user = await UserService.insertUser(
+        transaction,
+        username,
+        password,
+        emailAddress,
+        inviterId,
+      );
+
+      if (user === undefined) {
+        return undefined;
+      }
+
+      // A session is started even though the address is unverified: without one there is no
+      // way back in to correct a typo, and the account would be orphaned by a single slip.
+      return {
+        user,
+        sessionToken: await UserService.insertSessionForUser(
+          transaction,
+          user,
+          sessionProvenance(c),
+        ),
+      };
+    });
+
+    if (registered === undefined) {
       return c.json(
         { error: "Username or email address already in use" },
         STATUS_CODE.Conflict,
       );
     }
 
-    // A session is started even though the address is unverified: without one there is no
-    // way back in to correct a typo, and the account would be orphaned by a single slip.
-    const sessionToken = await UserService.insertSessionForUser(
-      user,
-      sessionProvenance(c),
-    );
+    const { user, sessionToken } = registered;
     SessionCookieService.setUserSession(c, sessionToken);
 
     EmailAddressVerificationService.sendVerificationMail(user);

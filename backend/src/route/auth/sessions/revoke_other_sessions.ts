@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { AUTH_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
@@ -46,7 +47,13 @@ export default new OpenAPIHono().openapi(
       return c.json({ error: "Unauthorized" }, STATUS_CODE.Unauthorized);
     }
 
-    await UserService.deleteOtherSessions(c.get("user").id, currentSessionId);
+    await db.transaction().execute((transaction) =>
+      UserService.deleteOtherSessions(
+        transaction,
+        c.get("user").id,
+        currentSessionId,
+      )
+    );
 
     return c.json({ ok: true } as const, STATUS_CODE.OK);
   },

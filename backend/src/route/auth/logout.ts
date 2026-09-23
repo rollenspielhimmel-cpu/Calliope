@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { AUTH_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { UserService } from "@/src/service/user_service.ts";
@@ -44,7 +45,9 @@ export default new OpenAPIHono().openapi(
 
     SessionCookieService.deleteUserSession(c);
 
-    await UserService.deleteSession(sessionCookie);
+    await db.transaction().execute((transaction) =>
+      UserService.deleteSession(transaction, sessionCookie)
+    );
 
     return c.json({ ok: true } as const, STATUS_CODE.OK);
   },

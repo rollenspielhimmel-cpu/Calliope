@@ -18,11 +18,21 @@ export async function resolveSessionUser(
     return undefined;
   }
 
-  const user = await UserService.selectUserForSession(sessionToken);
+  const found = await UserService.selectUserForSession(sessionToken);
 
-  if (user === undefined) {
+  if (found === undefined) {
     SessionCookieService.deleteUserSession(c);
     return undefined;
+  }
+
+  const { user, needsRefresh, sessionId } = found;
+
+  // Die Sitzung verlängert sich selten — einmal je Auffrischungsfenster. Die Transaktion öffnet
+  // deshalb nur, wer wirklich schreibt.
+  if (needsRefresh) {
+    await db.transaction().execute((transaction) =>
+      UserService.refreshSession(transaction, sessionId)
+    );
   }
 
   // Here rather than in a middleware of its own: this is the one place every signed-in request

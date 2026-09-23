@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { AUTH_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
@@ -83,9 +84,8 @@ export default new OpenAPIHono().openapi(
       );
     }
 
-    const sessionToken = await UserService.insertSessionForUser(
-      user,
-      sessionProvenance(c),
+    const sessionToken = await db.transaction().execute((transaction) =>
+      UserService.insertSessionForUser(transaction, user, sessionProvenance(c))
     );
     SessionCookieService.setUserSession(c, sessionToken);
 

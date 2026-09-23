@@ -1,4 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
+import { write } from "@/src/test/support.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { Hono } from "hono";
 import { db } from "@/src/database/client.ts";
@@ -22,7 +23,9 @@ const app = new Hono<{ Variables: { user: User } }>()
   .get("/probe", (c) => c.json({ username: c.get("user").username }));
 
 async function createUserWithSession() {
-  const user = await UserService.insertUser(username, password, emailAddress);
+  const user = await write((transaction) =>
+    UserService.insertUser(transaction, username, password, emailAddress)
+  );
   assertExists(user, "fixture user could not be created");
 
   await db
@@ -31,10 +34,12 @@ async function createUserWithSession() {
     .where("id", "=", user.id)
     .execute();
 
-  const session = await UserService.insertSessionForUser(user, {
-    userAgent: undefined,
-    ipAddress: undefined,
-  });
+  const session = await write((transaction) =>
+    UserService.insertSessionForUser(transaction, user, {
+      userAgent: undefined,
+      ipAddress: undefined,
+    })
+  );
 
   return { user, session };
 }

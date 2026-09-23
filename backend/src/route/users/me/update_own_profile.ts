@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { USERS_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
@@ -69,9 +70,8 @@ export default new OpenAPIHono().openapi(
   }),
   async (c) => {
     const user = c.get("user");
-    const profile = await UserService.updateProfile(
-      user.id,
-      c.req.valid("json"),
+    const profile = await db.transaction().execute((transaction) =>
+      UserService.updateProfile(transaction, user.id, c.req.valid("json"))
     );
 
     if (profile === undefined) {

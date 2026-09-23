@@ -13,7 +13,9 @@ export function scheduleCronJobs() {
     "0 * * * *",
     { signal: getAbortSignalForShutdown() },
     async () => {
-      const deletedSessions = await UserService.deleteExpiredSessions();
+      const deletedSessions = await db.transaction().execute((transaction) =>
+        UserService.deleteExpiredSessions(transaction)
+      );
       console.log(`Deleted ${deletedSessions} expired session(s)`);
     },
   );
