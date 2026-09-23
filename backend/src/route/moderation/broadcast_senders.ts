@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { USER_SCHEMA } from "@/src/database/schema.ts";
@@ -131,9 +132,12 @@ export default new OpenAPIHono()
         );
       }
 
-      const refusal = await BroadcastSenderService.releaseSender(
-        c.req.valid("json").username,
-        user.id,
+      const refusal = await db.transaction().execute((transaction) =>
+        BroadcastSenderService.releaseSender(
+          transaction,
+          c.req.valid("json").username,
+          user.id,
+        )
       );
 
       switch (refusal) {
@@ -187,8 +191,11 @@ export default new OpenAPIHono()
         );
       }
 
-      const refusal = await BroadcastSenderService.withdrawSender(
-        c.req.valid("param").userId,
+      const refusal = await db.transaction().execute((transaction) =>
+        BroadcastSenderService.withdrawSender(
+          transaction,
+          c.req.valid("param").userId,
+        )
       );
 
       switch (refusal) {

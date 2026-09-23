@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 
 /**
  * Fixed text pages the operators write themselves — the rules, an FAQ. Markdown rather than a
@@ -87,6 +87,7 @@ async function selectPage(slug: string): Promise<CustomPage | undefined> {
  * no other table in this schema has one and adding the first would be a convention change.
  */
 async function upsertPage(
+  transaction: Transaction,
   page: {
     slug: string;
     title: string;
@@ -97,7 +98,7 @@ async function upsertPage(
 ): Promise<void> {
   const now = Temporal.Now.instant().toString();
 
-  await db
+  await transaction
     .insertInto("customPage")
     .values({ ...page, lastEditedBy: editedBy, updatedAt: now })
     .onConflict((conflict) =>
@@ -112,8 +113,11 @@ async function upsertPage(
     .execute();
 }
 
-async function deletePage(slug: string): Promise<"not_found" | undefined> {
-  const deleted = await db
+async function deletePage(
+  transaction: Transaction,
+  slug: string,
+): Promise<"not_found" | undefined> {
+  const deleted = await transaction
     .deleteFrom("customPage")
     .where("slug", "=", slug)
     .returning("slug")

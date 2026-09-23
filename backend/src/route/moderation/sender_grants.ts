@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { PLATFORM_ROLE_SCHEMA, USER_SCHEMA } from "@/src/database/schema.ts";
@@ -115,10 +116,8 @@ export default new OpenAPIHono()
       }
 
       const { senderId, role } = c.req.valid("param");
-      const refusal = await BroadcastSenderService.grant(
-        senderId,
-        { role },
-        user.id,
+      const refusal = await db.transaction().execute((transaction) =>
+        BroadcastSenderService.grant(transaction, senderId, { role }, user.id)
       );
 
       return refusal === undefined ? c.json(OK, STATUS_CODE.OK) : c.json(
@@ -155,7 +154,9 @@ export default new OpenAPIHono()
       }
 
       const { senderId, role } = c.req.valid("param");
-      await BroadcastSenderService.revoke(senderId, { role });
+      await db.transaction().execute((transaction) =>
+        BroadcastSenderService.revoke(transaction, senderId, { role })
+      );
 
       return c.json(OK, STATUS_CODE.OK);
     },
@@ -190,10 +191,8 @@ export default new OpenAPIHono()
       }
 
       const { senderId, userId } = c.req.valid("param");
-      const refusal = await BroadcastSenderService.grant(
-        senderId,
-        { userId },
-        user.id,
+      const refusal = await db.transaction().execute((transaction) =>
+        BroadcastSenderService.grant(transaction, senderId, { userId }, user.id)
       );
 
       if (refusal === undefined) {
@@ -238,7 +237,9 @@ export default new OpenAPIHono()
       }
 
       const { senderId, userId } = c.req.valid("param");
-      await BroadcastSenderService.revoke(senderId, { userId });
+      await db.transaction().execute((transaction) =>
+        BroadcastSenderService.revoke(transaction, senderId, { userId })
+      );
 
       return c.json(OK, STATUS_CODE.OK);
     },

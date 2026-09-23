@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { CUSTOM_PAGES_TAG } from "@/src/open_api_specification.ts";
 import { USER_SCHEMA } from "@/src/database/schema.ts";
@@ -103,7 +104,13 @@ export default new OpenAPIHono()
       const { slug } = c.req.valid("param");
       const page = c.req.valid("json");
 
-      await CustomPageService.upsertPage({ slug, ...page }, c.get("user").id);
+      await db.transaction().execute((transaction) =>
+        CustomPageService.upsertPage(
+          transaction,
+          { slug, ...page },
+          c.get("user").id,
+        )
+      );
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },
   )
@@ -134,7 +141,10 @@ export default new OpenAPIHono()
     async (c) => {
       const { slug } = c.req.valid("param");
 
-      if (await CustomPageService.deletePage(slug) === "not_found") {
+      const removal = await db.transaction().execute((transaction) =>
+        CustomPageService.deletePage(transaction, slug)
+      );
+      if (removal === "not_found") {
         return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
       }
 

@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type { PlatformRole } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
 import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
@@ -73,10 +73,11 @@ export type ReleaseRefusal = "not_found" | "is_root_administrator";
  * overwriting it — „since when" is the half worth having.
  */
 async function releaseSender(
+  transaction: Transaction,
   username: string,
   enabledBy: string,
 ): Promise<ReleaseRefusal | undefined> {
-  const user = await db
+  const user = await transaction
     .selectFrom("user")
     .select(["id", "isPrimordialAdmin"])
     // Case-insensitively, the way signing in finds an account: somebody typing „weihnachtsmann"
@@ -94,7 +95,7 @@ async function releaseSender(
     return "is_root_administrator";
   }
 
-  await db
+  await transaction
     .insertInto("broadcastSender")
     .values({ userId: user.id, enabledBy })
     .onConflict((conflict) => conflict.column("userId").doNothing())
@@ -115,9 +116,10 @@ async function releaseSender(
  * answering rather than a state to reach.
  */
 async function withdrawSender(
+  transaction: Transaction,
   userId: string,
 ): Promise<"is_root_administrator" | undefined> {
-  const user = await db
+  const user = await transaction
     .selectFrom("user")
     .select("isPrimordialAdmin")
     .where("id", "=", userId)
@@ -127,7 +129,7 @@ async function withdrawSender(
     return "is_root_administrator";
   }
 
-  await db
+  await transaction
     .deleteFrom("broadcastSender")
     .where("userId", "=", userId)
     .execute();
@@ -302,6 +304,7 @@ export type GrantRefusal = "not_a_sender" | "not_found";
 
 /** Gibt einen Absender einer Rolle oder einer Person. Zweimal geben ändert nichts. */
 async function grant(
+  transaction: Transaction,
   senderId: string,
   to: { role: Exclude<PlatformRole, "administrator"> } | { userId: string },
   grantedBy: string,
@@ -311,7 +314,7 @@ async function grant(
   }
 
   if ("userId" in to) {
-    const exists = await db
+    const exists = await transaction
       .selectFrom("user")
       .select("id")
       .where("id", "=", to.userId)
@@ -321,7 +324,7 @@ async function grant(
     }
   }
 
-  await db
+  await transaction
     .insertInto("senderGrant")
     .values({
       senderUserId: await grantKey(senderId),
@@ -338,12 +341,13 @@ async function grant(
 
 /** Nimmt eine Freigabe zurück. Was nicht vergeben war, ist danach genauso wenig vergeben. */
 async function revoke(
+  transaction: Transaction,
   senderId: string,
   from: { role: Exclude<PlatformRole, "administrator"> } | { userId: string },
 ): Promise<void> {
   const key = await grantKey(senderId);
 
-  await db
+  await transaction
     .deleteFrom("senderGrant")
     .where((eb) =>
       key === null
