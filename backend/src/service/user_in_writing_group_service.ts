@@ -257,10 +257,11 @@ async function acceptInvitation(
  * only lived here.
  */
 async function deleteMembership(
+  transaction: Transaction,
   writingGroupId: string,
   userId: string,
 ): Promise<boolean> {
-  const deletion = await db
+  const deletion = await transaction
     .deleteFrom("userInWritingGroup")
     .where("writingGroupId", "=", writingGroupId)
     .where("userId", "=", userId)

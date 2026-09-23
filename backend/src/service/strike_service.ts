@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import { mayModeratePlatform } from "@/src/service/platform_authorization.ts";
 import type { StrikeAction, StrikeSeverity } from "@/src/database/schema.ts";
 
@@ -192,6 +192,7 @@ async function refuseTarget(
 }
 
 async function issueWarning(
+  transaction: Transaction,
   userId: string,
   severity: StrikeSeverity,
   reason: string,
@@ -203,7 +204,7 @@ async function issueWarning(
     return refusal;
   }
 
-  await db
+  await transaction
     .insertInto("strike")
     .values({ userId, severity, action: "warning", reason, issuedBy })
     .execute();
@@ -264,9 +265,10 @@ async function issueSuspension(
  * decided happened, whatever was decided afterwards.
  */
 async function liftSuspension(
+  transaction: Transaction,
   userId: string,
 ): Promise<"not_found" | undefined> {
-  const lifted = await db
+  const lifted = await transaction
     .updateTable("user")
     .set({ suspendedUntil: null, suspensionReason: null })
     .where("id", "=", userId)

@@ -7,6 +7,7 @@ import {
   deleteUsers,
   getUserId,
   registerUser,
+  write,
 } from "@/src/test/support.ts";
 import { WritingPageService } from "./writing_page_service.ts";
 import {
@@ -105,10 +106,17 @@ Deno.test("a title and a description can be changed", async () => {
   const { groupId, ownerId } = await aGroup();
   const folder = await make(groupId, ownerId, "Weltenbau");
 
-  const updated = await WritingFolderService.updateFolder(groupId, folder.id, {
-    title: "Welt",
-    description: "Was in der Welt gilt.",
-  });
+  const updated = await write((transaction) =>
+    WritingFolderService.updateFolder(
+      transaction,
+      groupId,
+      folder.id,
+      {
+        title: "Welt",
+        description: "Was in der Welt gilt.",
+      },
+    )
+  );
 
   assertEquals(updated?.title, "Welt");
   assertEquals(updated?.description, "Was in der Welt gilt.");
@@ -120,7 +128,9 @@ Deno.test("an empty folder is deleted", async () => {
   const folder = await make(groupId, ownerId, "Leer");
 
   assertEquals(
-    await WritingFolderService.deleteFolder(groupId, folder.id),
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(transaction, groupId, folder.id)
+    ),
     "deleted",
   );
   assertEquals(
@@ -135,7 +145,9 @@ Deno.test("a folder holding another folder is refused", async () => {
   await make(groupId, ownerId, "Stadt A", root.id);
 
   assertEquals(
-    await WritingFolderService.deleteFolder(groupId, root.id),
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(transaction, groupId, root.id)
+    ),
     "notEmpty",
   );
   assertExists(await WritingFolderService.selectFolder(groupId, root.id));
@@ -153,7 +165,9 @@ Deno.test("a folder holding a page is refused", async () => {
   );
 
   assertEquals(
-    await WritingFolderService.deleteFolder(groupId, folder.id),
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(transaction, groupId, folder.id)
+    ),
     "notEmpty",
   );
 });
@@ -172,7 +186,9 @@ Deno.test("a folder holding a thread is refused", async () => {
     .execute();
 
   assertEquals(
-    await WritingFolderService.deleteFolder(groupId, folder.id),
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(transaction, groupId, folder.id)
+    ),
     "notEmpty",
   );
 });
@@ -345,14 +361,19 @@ Deno.test("deleting a folder that is not there says so, rather than blaming its 
   // Never existed here, and existing-but-elsewhere: both are "no such folder in this group",
   // and neither is a claim that it still holds something.
   assertEquals(
-    await WritingFolderService.deleteFolder(
-      groupId,
-      "01a00000-0000-7000-8000-00000000ffff",
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(
+        transaction,
+        groupId,
+        "01a00000-0000-7000-8000-00000000ffff",
+      )
     ),
     undefined,
   );
   assertEquals(
-    await WritingFolderService.deleteFolder(groupId, theirs.id),
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(transaction, groupId, theirs.id)
+    ),
     undefined,
   );
 
@@ -360,7 +381,9 @@ Deno.test("deleting a folder that is not there says so, rather than blaming its 
   const root = await make(groupId, ownerId, "Weltenbau");
   await make(groupId, ownerId, "Stadt A", root.id);
   assertEquals(
-    await WritingFolderService.deleteFolder(groupId, root.id),
+    await write((transaction) =>
+      WritingFolderService.deleteFolder(transaction, groupId, root.id)
+    ),
     "notEmpty",
   );
 });

@@ -192,7 +192,9 @@ async function confirmEmailAddressChange(
 
 /** The cancel link from the notice sent to the old address. */
 async function cancelEmailAddressChange(token: string): Promise<boolean> {
-  return await UserTokenService.revokeToken(token, "email_address_change");
+  return await db.transaction().execute((transaction) =>
+    UserTokenService.revokeToken(transaction, token, "email_address_change")
+  );
 }
 
 export const EmailAddressChangeService = {

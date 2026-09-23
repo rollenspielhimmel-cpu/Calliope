@@ -1,5 +1,5 @@
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type { ProfileQuestionKind } from "@/src/database/schema.ts";
 
 /**
@@ -116,8 +116,11 @@ async function writeQuestion(
 }
 
 /** The answers go with it: they were answers to this question and to nothing else. */
-async function deleteQuestion(id: string): Promise<"not_found" | undefined> {
-  const deleted = await db
+async function deleteQuestion(
+  transaction: Transaction,
+  id: string,
+): Promise<"not_found" | undefined> {
+  const deleted = await transaction
     .deleteFrom("profileQuestion")
     .where("id", "=", id)
     .returning("id")

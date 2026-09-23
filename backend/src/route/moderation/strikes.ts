@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import {
@@ -203,11 +204,14 @@ export default new OpenAPIHono()
       const { userId } = c.req.valid("param");
       const { severity, reason } = c.req.valid("json");
 
-      const refusal = await StrikeService.issueWarning(
-        userId,
-        severity,
-        reason,
-        c.get("user").id,
+      const refusal = await db.transaction().execute((transaction) =>
+        StrikeService.issueWarning(
+          transaction,
+          userId,
+          severity,
+          reason,
+          c.get("user").id,
+        )
       );
 
       switch (refusal) {
@@ -302,7 +306,11 @@ export default new OpenAPIHono()
     async (c) => {
       const { userId } = c.req.valid("param");
 
-      if (await StrikeService.liftSuspension(userId) === "not_found") {
+      if (
+        await db.transaction().execute((transaction) =>
+          StrikeService.liftSuspension(transaction, userId)
+        ) === "not_found"
+      ) {
         return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
       }
 

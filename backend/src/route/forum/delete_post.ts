@@ -1,4 +1,5 @@
 import { OfficialThreadService } from "@/src/service/official_thread_service.ts";
+import { db } from "@/src/database/client.ts";
 import { REVISION_REASON } from "@/src/route/moderation/official_thread_changes.ts";
 import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
@@ -116,7 +117,9 @@ export default new OpenAPIHono().openapi(
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     }
 
-    const removed = await WritingPostService.deletePost(postId);
+    const removed = await db.transaction().execute((transaction) =>
+      WritingPostService.deletePost(transaction, postId)
+    );
     if (!removed) {
       return c.json({ error: "Post not found" }, STATUS_CODE.NotFound);
     }

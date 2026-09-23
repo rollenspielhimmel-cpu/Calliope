@@ -377,8 +377,11 @@ async function updatePost(
   });
 }
 
-async function deletePost(postId: string): Promise<boolean> {
-  const deletion = await db
+async function deletePost(
+  transaction: Transaction,
+  postId: string,
+): Promise<boolean> {
+  const deletion = await transaction
     .deleteFrom("writingPost")
     .where("id", "=", postId)
     .executeTakeFirst();

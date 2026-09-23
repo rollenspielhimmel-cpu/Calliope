@@ -57,8 +57,9 @@ async function listFolders(writingGroupId: string): Promise<Folder[]> {
 async function selectFolder(
   writingGroupId: string,
   folderId: string,
+  executor: typeof db | Transaction = db,
 ): Promise<Folder | undefined> {
-  return await foldersWithNames()
+  return await foldersWithNames(executor)
     .where("writingFolder.writingGroupId", "=", writingGroupId)
     .$narrowType<{ writingGroupId: NotNull }>()
     .where("writingFolder.id", "=", folderId)
@@ -129,18 +130,19 @@ async function insertFolder(
 
 /** Title and description only: where a folder sits is a move, which is its own slice. */
 async function updateFolder(
+  transaction: Transaction,
   writingGroupId: string,
   folderId: string,
   values: { title: string; description: string | null },
 ): Promise<Folder | undefined> {
-  await db
+  await transaction
     .updateTable("writingFolder")
     .set(values)
     .where("writingGroupId", "=", writingGroupId)
     .where("id", "=", folderId)
     .execute();
 
-  return await selectFolder(writingGroupId, folderId);
+  return await selectFolder(writingGroupId, folderId, transaction);
 }
 
 export type DeleteOutcome = "deleted" | "notEmpty";
@@ -156,10 +158,11 @@ export type DeleteOutcome = "deleted" | "notEmpty";
  * `updatePage` distinguishes the same pair for the same reason.
  */
 async function deleteFolder(
+  transaction: Transaction,
   writingGroupId: string,
   folderId: string,
 ): Promise<DeleteOutcome | undefined> {
-  const { numDeletedRows } = await db
+  const { numDeletedRows } = await transaction
     .deleteFrom("writingFolder")
     .where("writingGroupId", "=", writingGroupId)
     .where("id", "=", folderId)

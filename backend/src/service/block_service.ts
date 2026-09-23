@@ -189,10 +189,11 @@ async function insertBlock(
 }
 
 async function deleteBlock(
+  transaction: Transaction,
   blockerId: string,
   blockedId: string,
 ): Promise<boolean> {
-  const deletion = await db
+  const deletion = await transaction
     .deleteFrom("userBlock")
     .where("blockerId", "=", blockerId)
     .where("blockedId", "=", blockedId)

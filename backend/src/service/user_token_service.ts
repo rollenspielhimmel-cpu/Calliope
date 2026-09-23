@@ -1,6 +1,5 @@
-import type { Transaction } from "kysely";
-import { db } from "@/src/database/client.ts";
-import type { DB, UserTokenPurpose } from "@/src/database/schema.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
+import type { UserTokenPurpose } from "@/src/database/schema.ts";
 import {
   formatToken,
   generateToken,
@@ -113,7 +112,7 @@ async function issueToken(request: TokenRequest): Promise<string | undefined> {
  * is part of the match, so a token issued for one thing cannot be spent on another.
  */
 async function consumeToken(
-  transaction: Transaction<DB>,
+  transaction: Transaction,
   token: string,
   purpose: UserTokenPurpose,
 ): Promise<{ userId: string; newEmailAddress: string | null } | undefined> {
@@ -143,6 +142,7 @@ async function consumeToken(
  * that mail can do it.
  */
 async function revokeToken(
+  transaction: Transaction,
   token: string,
   purpose: UserTokenPurpose,
 ): Promise<boolean> {
@@ -152,7 +152,7 @@ async function revokeToken(
     return false;
   }
 
-  const result = await db
+  const result = await transaction
     .deleteFrom("userToken")
     .where("id", "=", parsed.id)
     .where("hashedToken", "=", await hashToken(parsed.secret))
@@ -164,8 +164,10 @@ async function revokeToken(
 }
 
 /** Expired rows are only filtered out when they are read, so nothing removes them on its own. */
-async function deleteExpiredTokens(): Promise<number> {
-  const result = await db
+async function deleteExpiredTokens(
+  transaction: Transaction,
+): Promise<number> {
+  const result = await transaction
     .deleteFrom("userToken")
     .where("expiresAt", "<", Temporal.Now.instant().toString())
     .executeTakeFirst();

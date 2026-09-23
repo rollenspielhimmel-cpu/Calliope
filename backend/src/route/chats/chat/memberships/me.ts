@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { CHAT_MEMBERSHIP_RESPONSE } from "@/src/http/response_schema.ts";
 import { CHATS_TAG } from "@/src/open_api_specification.ts";
 import { STATUS_CODE } from "@std/http/status";
@@ -44,9 +45,12 @@ const accept = new OpenAPIHono().openapi(
   async (c) => {
     const { chatId } = c.req.valid("param");
 
-    const membership = await UserInChatGroupService.acceptInvitation(
-      chatId,
-      c.get("user").id,
+    const membership = await db.transaction().execute((transaction) =>
+      UserInChatGroupService.acceptInvitation(
+        transaction,
+        chatId,
+        c.get("user").id,
+      )
     );
 
     if (membership === undefined) {
@@ -108,9 +112,12 @@ const leave = new OpenAPIHono().openapi(
       );
     }
 
-    const left = await UserInChatGroupService.deleteMembership(
-      chatId,
-      c.get("user").id,
+    const left = await db.transaction().execute((transaction) =>
+      UserInChatGroupService.deleteMembership(
+        transaction,
+        chatId,
+        c.get("user").id,
+      )
     );
 
     if (!left) {

@@ -53,8 +53,9 @@ async function listMembers(
 async function selectMembership(
   chatGroupId: string,
   userId: string,
+  executor: typeof db | Transaction = db,
 ): Promise<UserInChatGroup | undefined> {
-  const row = await membersWithUsername()
+  const row = await membersWithUsername(executor)
     .where("userInChatGroup.chatGroupId", "=", chatGroupId)
     .where("userInChatGroup.userId", "=", userId)
     .executeTakeFirst();
@@ -104,10 +105,11 @@ async function insertInvitation(
 
 /** Only the invited user can turn their invitation into a membership. */
 async function acceptInvitation(
+  transaction: Transaction,
   chatGroupId: string,
   userId: string,
 ): Promise<UserInChatGroup | undefined> {
-  const updated = await db
+  const updated = await transaction
     .updateTable("userInChatGroup")
     .set({ status: "joined" })
     .where("chatGroupId", "=", chatGroupId)
@@ -120,7 +122,7 @@ async function acceptInvitation(
     return undefined;
   }
 
-  return await selectMembership(chatGroupId, userId);
+  return await selectMembership(chatGroupId, userId, transaction);
 }
 
 /**
@@ -128,10 +130,11 @@ async function acceptInvitation(
  * but that is a database trigger rather than something this has to remember.
  */
 async function deleteMembership(
+  transaction: Transaction,
   chatGroupId: string,
   userId: string,
 ): Promise<boolean> {
-  const result = await db
+  const result = await transaction
     .deleteFrom("userInChatGroup")
     .where("chatGroupId", "=", chatGroupId)
     .where("userId", "=", userId)

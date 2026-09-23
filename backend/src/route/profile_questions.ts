@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { USERS_TAG } from "@/src/open_api_specification.ts";
 import { PROFILE_QUESTION_KIND_SCHEMA } from "@/src/database/schema.ts";
@@ -187,7 +188,9 @@ export default new OpenAPIHono()
       const { questionId } = c.req.valid("param");
 
       if (
-        await ProfileQuestionService.deleteQuestion(questionId) === "not_found"
+        await db.transaction().execute((transaction) =>
+          ProfileQuestionService.deleteQuestion(transaction, questionId)
+        ) === "not_found"
       ) {
         return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
       }

@@ -51,7 +51,9 @@ export function scheduleCronJobs() {
     "30 * * * *",
     { signal: getAbortSignalForShutdown() },
     async () => {
-      const deletedTokens = await UserTokenService.deleteExpiredTokens();
+      const deletedTokens = await db.transaction().execute((transaction) =>
+        UserTokenService.deleteExpiredTokens(transaction)
+      );
       console.log(`Deleted ${deletedTokens} expired user token(s)`);
     },
   );
