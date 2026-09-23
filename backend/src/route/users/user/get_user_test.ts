@@ -1,12 +1,12 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
-import { db } from "@/src/database/client.ts";
 import {
   clearRateLimits,
   deleteUsers,
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 import { sendJson } from "@/src/test/auth.ts";
 
@@ -41,43 +41,57 @@ async function withFinishedPair(
   state: { revealedAt?: string; endedReason?: string },
   body: () => Promise<void>,
 ): Promise<void> {
-  const group = await db
-    .insertInto("writingGroup")
-    .values({ title: "Abgeschlossen", synopsis: "x", visibility: "private" })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const group = await write((transaction) =>
+    transaction
+      .insertInto("writingGroup")
+      .values({ title: "Abgeschlossen", synopsis: "x", visibility: "private" })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  const pair = await db
-    .insertInto("blindDatePair")
-    .values({
-      writingGroupId: group.id,
-      ...(state.revealedAt === undefined
-        ? {}
-        : { revealedAt: state.revealedAt }),
-      ...(state.endedReason === undefined ? {} : {
-        endedAt: new Date().toISOString(),
-        endedReason: state.endedReason,
-      }),
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const pair = await write((transaction) =>
+    transaction
+      .insertInto("blindDatePair")
+      .values({
+        writingGroupId: group.id,
+        ...(state.revealedAt === undefined
+          ? {}
+          : { revealedAt: state.revealedAt }),
+        ...(state.endedReason === undefined ? {} : {
+          endedAt: new Date().toISOString(),
+          endedReason: state.endedReason,
+        }),
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  await db
-    .insertInto("blindDatePartner")
-    .values({
-      pairId: pair.id,
-      userId: await getUserId(username),
-      isActive: false,
-    })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("blindDatePartner")
+      .values({
+        pairId: pair.id,
+        userId: await getUserId(username),
+        isActive: false,
+      })
+      .execute()
+  );
 
   try {
     await body();
   } finally {
-    await db.deleteFrom("blindDatePartner").where("pairId", "=", pair.id)
-      .execute();
-    await db.deleteFrom("blindDatePair").where("id", "=", pair.id).execute();
-    await db.deleteFrom("writingGroup").where("id", "=", group.id).execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePartner").where("pairId", "=", pair.id)
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where("id", "=", pair.id)
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "=", group.id)
+        .execute()
+    );
   }
 }
 
@@ -170,11 +184,13 @@ Deno.test("GET /api/users/{userId} carries the platform role, and null for an or
     await (await request("GET", `/api/users/${subjectId}`, cookie)).json();
   assertEquals(ordinary.platformRole, null);
 
-  await db
-    .updateTable("user")
-    .set({ platformRole: "administrator" })
-    .where("id", "=", subjectId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "administrator" })
+      .where("id", "=", subjectId)
+      .execute()
+  );
 
   const promoted =
     await (await request("GET", `/api/users/${subjectId}`, cookie)).json();

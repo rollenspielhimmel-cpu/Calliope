@@ -7,6 +7,7 @@ import {
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -38,19 +39,39 @@ Deno.test.afterEach(async () => {
     .where("userId", "in", ids)
     .execute()).map((row) => row.writingGroupId);
 
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
 
   if (groupIds.length > 0) {
-    await db.deleteFrom("blindDatePair").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("writingThread").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("userInWritingGroup").where(
-      "writingGroupId",
-      "in",
-      groupIds,
-    ).execute();
-    await db.deleteFrom("writingGroup").where("id", "in", groupIds).execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingThread").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("userInWritingGroup").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      ).execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "in", groupIds)
+        .execute()
+    );
   }
 
   await deleteUsers(USERS);
@@ -60,28 +81,34 @@ Deno.test.afterEach(async () => {
 async function aBlindDateGroup(): Promise<
   { groupId: string; threadId: string }
 > {
-  const group = await db
-    .insertInto("writingGroup")
-    .values({
-      title: "Das Gasthaus am Moor",
-      synopsis: "x",
-      visibility: "private",
-      authorsArePseudonymous: true,
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const group = await write((transaction) =>
+    transaction
+      .insertInto("writingGroup")
+      .values({
+        title: "Das Gasthaus am Moor",
+        synopsis: "x",
+        visibility: "private",
+        authorsArePseudonymous: true,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  const thread = await db
-    .insertInto("writingThread")
-    .values({ writingGroupId: group.id, title: "RPG-Thread" })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const thread = await write((transaction) =>
+    transaction
+      .insertInto("writingThread")
+      .values({ writingGroupId: group.id, title: "RPG-Thread" })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  const pair = await db
-    .insertInto("blindDatePair")
-    .values({ writingGroupId: group.id, rpgThreadId: thread.id })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const pair = await write((transaction) =>
+    transaction
+      .insertInto("blindDatePair")
+      .values({ writingGroupId: group.id, rpgThreadId: thread.id })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   // Der Aufbau eines laufenden Blind-Dates: Mitgliedschaft und Partnerzeile gehören zusammen und
   // entstehen je Person nacheinander, damit die zweite nicht auf halb angelegten Zeilen der ersten
@@ -90,20 +117,24 @@ async function aBlindDateGroup(): Promise<
     // deno-lint-ignore no-await-in-loop -- die Kennung wird für beide Einfügungen darunter gebraucht
     const userId = await getUserId(username);
     // deno-lint-ignore no-await-in-loop -- eine Mitgliedschaft je Person
-    await db
-      .insertInto("userInWritingGroup")
-      .values({
-        writingGroupId: group.id,
-        userId,
-        role: "administrator",
-        status: "joined",
-      })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("userInWritingGroup")
+        .values({
+          writingGroupId: group.id,
+          userId,
+          role: "administrator",
+          status: "joined",
+        })
+        .execute()
+    );
     // deno-lint-ignore no-await-in-loop -- und eine Partnerzeile zu derselben Person
-    await db
-      .insertInto("blindDatePartner")
-      .values({ pairId: pair.id, userId })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("blindDatePartner")
+        .values({ pairId: pair.id, userId })
+        .execute()
+    );
   }
 
   return { groupId: group.id, threadId: thread.id };
@@ -170,11 +201,13 @@ Deno.test("after the reveal the group is an ordinary one again", async () => {
   const { groupId, threadId } = await aBlindDateGroup();
 
   // What the reveal does to the group, and the only thing this lock reads.
-  await db
-    .updateTable("writingGroup")
-    .set({ authorsArePseudonymous: false })
-    .where("id", "=", groupId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("writingGroup")
+      .set({ authorsArePseudonymous: false })
+      .where("id", "=", groupId)
+      .execute()
+  );
 
   assertEquals(
     (await request("PATCH", `/api/groups/${groupId}`, cookie, {

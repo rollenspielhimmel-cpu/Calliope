@@ -138,11 +138,13 @@ async function asOperator(
   mayManageBlindDate = false,
 ): Promise<string> {
   const cookie = await registerUser(username);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator", mayManageBlindDate })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator", mayManageBlindDate })
+      .where("username", "=", username)
+      .execute()
+  );
   return cookie;
 }
 
@@ -345,11 +347,13 @@ Deno.test("withdrawing gives the desk back too", async () => {
  */
 Deno.test("whoever holds the administration account cannot apply", async () => {
   await registerUser(root);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "administrator" })
-    .where("username", "=", root)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "administrator" })
+      .where("username", "=", root)
+      .execute()
+  );
 
   await borrowPrimordialSeat(root);
   const primordial = await getUserId(root);
@@ -393,17 +397,21 @@ Deno.test("an ordinary member is not caught by that", async () => {
 
 Deno.test("only the root administrator gives the right out", async () => {
   const administratorCookie = await registerUser(plainOperator);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "administrator" })
-    .where("username", "=", plainOperator)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "administrator" })
+      .where("username", "=", plainOperator)
+      .execute()
+  );
   await registerUser(manager);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator" })
-    .where("username", "=", manager)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator" })
+      .where("username", "=", manager)
+      .execute()
+  );
 
   const managerId = await getUserId(manager);
 

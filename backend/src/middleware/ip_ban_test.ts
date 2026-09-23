@@ -1,9 +1,8 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import { Hono } from "hono";
-import { db } from "@/src/database/client.ts";
 import { redis } from "@/src/redis/client.ts";
-import { RATE_LIMIT_TEST_CLIENTS } from "@/src/test/support.ts";
+import { RATE_LIMIT_TEST_CLIENTS, write } from "@/src/test/support.ts";
 import {
   RATE_LIMIT_KEY_PREFIX,
   readRateLimit,
@@ -32,16 +31,23 @@ function request(clientAddress: string) {
 }
 
 Deno.test.beforeEach(async () => {
-  await db
-    .insertInto("bannedIp")
-    .values({ ipAddress: BANNED, bannedBy: null, reason: "Testing" })
-    .onConflict((conflict) => conflict.column("ipAddress").doNothing())
-    .execute();
+  await write((transaction) =>
+    transaction
+      .insertInto("bannedIp")
+      .values({ ipAddress: BANNED, bannedBy: null, reason: "Testing" })
+      .onConflict((conflict) => conflict.column("ipAddress").doNothing())
+      .execute()
+  );
 });
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("bannedIp").where("ipAddress", "in", [BANNED, ALLOWED])
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("bannedIp").where("ipAddress", "in", [
+      BANNED,
+      ALLOWED,
+    ])
+      .execute()
+  );
 
   // Only this file's own two addresses. Clearing the whole prefix would empty the counters
   // `rate_limit_test.ts` is deliberately filling request by request — the files run in parallel,

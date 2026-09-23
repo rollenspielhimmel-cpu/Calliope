@@ -12,6 +12,7 @@ import {
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -44,13 +45,22 @@ Deno.test.beforeEach(clearRateLimits);
 Deno.test.afterEach(async () => {
   const ids = db.selectFrom("user").select("id").where("username", "in", USERS);
 
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
-  await db.deleteFrom("blindDateApplication").where("userId", "in", ids)
-    .execute();
-  await db.deleteFrom("blindDateExclusion").where("userId", "in", ids)
-    .execute();
-  await db.deleteFrom("blindDateOffer").where("title", "=", OFFER_TITLE)
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateApplication").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateExclusion").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateOffer").where("title", "=", OFFER_TITLE)
+      .execute()
+  );
 
   await deleteUsers(USERS);
   ActivityService.forgetRecordedActivity();
@@ -114,13 +124,15 @@ Deno.test("a second application is refused while the first is open", async () =>
 Deno.test("an excluded member is told that and nothing else", async () => {
   const cookie = await registerUser(excluded);
 
-  await db
-    .insertInto("blindDateExclusion")
-    .values({
-      userId: await getUserId(excluded),
-      reason: "Wiederholt Absprachen nicht eingehalten",
-    })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("blindDateExclusion")
+      .values({
+        userId: await getUserId(excluded),
+        reason: "Wiederholt Absprachen nicht eingehalten",
+      })
+      .execute()
+  );
 
   const body = await (await eligibility(cookie)).json();
 
@@ -135,47 +147,63 @@ Deno.test("an excluded member is told that and nothing else", async () => {
 Deno.test("somebody already in a Blind-Date may not apply for a second", async () => {
   const cookie = await registerUser(member);
 
-  const group = await db
-    .insertInto("writingGroup")
-    .values({
-      title: "Laufendes Blind-Date",
-      synopsis: "x",
-      visibility: "private",
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const group = await write((transaction) =>
+    transaction
+      .insertInto("writingGroup")
+      .values({
+        title: "Laufendes Blind-Date",
+        synopsis: "x",
+        visibility: "private",
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  const pair = await db
-    .insertInto("blindDatePair")
-    .values({ writingGroupId: group.id })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const pair = await write((transaction) =>
+    transaction
+      .insertInto("blindDatePair")
+      .values({ writingGroupId: group.id })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  await db
-    .insertInto("blindDatePartner")
-    .values({ pairId: pair.id, userId: await getUserId(member) })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("blindDatePartner")
+      .values({ pairId: pair.id, userId: await getUserId(member) })
+      .execute()
+  );
 
   try {
     const refused = await apply(cookie);
     assertEquals(refused.status, STATUS_CODE.Forbidden);
     assertEquals((await refused.json()).reason, "already_matched");
   } finally {
-    await db.deleteFrom("blindDatePartner").where("pairId", "=", pair.id)
-      .execute();
-    await db.deleteFrom("blindDatePair").where("id", "=", pair.id).execute();
-    await db.deleteFrom("writingGroup").where("id", "=", group.id).execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePartner").where("pairId", "=", pair.id)
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where("id", "=", pair.id)
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "=", group.id)
+        .execute()
+    );
   }
 });
 
 Deno.test("an application may take up an open offer, and not a closed one", async () => {
   const cookie = await registerUser(member);
 
-  const offer = await db
-    .insertInto("blindDateOffer")
-    .values({ title: OFFER_TITLE, description: "Ein Plot zum Testen." })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const offer = await write((transaction) =>
+    transaction
+      .insertInto("blindDateOffer")
+      .values({ title: OFFER_TITLE, description: "Ein Plot zum Testen." })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   const offers = await (await request(
     "GET",
@@ -193,11 +221,13 @@ Deno.test("an application may take up an open offer, and not a closed one", asyn
   );
   await withdraw(cookie);
 
-  await db
-    .updateTable("blindDateOffer")
-    .set({ closedAt: new Date().toISOString() })
-    .where("id", "=", offer.id)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("blindDateOffer")
+      .set({ closedAt: new Date().toISOString() })
+      .where("id", "=", offer.id)
+      .execute()
+  );
 
   // A closed offer answers the same as one that never existed: the round has moved on.
   assertEquals(
@@ -209,15 +239,17 @@ Deno.test("an application may take up an open offer, and not a closed one", asyn
 Deno.test("where an offer names its roles, only one of them may be applied for", async () => {
   const cookie = await registerUser(member);
 
-  const offer = await db
-    .insertInto("blindDateOffer")
-    .values({
-      title: OFFER_TITLE,
-      description: "Ein Plot zum Testen.",
-      roles: ["Die Wirtin", "Der Fremde"],
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const offer = await write((transaction) =>
+    transaction
+      .insertInto("blindDateOffer")
+      .values({
+        title: OFFER_TITLE,
+        description: "Ein Plot zum Testen.",
+        roles: ["Die Wirtin", "Der Fremde"],
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   // The list reaches the member, which is what makes it a choice rather than a guess.
   const offers = await (await request(
@@ -246,11 +278,13 @@ Deno.test("where an offer names its roles, only one of them may be applied for",
 
   // An offer that names none keeps the free text it always had. Proved on the same offer so the
   // roles are the only thing that changed.
-  await db
-    .updateTable("blindDateOffer")
-    .set({ roles: [] })
-    .where("id", "=", offer.id)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("blindDateOffer")
+      .set({ roles: [] })
+      .where("id", "=", offer.id)
+      .execute()
+  );
 
   assertEquals(
     (await apply(cookie, { offerId: offer.id, roleGender: "weiblich" })).status,
@@ -261,15 +295,17 @@ Deno.test("where an offer names its roles, only one of them may be applied for",
 const DAY = 24 * 60 * 60 * 1000;
 
 async function offerClosingAt(closesAt: string | null): Promise<string> {
-  const offer = await db
-    .insertInto("blindDateOffer")
-    .values({
-      title: OFFER_TITLE,
-      description: "Ein Plot zum Testen.",
-      closesAt,
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const offer = await write((transaction) =>
+    transaction
+      .insertInto("blindDateOffer")
+      .values({
+        title: OFFER_TITLE,
+        description: "Ein Plot zum Testen.",
+        closesAt,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   return offer.id;
 }
@@ -296,11 +332,13 @@ Deno.test("an offer past its deadline takes no more applications", async () => {
   );
 
   // And a deadline still ahead changes nothing.
-  await db
-    .updateTable("blindDateOffer")
-    .set({ closesAt: new Date(Date.now() + DAY).toISOString() })
-    .where("id", "=", offerId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("blindDateOffer")
+      .set({ closesAt: new Date(Date.now() + DAY).toISOString() })
+      .where("id", "=", offerId)
+      .execute()
+  );
 
   assertEquals((await apply(cookie, { offerId })).status, STATUS_CODE.OK);
 });
@@ -334,11 +372,13 @@ Deno.test("an expired offer stays listed for the member waiting on it", async ()
   );
   assertEquals((await apply(cookie, { offerId })).status, STATUS_CODE.OK);
 
-  await db
-    .updateTable("blindDateOffer")
-    .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
-    .where("id", "=", offerId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("blindDateOffer")
+      .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
+      .where("id", "=", offerId)
+      .execute()
+  );
 
   assertEquals(
     (await listedOfferIds(cookie)).includes(offerId),
@@ -355,11 +395,13 @@ Deno.test("withdrawing lets the expired offer go", async () => {
   );
   await apply(cookie, { offerId });
 
-  await db
-    .updateTable("blindDateOffer")
-    .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
-    .where("id", "=", offerId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("blindDateOffer")
+      .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
+      .where("id", "=", offerId)
+      .execute()
+  );
 
   await withdraw(cookie);
 
@@ -384,11 +426,13 @@ Deno.test("one member's application does not keep the offer on another's page", 
   );
   await apply(applicant, { offerId });
 
-  await db
-    .updateTable("blindDateOffer")
-    .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
-    .where("id", "=", offerId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("blindDateOffer")
+      .set({ closesAt: new Date(Date.now() - DAY).toISOString() })
+      .where("id", "=", offerId)
+      .execute()
+  );
 
   assertEquals((await listedOfferIds(applicant)).includes(offerId), true);
   assertEquals((await listedOfferIds(bystander)).includes(offerId), false);

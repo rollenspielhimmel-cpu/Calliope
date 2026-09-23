@@ -1,5 +1,4 @@
 import { assertEquals, assertExists, assertNotEquals } from "@std/assert";
-import { db } from "@/src/database/client.ts";
 import { plainTextToDocument } from "@/src/document/document_text.ts";
 import {
   clearRateLimits,
@@ -164,16 +163,18 @@ Deno.test("pages are listed by activity, and ties by id", async () => {
 
   // Written in one statement, so all three share a timestamp — which is what the seed does and
   // what makes the tiebreaker the ordinary case rather than an edge.
-  await db.insertInto("writingPage").values(
-    ["Zweitens", "Drittens"].map((title) => ({
-      writingGroupId: groupId,
-      title,
-      document: plainTextToDocument(title),
-      text: title,
-      createdBy: authorId,
-      updatedBy: authorId,
-    })),
-  ).execute();
+  await write((transaction) =>
+    transaction.insertInto("writingPage").values(
+      ["Zweitens", "Drittens"].map((title) => ({
+        writingGroupId: groupId,
+        title,
+        document: plainTextToDocument(title),
+        text: title,
+        createdBy: authorId,
+        updatedBy: authorId,
+      })),
+    ).execute()
+  );
 
   const listed = await WritingPageService.listPages(groupId, authorId);
   const tied = listed.filter((page) => page.title !== "Zuerst");

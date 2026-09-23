@@ -2,7 +2,6 @@ import { assertEquals, assertExists } from "@std/assert";
 import { write } from "@/src/test/support.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { Hono } from "hono";
-import { db } from "@/src/database/client.ts";
 import type { PlatformRole } from "@/src/database/schema.ts";
 import { type User, UserService } from "@/src/service/user_service.ts";
 import authenticated from "./authenticated.ts";
@@ -37,14 +36,16 @@ async function createUserWithSession(platformRole: PlatformRole | null) {
   );
   assertExists(user, "fixture user could not be created");
 
-  await db
-    .updateTable("user")
-    .set({
-      emailAddressVerifiedAt: Temporal.Now.instant().toString(),
-      platformRole,
-    })
-    .where("id", "=", user.id)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({
+        emailAddressVerifiedAt: Temporal.Now.instant().toString(),
+        platformRole,
+      })
+      .where("id", "=", user.id)
+      .execute()
+  );
 
   const session = await write((transaction) =>
     UserService.insertSessionForUser(transaction, user, {
@@ -56,7 +57,9 @@ async function createUserWithSession(platformRole: PlatformRole | null) {
 }
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("user").where("username", "=", username).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("user").where("username", "=", username).execute()
+  );
 });
 
 async function statusFor(
@@ -120,11 +123,13 @@ Deno.test("an operator gate refuses an unverified address before the role", asyn
   );
   assertExists(user);
   // A role on an account that has never proven its address must not open the gate.
-  await db
-    .updateTable("user")
-    .set({ platformRole: "administrator" })
-    .where("id", "=", user.id)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "administrator" })
+      .where("id", "=", user.id)
+      .execute()
+  );
 
   const session = await write((transaction) =>
     UserService.insertSessionForUser(transaction, user, {

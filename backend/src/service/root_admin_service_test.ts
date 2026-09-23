@@ -1,4 +1,5 @@
 import { assertEquals, assertExists, assertNotEquals } from "@std/assert";
+import { write } from "@/src/test/support.ts";
 import { db } from "@/src/database/client.ts";
 import { verifyPassword } from "@/src/util/password.ts";
 import { withVacantPrimordialSeat } from "@/src/test/primordial_seat.ts";
@@ -27,31 +28,37 @@ function withoutTheRealRootAdmin<T>(body: () => Promise<T>): Promise<T> {
     // Renamed rather than deleted: it owns rows elsewhere. The address moves with the name,
     // because that column is UNIQUE too and the bootstrap would otherwise collide with it.
     async () => {
-      await db
-        .updateTable("user")
-        .set({
-          username: STANDIN,
-          emailAddress: `${STANDIN}@example.invalid`,
-          isPrimordialAdmin: false,
-        })
-        .where("username", "=", ROOT_ADMIN_USERNAME)
-        .execute();
+      await write((transaction) =>
+        transaction
+          .updateTable("user")
+          .set({
+            username: STANDIN,
+            emailAddress: `${STANDIN}@example.invalid`,
+            isPrimordialAdmin: false,
+          })
+          .where("username", "=", ROOT_ADMIN_USERNAME)
+          .execute()
+      );
     },
     async () => {
-      await db
-        .deleteFrom("user")
-        .where("username", "=", ROOT_ADMIN_USERNAME)
-        .execute();
+      await write((transaction) =>
+        transaction
+          .deleteFrom("user")
+          .where("username", "=", ROOT_ADMIN_USERNAME)
+          .execute()
+      );
 
-      await db
-        .updateTable("user")
-        .set({
-          username: ROOT_ADMIN_USERNAME,
-          emailAddress: "admin@rollenspielhimmel.invalid",
-          isPrimordialAdmin: true,
-        })
-        .where("username", "=", STANDIN)
-        .execute();
+      await write((transaction) =>
+        transaction
+          .updateTable("user")
+          .set({
+            username: ROOT_ADMIN_USERNAME,
+            emailAddress: "admin@rollenspielhimmel.invalid",
+            isPrimordialAdmin: true,
+          })
+          .where("username", "=", STANDIN)
+          .execute()
+      );
     },
     body,
   );

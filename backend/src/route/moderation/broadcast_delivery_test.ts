@@ -11,6 +11,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -69,11 +70,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 /**
@@ -146,11 +149,13 @@ function fixture() {
     await setRole(SECOND, "administrator");
     await setRole(UNVERIFIED, "administrator");
 
-    await db
-      .updateTable("user")
-      .set({ emailAddressVerifiedAt: null })
-      .where("username", "=", UNVERIFIED)
-      .execute();
+    await write((transaction) =>
+      transaction
+        .updateTable("user")
+        .set({ emailAddressVerifiedAt: null })
+        .where("username", "=", UNVERIFIED)
+        .execute()
+    );
 
     // Der Ur-Admin gibt mit dem Schreiben frei, und nur so geht die Rundmail im selben Zug raus.
     await borrowPrimordialSeat(ROOT);
@@ -297,11 +302,13 @@ Deno.test("der Absender sitzt in keinem der Gespräche", async () => {
       .where("username", "=", ROOT)
       .executeTakeFirstOrThrow();
 
-    await db
-      .insertInto("broadcastSender")
-      .values({ userId: sender.id, enabledBy: releasedBy.id })
-      .onConflict((conflict) => conflict.column("userId").doNothing())
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("broadcastSender")
+        .values({ userId: sender.id, enabledBy: releasedBy.id })
+        .onConflict((conflict) => conflict.column("userId").doNothing())
+        .execute()
+    );
 
     await submit(cookies.root, { sendAsUserId: sender.id });
 

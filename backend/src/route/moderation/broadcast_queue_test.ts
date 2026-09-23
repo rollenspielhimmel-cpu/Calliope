@@ -7,6 +7,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 import { BroadcastQueueService } from "@/src/service/broadcast_queue_service.ts";
@@ -74,11 +75,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 const data = scopedTestData({
@@ -404,11 +407,13 @@ Deno.test("an administrator may approve what they submitted under the old rule",
 
   const created = await (await submit(cookies.author)).json() as Row;
   // Wie unter der alten Regel: von der Administration eingereicht, und es wartet.
-  await db
-    .updateTable("publication")
-    .set({ writtenBy: await getUserId(SECOND) })
-    .where("id", "=", created.publicationId)
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .updateTable("publication")
+      .set({ writtenBy: await getUserId(SECOND) })
+      .where("id", "=", created.publicationId)
+      .execute()
+  );
 
   assertEquals(
     (await approve(cookies.second, created.publicationId)).status,

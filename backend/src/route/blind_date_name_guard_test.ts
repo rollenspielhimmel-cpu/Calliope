@@ -11,6 +11,7 @@ import {
   postBody,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -71,32 +72,64 @@ Deno.test.afterEach(async () => {
     .where("blindDatePartner.userId", "in", ids)
     .execute()).map((row) => row.writingGroupId);
 
-  await db.deleteFrom("notification").where("recipientId", "in", ids).execute();
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
-  await db.deleteFrom("blindDateExclusion").where("userId", "in", ids)
-    .execute();
-  await db.deleteFrom("blindDateApplication").where("userId", "in", ids)
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("notification").where("recipientId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateExclusion").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateApplication").where("userId", "in", ids)
+      .execute()
+  );
 
   if (groups.length > 0) {
-    await db.deleteFrom("blindDatePair").where("writingGroupId", "in", groups)
-      .execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where(
+        "writingGroupId",
+        "in",
+        groups,
+      )
+        .execute()
+    );
 
     const threads = db.selectFrom("writingThread").select("id").where(
       "writingGroupId",
       "in",
       groups,
     );
-    await db.deleteFrom("writingPost").where("writingThreadId", "in", threads)
-      .execute();
-    await db.deleteFrom("writingThread").where("writingGroupId", "in", groups)
-      .execute();
-    await db.deleteFrom("userInWritingGroup").where(
-      "writingGroupId",
-      "in",
-      groups,
-    ).execute();
-    await db.deleteFrom("writingGroup").where("id", "in", groups).execute();
+    await write((transaction) =>
+      transaction.deleteFrom("writingPost").where(
+        "writingThreadId",
+        "in",
+        threads,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingThread").where(
+        "writingGroupId",
+        "in",
+        groups,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("userInWritingGroup").where(
+        "writingGroupId",
+        "in",
+        groups,
+      ).execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "in", groups).execute()
+    );
   }
 
   await deleteUsers(USERS);
@@ -108,11 +141,13 @@ async function aBlindDate() {
   const betaCookie = await registerUser(beta);
   const operatorCookie = await registerUser(operator);
 
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator", mayManageBlindDate: true })
-    .where("username", "=", operator)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator", mayManageBlindDate: true })
+      .where("username", "=", operator)
+      .execute()
+  );
 
   for (const cookie of [alphaCookie, betaCookie]) {
     // deno-lint-ignore no-await-in-loop -- one application each
@@ -153,7 +188,7 @@ async function aBlindDate() {
   return { alphaCookie, betaCookie, operatorCookie, ...pair };
 }
 
-const write = (
+const writePost = (
   cookie: string,
   groupId: string,
   threadId: string,
@@ -218,7 +253,7 @@ Deno.test("a name in the exchange thread files a report and does nothing else", 
     pairId,
   } = await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -247,7 +282,7 @@ Deno.test("the report reaches the ordinary queue, with no reporter", async () =>
   const { alphaCookie, operatorCookie, writingGroupId, exchangeThreadId } =
     await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -273,7 +308,7 @@ Deno.test("while it is open the post is shown as written, with a notice beside i
   const { alphaCookie, betaCookie, writingGroupId, exchangeThreadId } =
     await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -305,8 +340,13 @@ Deno.test("confirming ends the Blind-Date, keeps everything, and masks the names
     pairId,
   } = await aBlindDate();
 
-  await write(betaCookie, writingGroupId, rpgThreadId as string, "Ein Absatz.");
-  await write(
+  await writePost(
+    betaCookie,
+    writingGroupId,
+    rpgThreadId as string,
+    "Ein Absatz.",
+  );
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -361,7 +401,7 @@ Deno.test("confirming excludes the author, naming the operator who decided it", 
   const { alphaCookie, operatorCookie, writingGroupId, exchangeThreadId } =
     await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -392,7 +432,7 @@ Deno.test("dismissing does nothing at all, and the notice goes away", async () =
     pairId,
   } = await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -430,7 +470,7 @@ Deno.test("a decision cannot be taken twice", async () => {
   const { alphaCookie, operatorCookie, writingGroupId, exchangeThreadId } =
     await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -460,7 +500,7 @@ Deno.test("the other person is told it ended, and not why", async () => {
     exchangeThreadId,
   } = await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,
@@ -498,7 +538,7 @@ Deno.test("the RPG thread is not watched: a character may share a member's name"
   const { alphaCookie, operatorCookie, writingGroupId, rpgThreadId } =
     await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     rpgThreadId as string,
@@ -513,7 +553,7 @@ Deno.test("whole words only: a name inside another word is not a name", async ()
   const { alphaCookie, operatorCookie, writingGroupId, exchangeThreadId } =
     await aBlindDate();
 
-  await write(
+  await writePost(
     alphaCookie,
     writingGroupId,
     exchangeThreadId as string,

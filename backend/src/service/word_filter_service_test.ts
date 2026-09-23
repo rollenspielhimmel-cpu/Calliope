@@ -1,5 +1,4 @@
 import { assertEquals } from "@std/assert";
-import { db } from "@/src/database/client.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import { write } from "@/src/test/support.ts";
@@ -22,23 +21,31 @@ const TEST_WORDS = ["dummkopf", "quatschkram", "arsch", "arschloch"];
 async function block(...words: string[]) {
   for (const word of words) {
     // deno-lint-ignore no-await-in-loop -- a handful, and the order is what some tests are about
-    await db
-      .insertInto("blockedWord")
-      .values({ word })
-      .onConflict((conflict) => conflict.column("word").doNothing())
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("blockedWord")
+        .values({ word })
+        .onConflict((conflict) => conflict.column("word").doNothing())
+        .execute()
+    );
   }
 
   WordFilterService.forgetCachedWords();
 }
 
 Deno.test.beforeEach(async () => {
-  await db.deleteFrom("blockedWord").where("word", "in", TEST_WORDS).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blockedWord").where("word", "in", TEST_WORDS)
+      .execute()
+  );
   WordFilterService.forgetCachedWords();
 });
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("blockedWord").where("word", "in", TEST_WORDS).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blockedWord").where("word", "in", TEST_WORDS)
+      .execute()
+  );
   WordFilterService.forgetCachedWords();
 });
 
@@ -173,11 +180,13 @@ Deno.test("taking a word off the list gives the original text back", async () =>
 });
 
 Deno.test("a word carrying regex punctuation is matched literally", async () => {
-  await db
-    .insertInto("blockedWord")
-    .values({ word: "a.b" })
-    .onConflict((conflict) => conflict.column("word").doNothing())
-    .execute();
+  await write((transaction) =>
+    transaction
+      .insertInto("blockedWord")
+      .values({ word: "a.b" })
+      .onConflict((conflict) => conflict.column("word").doNothing())
+      .execute()
+  );
   WordFilterService.forgetCachedWords();
 
   try {
@@ -185,7 +194,9 @@ Deno.test("a word carrying regex punctuation is matched literally", async () => 
     assertEquals(await WordFilterService.maskText("axb"), "axb");
     assertEquals(await WordFilterService.maskText("a.b"), "***");
   } finally {
-    await db.deleteFrom("blockedWord").where("word", "=", "a.b").execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blockedWord").where("word", "=", "a.b").execute()
+    );
     WordFilterService.forgetCachedWords();
   }
 });

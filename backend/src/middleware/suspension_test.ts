@@ -2,7 +2,6 @@ import { assertEquals, assertExists } from "@std/assert";
 import { write } from "@/src/test/support.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { Hono } from "hono";
-import { db } from "@/src/database/client.ts";
 import { type User, UserService } from "@/src/service/user_service.ts";
 import { ACCOUNT_BANNED, ACCOUNT_SUSPENDED } from "@/src/http/response.ts";
 import authenticated from "./authenticated.ts";
@@ -28,11 +27,13 @@ async function createUserWithSession() {
   );
   assertExists(user, "fixture user could not be created");
 
-  await db
-    .updateTable("user")
-    .set({ emailAddressVerifiedAt: Temporal.Now.instant().toString() })
-    .where("id", "=", user.id)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ emailAddressVerifiedAt: Temporal.Now.instant().toString() })
+      .where("id", "=", user.id)
+      .execute()
+  );
 
   const session = await write((transaction) =>
     UserService.insertSessionForUser(transaction, user, {
@@ -51,15 +52,19 @@ function probe(session: { id: string; token: string }) {
 }
 
 async function suspend(userId: string, until: string, reason: string) {
-  await db
-    .updateTable("user")
-    .set({ suspendedUntil: until, suspensionReason: reason })
-    .where("id", "=", userId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ suspendedUntil: until, suspensionReason: reason })
+      .where("id", "=", userId)
+      .execute()
+  );
 }
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("user").where("username", "=", username).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("user").where("username", "=", username).execute()
+  );
 });
 
 Deno.test("a suspension in force is refused, with the moment it ends and the reason", async () => {
@@ -108,14 +113,16 @@ Deno.test("a ban answers before a suspension, and discloses nothing", async () =
     Temporal.Now.instant().add({ hours: 24 }).toString(),
     "Diese Begründung darf nicht ausgeliefert werden",
   );
-  await db
-    .updateTable("user")
-    .set({
-      bannedAt: Temporal.Now.instant().toString(),
-      banReason: "Endgültig",
-    })
-    .where("id", "=", user.id)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({
+        bannedAt: Temporal.Now.instant().toString(),
+        banReason: "Endgültig",
+      })
+      .where("id", "=", user.id)
+      .execute()
+  );
 
   const response = await probe(session);
   const body = await response.json();

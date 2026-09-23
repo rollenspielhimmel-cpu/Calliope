@@ -7,6 +7,7 @@ import {
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -30,18 +31,25 @@ Deno.test.beforeEach(clearRateLimits);
 
 Deno.test.afterEach(async () => {
   const ids = db.selectFrom("user").select("id").where("username", "in", USERS);
-  await db.deleteFrom("strike").where("userId", "in", ids).execute();
-  await db.deleteFrom("watchlistEntry").where("userId", "in", ids).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("strike").where("userId", "in", ids).execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("watchlistEntry").where("userId", "in", ids)
+      .execute()
+  );
   await deleteUsers(USERS);
 });
 
 async function asOperator(): Promise<string> {
   const cookie = await registerUser(operator);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator" })
-    .where("username", "=", operator)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator" })
+      .where("username", "=", operator)
+      .execute()
+  );
   return cookie;
 }
 
@@ -50,16 +58,18 @@ async function strike(
   action: "warning" | "suspension",
   suspendedUntil: string | null = null,
 ) {
-  await db
-    .insertInto("strike")
-    .values({
-      userId: await getUserId(username),
-      action,
-      severity: "borderline",
-      reason: "Testgrund",
-      suspendedUntil,
-    })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("strike")
+      .values({
+        userId: await getUserId(username),
+        action,
+        severity: "borderline",
+        reason: "Testgrund",
+        suspendedUntil,
+      })
+      .execute()
+  );
 }
 
 type Standing = {
@@ -104,21 +114,25 @@ Deno.test("a running suspension is named; a lapsed one is not", async () => {
 
   const until = new Date(Date.now() + 86_400_000).toISOString();
   await strike(struck, "suspension", until);
-  await db
-    .updateTable("user")
-    .set({ suspendedUntil: until, suspensionReason: "Testgrund" })
-    .where("username", "=", struck)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ suspendedUntil: until, suspensionReason: "Testgrund" })
+      .where("username", "=", struck)
+      .execute()
+  );
 
   assert((await standingOf(cookie, struck))?.suspendedUntil !== null);
 
   // The date stays on the row after it passes — the suspension lapses on its own rather than
   // being cleared — so a null check here would call every past suspension a current one.
-  await db
-    .updateTable("user")
-    .set({ suspendedUntil: new Date(Date.now() - 1_000).toISOString() })
-    .where("username", "=", struck)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ suspendedUntil: new Date(Date.now() - 1_000).toISOString() })
+      .where("username", "=", struck)
+      .execute()
+  );
 
   const lapsed = await standingOf(cookie, struck);
 
@@ -158,10 +172,12 @@ Deno.test("the watchlist note travels with the standing", async () => {
   await registerUser(warned);
 
   await strike(warned, "warning");
-  await db
-    .insertInto("watchlistEntry")
-    .values({ userId: await getUserId(warned), note: "Im Auge behalten" })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("watchlistEntry")
+      .values({ userId: await getUserId(warned), note: "Im Auge behalten" })
+      .execute()
+  );
 
   // The two lists are read together, which is the whole point of putting them on one page.
   assertEquals(

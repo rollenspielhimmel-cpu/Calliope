@@ -6,6 +6,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -59,11 +60,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -136,13 +139,15 @@ function fixture() {
     await setRole(ADMIN, "administrator");
     await setRole(MOD, "moderator");
 
-    await db
-      .insertInto("broadcastSender")
-      .values([
-        { userId: await getUserId(FLAMINGO) },
-        { userId: await getUserId(OTHER_PERSONA) },
-      ])
-      .execute();
+    await write(async (transaction) =>
+      transaction
+        .insertInto("broadcastSender")
+        .values([
+          { userId: await getUserId(FLAMINGO) },
+          { userId: await getUserId(OTHER_PERSONA) },
+        ])
+        .execute()
+    );
 
     await borrowPrimordialSeat(ROOT);
     await giveFlamingoTo(ROGUE, cookies.root);

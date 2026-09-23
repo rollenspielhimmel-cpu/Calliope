@@ -7,6 +7,7 @@ import {
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -41,19 +42,39 @@ Deno.test.afterEach(async () => {
     .where("blindDatePartner.userId", "in", ids)
     .execute()).map((row) => row.writingGroupId);
 
-  await db.deleteFrom("blindDateFeedback").where("userId", "in", ids).execute();
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
-  await db.deleteFrom("notification").where("recipientId", "in", ids).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateFeedback").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("notification").where("recipientId", "in", ids)
+      .execute()
+  );
 
   if (groupIds.length > 0) {
-    await db.deleteFrom("blindDatePair").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("userInWritingGroup").where(
-      "writingGroupId",
-      "in",
-      groupIds,
-    ).execute();
-    await db.deleteFrom("writingGroup").where("id", "in", groupIds).execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("userInWritingGroup").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      ).execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "in", groupIds)
+        .execute()
+    );
   }
 
   await deleteUsers(USERS);
@@ -61,17 +82,21 @@ Deno.test.afterEach(async () => {
 
 /** A running pair with both of them in it. */
 async function aRunningPair(): Promise<string> {
-  const group = await db
-    .insertInto("writingGroup")
-    .values({ title: PLOT, synopsis: "x", visibility: "private" })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const group = await write((transaction) =>
+    transaction
+      .insertInto("writingGroup")
+      .values({ title: PLOT, synopsis: "x", visibility: "private" })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
-  const pair = await db
-    .insertInto("blindDatePair")
-    .values({ writingGroupId: group.id })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const pair = await write((transaction) =>
+    transaction
+      .insertInto("blindDatePair")
+      .values({ writingGroupId: group.id })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   // Nacheinander: Beide Partner in dieselbe Gruppe zu schreiben ist ein Aufbau, kein Messwert,
   // und die Fremdschlüssel unten setzen voraus, dass die Zeile davor schon steht.
@@ -80,10 +105,12 @@ async function aRunningPair(): Promise<string> {
     const userId = await getUserId(username);
 
     // deno-lint-ignore no-await-in-loop -- eine Partnerzeile je Person, in fester Reihenfolge
-    await db
-      .insertInto("blindDatePartner")
-      .values({ pairId: pair.id, userId })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("blindDatePartner")
+        .values({ pairId: pair.id, userId })
+        .execute()
+    );
 
     // The group membership too, which a real match makes. Not decoration: `notification` carries a
     // composite foreign key onto `user_in_writing_group`, so a member who is not in the group
@@ -91,15 +118,17 @@ async function aRunningPair(): Promise<string> {
     // with a foreign-key violation, which is the constraint doing its job on a fixture that was
     // not a real Blind-Date.
     // deno-lint-ignore no-await-in-loop -- die Mitgliedschaft gehört zur selben Person wie oben
-    await db
-      .insertInto("userInWritingGroup")
-      .values({
-        writingGroupId: group.id,
-        userId,
-        role: "administrator",
-        status: "joined",
-      })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("userInWritingGroup")
+        .values({
+          writingGroupId: group.id,
+          userId,
+          role: "administrator",
+          status: "joined",
+        })
+        .execute()
+    );
   }
 
   return pair.id;

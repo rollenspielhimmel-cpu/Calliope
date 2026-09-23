@@ -9,6 +9,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 import { clearForum, createForumFolder } from "@/src/test/forum.ts";
@@ -56,11 +57,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 function fixture() {
@@ -77,10 +80,12 @@ function fixture() {
     await setRole(ADMIN, "administrator");
     await setRole(MOD, "moderator");
 
-    await db
-      .insertInto("broadcastSender")
-      .values({ userId: await getUserId(FLAMINGO) })
-      .execute();
+    await write(async (transaction) =>
+      transaction
+        .insertInto("broadcastSender")
+        .values({ userId: await getUserId(FLAMINGO) })
+        .execute()
+    );
 
     await borrowPrimordialSeat(ROOT);
     const granted = await request(
@@ -243,10 +248,14 @@ Deno.test("der Thread trägt die Zeit seines Erscheinens", async () => {
 
   // Das Schreiben liegt eine Stunde zurück.
   const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  await db.updateTable("writingThread").set({ createdAt: anHourAgo })
-    .where("id", "=", threadId).execute();
-  await db.updateTable("writingPost").set({ createdAt: anHourAgo })
-    .where("writingThreadId", "=", threadId).execute();
+  await write((transaction) =>
+    transaction.updateTable("writingThread").set({ createdAt: anHourAgo })
+      .where("id", "=", threadId).execute()
+  );
+  await write((transaction) =>
+    transaction.updateTable("writingPost").set({ createdAt: anHourAgo })
+      .where("writingThreadId", "=", threadId).execute()
+  );
 
   const before = Date.now();
   await request(
@@ -290,9 +299,11 @@ Deno.test("von einer Administration erscheint er ohne Termin sofort, mit Termin 
   );
 
   // Der Termin ist erreicht.
-  await db.updateTable("publication")
-    .set({ scheduledFor: new Date(Date.now() - 1000).toISOString() })
-    .where("id", "=", later.publicationId).execute();
+  await write((transaction) =>
+    transaction.updateTable("publication")
+      .set({ scheduledFor: new Date(Date.now() - 1000).toISOString() })
+      .where("id", "=", later.publicationId).execute()
+  );
   assertEquals(await OfficialThreadService.releaseDue(), 1);
   assertEquals(
     (await request(
@@ -606,8 +617,10 @@ Deno.test("nachträglich offiziell macht nur der Eröffner oder die Administrati
   const { threadId } = await ordinaryThread(cookies.mod, open.id);
 
   // Ein anderer aus dem Team, mit demselben Absender — aber nicht der Eröffner.
-  await db.updateTable("user").set({ platformRole: "moderator" })
-    .where("username", "=", MEMBER).execute();
+  await write((transaction) =>
+    transaction.updateTable("user").set({ platformRole: "moderator" })
+      .where("username", "=", MEMBER).execute()
+  );
   assertEquals(
     (await makeOfficial(cookies.member, threadId)).status,
     STATUS_CODE.Forbidden,
@@ -891,7 +904,9 @@ Deno.test("die Datenbank verlangt Grund und Inhalt im Protokoll", async () => {
   ) {
     try {
       // deno-lint-ignore no-await-in-loop -- jeder für sich
-      await db.insertInto("officialRevision").values(values).execute();
+      await write((transaction) =>
+        transaction.insertInto("officialRevision").values(values).execute()
+      );
     } catch {
       refused++;
     }

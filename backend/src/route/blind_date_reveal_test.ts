@@ -10,6 +10,7 @@ import {
   postBody,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -44,33 +45,60 @@ Deno.test.afterEach(async () => {
     .where("title", "=", PLOT)
     .execute()).map((row) => row.id);
 
-  await db.deleteFrom("notification").where("recipientId", "in", ids).execute();
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("notification").where("recipientId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
 
   if (groupIds.length > 0) {
-    await db.deleteFrom("blindDatePair").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("writingPost").where(
-      "writingThreadId",
-      "in",
-      db.selectFrom("writingThread").select("id").where(
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where(
         "writingGroupId",
         "in",
         groupIds,
-      ),
-    ).execute();
-    await db.deleteFrom("writingThread").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("userInWritingGroup").where(
-      "writingGroupId",
-      "in",
-      groupIds,
-    ).execute();
-    await db.deleteFrom("writingGroup").where("id", "in", groupIds).execute();
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingPost").where(
+        "writingThreadId",
+        "in",
+        db.selectFrom("writingThread").select("id").where(
+          "writingGroupId",
+          "in",
+          groupIds,
+        ),
+      ).execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingThread").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("userInWritingGroup").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      ).execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "in", groupIds)
+        .execute()
+    );
   }
 
-  await db.deleteFrom("blindDateApplication").where("userId", "in", ids)
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateApplication").where("userId", "in", ids)
+      .execute()
+  );
   await deleteUsers(USERS);
 });
 
@@ -106,7 +134,9 @@ async function fillRpgThread(
     }),
   );
 
-  await db.insertInto("writingPost").values(filler).execute();
+  await write((transaction) =>
+    transaction.insertInto("writingPost").values(filler).execute()
+  );
 }
 
 async function aMatchedBlindDate() {
@@ -114,11 +144,13 @@ async function aMatchedBlindDate() {
   const betaCookie = await registerUser(beta);
   const operatorCookie = await registerUser(operator);
 
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator", mayManageBlindDate: true })
-    .where("username", "=", operator)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator", mayManageBlindDate: true })
+      .where("username", "=", operator)
+      .execute()
+  );
 
   for (const cookie of [alphaCookie, betaCookie]) {
     // deno-lint-ignore no-await-in-loop -- one application each
@@ -428,18 +460,20 @@ Deno.test("the button stays shut until enough has been written together", async 
   const { alphaCookie, threadId } = await aMatchedBlindDate();
 
   // Back below the threshold: the fixture wrote it over, so this takes two away again.
-  await db
-    .deleteFrom("writingPost")
-    .where(
-      "id",
-      "in",
-      db
-        .selectFrom("writingPost")
-        .select("id")
-        .where("writingThreadId", "=", threadId)
-        .limit(2),
-    )
-    .execute();
+  await write((transaction) =>
+    transaction
+      .deleteFrom("writingPost")
+      .where(
+        "id",
+        "in",
+        db
+          .selectFrom("writingPost")
+          .select("id")
+          .where("writingThreadId", "=", threadId)
+          .limit(2),
+      )
+      .execute()
+  );
 
   const standing = await (await mine(alphaCookie)).json();
 
@@ -461,18 +495,20 @@ Deno.test("only the RPG thread counts, not the three organisational ones", async
     await aMatchedBlindDate();
 
   // Take the RPG thread below the threshold, then write plenty in the exchange thread.
-  await db
-    .deleteFrom("writingPost")
-    .where(
-      "id",
-      "in",
-      db
-        .selectFrom("writingPost")
-        .select("id")
-        .where("writingThreadId", "=", threadId)
-        .limit(5),
-    )
-    .execute();
+  await write((transaction) =>
+    transaction
+      .deleteFrom("writingPost")
+      .where(
+        "id",
+        "in",
+        db
+          .selectFrom("writingPost")
+          .select("id")
+          .where("writingThreadId", "=", threadId)
+          .limit(5),
+      )
+      .execute()
+  );
 
   const exchange = await db
     .selectFrom("blindDatePair")

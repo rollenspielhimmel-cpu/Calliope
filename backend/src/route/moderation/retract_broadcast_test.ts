@@ -10,6 +10,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 import { RETRACTED_TEXT } from "@/src/service/broadcast_queue_service.ts";
@@ -80,11 +81,13 @@ const data = scopedTestData({
 const cleanUp = data.cleanUp;
 
 async function setRole(username: string, role: "administrator" | null) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 function fixture() {

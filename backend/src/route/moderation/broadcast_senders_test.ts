@@ -1,11 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
-import { db } from "@/src/database/client.ts";
 import {
   getUserId,
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -31,11 +31,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 // Räumt auf — vorher wie nachher, mit Sperre und Wiederholung. Die Reihenfolge (erst der Platz,

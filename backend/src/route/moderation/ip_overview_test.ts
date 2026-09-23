@@ -1,13 +1,13 @@
 import { Buffer } from "node:buffer";
 import { assert, assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
-import { db } from "@/src/database/client.ts";
 import {
   clearRateLimits,
   deleteUsers,
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -34,10 +34,12 @@ const ALICE_ONLY = "203.0.113.78";
 Deno.test.beforeEach(clearRateLimits);
 
 Deno.test.afterEach(async () => {
-  await db
-    .deleteFrom("userSession")
-    .where("ipAddress", "in", [SHARED_ADDRESS, ALICE_ONLY])
-    .execute();
+  await write((transaction) =>
+    transaction
+      .deleteFrom("userSession")
+      .where("ipAddress", "in", [SHARED_ADDRESS, ALICE_ONLY])
+      .execute()
+  );
 
   await deleteUsers([alice, bob, carol]);
 });
@@ -47,17 +49,19 @@ Deno.test.afterEach(async () => {
  * address this file controls, and the whole question here is which address.
  */
 async function seenFrom(username: string, ipAddress: string) {
-  await db
-    .insertInto("userSession")
-    .values({
-      userId: await getUserId(username),
-      ipAddress,
-      // The columns a session needs beyond the two under test. The token is never used to
-      // authenticate anything here — these rows exist to be counted, not to be signed in with.
-      hashedToken: Buffer.from(crypto.randomUUID()),
-      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-    })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("userSession")
+      .values({
+        userId: await getUserId(username),
+        ipAddress,
+        // The columns a session needs beyond the two under test. The token is never used to
+        // authenticate anything here — these rows exist to be counted, not to be signed in with.
+        hashedToken: Buffer.from(crypto.randomUUID()),
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      })
+      .execute()
+  );
 }
 
 const overview = (cookie: string, search?: string) =>
@@ -79,11 +83,13 @@ const sharedAddresses = (cookie: string) =>
 
 async function asModerator(username: string): Promise<string> {
   const cookie = await registerUser(username);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator" })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator" })
+      .where("username", "=", username)
+      .execute()
+  );
   return cookie;
 }
 

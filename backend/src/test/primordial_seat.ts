@@ -1,4 +1,5 @@
 import { sql } from "kysely";
+import { write } from "@/src/test/support.ts";
 import { db, type Transaction } from "@/src/database/client.ts";
 import {
   ROOT_ADMIN_EMAIL_ADDRESS,
@@ -427,14 +428,16 @@ export async function withVacantPrimordialSeat<T>(
           return false;
         }
 
-        const emptied = await db
-          .updateTable("user")
-          .set({ isPrimordialAdmin: false })
-          .where("username", "=", ROOT_ADMIN_USERNAME)
-          .where("isPrimordialAdmin", "=", true)
-          .returning("id")
-          .executeTakeFirst()
-          .catch(() => undefined);
+        const emptied = await write((transaction) =>
+          transaction
+            .updateTable("user")
+            .set({ isPrimordialAdmin: false })
+            .where("username", "=", ROOT_ADMIN_USERNAME)
+            .where("isPrimordialAdmin", "=", true)
+            .returning("id")
+            .executeTakeFirst()
+            .catch(() => undefined)
+        );
 
         if (emptied === undefined) {
           await sql`select pg_advisory_unlock(${SEAT_LOCK})`.execute(
@@ -461,12 +464,14 @@ export async function withVacantPrimordialSeat<T>(
         // Wartenden frei; er übernahm den Platz mitten im Rumpf, und dieses Freiräumen nahm ihn ihm
         // wieder weg, ohne dass er es merkte. Deterministisch nachgestellt in
         // `primordial_seat_test.ts`.
-        await db
-          .updateTable("user")
-          .set({ isPrimordialAdmin: false })
-          .where("isPrimordialAdmin", "=", true)
-          .execute()
-          .catch(() => {});
+        await write((transaction) =>
+          transaction
+            .updateTable("user")
+            .set({ isPrimordialAdmin: false })
+            .where("isPrimordialAdmin", "=", true)
+            .execute()
+            .catch(() => {})
+        );
 
         await restore();
       }

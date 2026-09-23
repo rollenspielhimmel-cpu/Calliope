@@ -8,6 +8,7 @@ import {
   postBody,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -42,23 +43,30 @@ Deno.test.afterEach(async () => {
     .select("id")
     .where("username", "in", [first, second, outsider]);
 
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
-  await db
-    .deleteFrom("blindDatePair")
-    .where(
-      "writingGroupId",
-      "in",
-      db.selectFrom("writingGroup").select("id").where(
-        "title",
-        "=",
-        BLIND_DATE_TITLE,
-      ),
-    )
-    .execute();
-  await db
-    .deleteFrom("writingGroup")
-    .where("title", "=", BLIND_DATE_TITLE)
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction
+      .deleteFrom("blindDatePair")
+      .where(
+        "writingGroupId",
+        "in",
+        db.selectFrom("writingGroup").select("id").where(
+          "title",
+          "=",
+          BLIND_DATE_TITLE,
+        ),
+      )
+      .execute()
+  );
+  await write((transaction) =>
+    transaction
+      .deleteFrom("writingGroup")
+      .where("title", "=", BLIND_DATE_TITLE)
+      .execute()
+  );
 
   await deleteUsers([first, second, outsider]);
 });
@@ -86,17 +94,19 @@ async function aBlindDate() {
   const firstId = await getUserId(first);
   const secondId = await getUserId(second);
 
-  const group = await db
-    .insertInto("writingGroup")
-    .values({
-      title: BLIND_DATE_TITLE,
-      synopsis: "Zwei schreiben, ohne zu wissen, wer der andere ist.",
-      visibility: "private",
-      authorsArePseudonymous: true,
-      createdBy: firstId,
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const group = await write((transaction) =>
+    transaction
+      .insertInto("writingGroup")
+      .values({
+        title: BLIND_DATE_TITLE,
+        synopsis: "Zwei schreiben, ohne zu wissen, wer der andere ist.",
+        visibility: "private",
+        authorsArePseudonymous: true,
+        createdBy: firstId,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   for (
     const [userId, role] of [[firstId, "administrator"], [
@@ -105,24 +115,30 @@ async function aBlindDate() {
     ]] as const
   ) {
     // deno-lint-ignore no-await-in-loop -- two rows, and the roles differ
-    await db
-      .insertInto("userInWritingGroup")
-      .values({ writingGroupId: group.id, userId, role, status: "joined" })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("userInWritingGroup")
+        .values({ writingGroupId: group.id, userId, role, status: "joined" })
+        .execute()
+    );
   }
 
-  const pair = await db
-    .insertInto("blindDatePair")
-    .values({ writingGroupId: group.id })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const pair = await write((transaction) =>
+    transaction
+      .insertInto("blindDatePair")
+      .values({ writingGroupId: group.id })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   for (const userId of [firstId, secondId]) {
     // deno-lint-ignore no-await-in-loop -- two rows
-    await db
-      .insertInto("blindDatePartner")
-      .values({ pairId: pair.id, userId })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("blindDatePartner")
+        .values({ pairId: pair.id, userId })
+        .execute()
+    );
   }
 
   const thread = await (await request(
@@ -301,11 +317,13 @@ Deno.test("the reveal gives both names back without anything being migrated", as
   const { groupId, threadId, firstCookie } = await aBlindDate();
 
   // What the reveal button will do: one flag, and the partner rows freed for a next Blind-Date.
-  await db
-    .updateTable("writingGroup")
-    .set({ authorsArePseudonymous: false })
-    .where("id", "=", groupId)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("writingGroup")
+      .set({ authorsArePseudonymous: false })
+      .where("id", "=", groupId)
+      .execute()
+  );
 
   const posts = await (await request(
     "QUERY",

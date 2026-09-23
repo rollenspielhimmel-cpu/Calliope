@@ -7,6 +7,7 @@ import {
   getUserId,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -57,37 +58,66 @@ Deno.test.afterEach(async () => {
 
   const groupIds = (await groups.execute()).map((row) => row.writingGroupId);
 
-  await db.deleteFrom("blindDatePartner").where("userId", "in", ids).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDatePartner").where("userId", "in", ids)
+      .execute()
+  );
 
   if (groupIds.length > 0) {
-    await db.deleteFrom("blindDatePair").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("writingThread").where("writingGroupId", "in", groupIds)
-      .execute();
-    await db.deleteFrom("userInWritingGroup").where(
-      "writingGroupId",
-      "in",
-      groupIds,
-    ).execute();
-    await db.deleteFrom("writingGroup").where("id", "in", groupIds).execute();
+    await write((transaction) =>
+      transaction.deleteFrom("blindDatePair").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingThread").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      )
+        .execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("userInWritingGroup").where(
+        "writingGroupId",
+        "in",
+        groupIds,
+      ).execute()
+    );
+    await write((transaction) =>
+      transaction.deleteFrom("writingGroup").where("id", "in", groupIds)
+        .execute()
+    );
   }
 
-  await db.deleteFrom("notification").where("recipientId", "in", ids).execute();
-  await db.deleteFrom("blindDateApplication").where("userId", "in", ids)
-    .execute();
-  await db.deleteFrom("blindDateExclusion").where("userId", "in", ids)
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("notification").where("recipientId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateApplication").where("userId", "in", ids)
+      .execute()
+  );
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateExclusion").where("userId", "in", ids)
+      .execute()
+  );
 
   await deleteUsers(USERS);
 });
 
 async function asOperator(): Promise<string> {
   const cookie = await registerUser(operator);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator", mayManageBlindDate: true })
-    .where("username", "=", operator)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator", mayManageBlindDate: true })
+      .where("username", "=", operator)
+      .execute()
+  );
   return cookie;
 }
 
@@ -288,10 +318,12 @@ Deno.test("somebody excluded after applying is not matched", async () => {
   const second = await anApplicant(beta);
 
   // The queue was rendered before this happened, which is exactly why the check is repeated.
-  await db
-    .insertInto("blindDateExclusion")
-    .values({ userId: await getUserId(beta), reason: "Nach Bewerbung" })
-    .execute();
+  await write(async (transaction) =>
+    transaction
+      .insertInto("blindDateExclusion")
+      .values({ userId: await getUserId(beta), reason: "Nach Bewerbung" })
+      .execute()
+  );
 
   assertEquals(
     (await match(cookie, first, second)).status,
@@ -413,7 +445,10 @@ Deno.test("an offer is opened, seen by members, and closed rather than deleted",
   assert(closed !== undefined, "the offer should still be there for the team");
   assert(closed.closedAt !== null);
 
-  await db.deleteFrom("blindDateOffer").where("id", "=", offer.id).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blindDateOffer").where("id", "=", offer.id)
+      .execute()
+  );
 });
 
 Deno.test("an ordinary member reaches none of these", async () => {
@@ -437,18 +472,20 @@ Deno.test("a pending application from somebody already in a Blind-Date is refuse
   // The state the ordinary flow prevents — applying is refused while matched — written straight
   // in, because this is the defence for the case the ordinary flow did not produce: a row made by
   // hand, a fix applied elsewhere, or two operators matching at the same moment.
-  const revived = await db
-    .insertInto("blindDateApplication")
-    .values({
-      userId: await getUserId(alpha),
-      plotTitle: PLOT,
-      writingStyle: "prose",
-      postLength: "medium",
-      roleGender: "weiblich",
-      pairing: "offen",
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const revived = await write(async (transaction) =>
+    transaction
+      .insertInto("blindDateApplication")
+      .values({
+        userId: await getUserId(alpha),
+        plotTitle: PLOT,
+        writingStyle: "prose",
+        postLength: "medium",
+        roleGender: "weiblich",
+        pairing: "offen",
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   const third = await anApplicant(gamma);
 
@@ -533,40 +570,45 @@ async function aPair(
   second: string,
   state: { revealed: true } | { endedReason: string } | { running: true },
 ): Promise<void> {
-  const group = await db
-    .insertInto("writingGroup")
-    .values({ title: PLOT, synopsis: SYNOPSIS, visibility: "private" })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const group = await write((transaction) =>
+    transaction
+      .insertInto("writingGroup")
+      .values({ title: PLOT, synopsis: SYNOPSIS, visibility: "private" })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   const now = new Date().toISOString();
 
-  const pair = await db
-    .insertInto("blindDatePair")
-    .values({
-      writingGroupId: group.id,
-      ...("revealed" in state ? { revealedAt: now } : {}),
-      ...("endedReason" in state
-        ? { endedAt: now, endedReason: state.endedReason }
-        : {}),
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const pair = await write((transaction) =>
+    transaction
+      .insertInto("blindDatePair")
+      .values({
+        writingGroupId: group.id,
+        ...("revealed" in state ? { revealedAt: now } : {}),
+        ...("endedReason" in state
+          ? { endedAt: now, endedReason: state.endedReason }
+          : {}),
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
 
   // Zwei Partnerzeilen auf dasselbe Paar. Nacheinander, weil ein eindeutiger Teilindex über
   // `user_id WHERE is_active` genau dann greift, wenn beide gleichzeitig geschrieben würden — der
   // Aufbau soll den Zustand herstellen und nicht die Sperre auslösen.
   for (const username of [first, second]) {
     // deno-lint-ignore no-await-in-loop -- eine Zeile je Partner
-    await db
-      .insertInto("blindDatePartner")
-      .values({
-        pairId: pair.id,
-        // deno-lint-ignore no-await-in-loop -- die Kennung zur Zeile, die gerade entsteht
-        userId: await getUserId(username),
-        isActive: "running" in state,
-      })
-      .execute();
+    await write(async (transaction) =>
+      transaction
+        .insertInto("blindDatePartner")
+        .values({
+          pairId: pair.id,
+          userId: await getUserId(username),
+          isActive: "running" in state,
+        })
+        .execute()
+    );
   }
 }
 

@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
+import { write } from "@/src/test/support.ts";
 import { STATUS_CODE } from "@std/http/status";
-import { db } from "@/src/database/client.ts";
 import app from "@/src/app.ts";
 import { EMAIL_DOMAIN_BLOCKED } from "@/src/http/response.ts";
 
@@ -22,7 +22,9 @@ function register(emailAddress: string) {
 }
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("user").where("username", "=", username).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("user").where("username", "=", username).execute()
+  );
 });
 
 Deno.test("a seeded throwaway domain cannot register", async () => {

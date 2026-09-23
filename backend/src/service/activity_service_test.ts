@@ -1,5 +1,4 @@
 import { assertEquals } from "@std/assert";
-import { db } from "@/src/database/client.ts";
 import { write } from "@/src/test/support.ts";
 import {
   ActivityService,
@@ -45,16 +44,18 @@ async function seen(username: string, ...at: Date[]) {
 
   for (const instant of at) {
     // deno-lint-ignore no-await-in-loop -- a handful per test, and the order does not matter
-    await db
-      .insertInto("activityWindow")
-      .values({
-        userId,
-        windowStart: windowStartFor(instant).toISOString(),
-      })
-      .onConflict((conflict) =>
-        conflict.columns(["userId", "windowStart"]).doNothing()
-      )
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("activityWindow")
+        .values({
+          userId,
+          windowStart: windowStartFor(instant).toISOString(),
+        })
+        .onConflict((conflict) =>
+          conflict.columns(["userId", "windowStart"]).doNothing()
+        )
+        .execute()
+    );
   }
 }
 
@@ -224,8 +225,10 @@ Deno.test("an ordinary signed-in request records a window", async () => {
   const memberId = await getUserId(member);
 
   // Whatever the registration itself wrote, cleared: the point is the request below.
-  await db.deleteFrom("activityWindow").where("userId", "=", memberId)
-    .execute();
+  await write((transaction) =>
+    transaction.deleteFrom("activityWindow").where("userId", "=", memberId)
+      .execute()
+  );
   ActivityService.forgetRecordedActivity();
 
   assertEquals(await ActivityService.onlineMinutesInLast30Days(memberId), 0);

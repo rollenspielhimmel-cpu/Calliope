@@ -6,6 +6,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { deleteMailFor, waitForMail } from "@/src/test/mailpit.ts";
 import { AdminInboxService } from "@/src/service/admin_inbox_service.ts";
@@ -48,11 +49,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 function fixture() {
@@ -71,13 +74,15 @@ function fixture() {
     await setRole(OTHER, "administrator");
     await setRole(MODERATOR, "moderator");
 
-    await db
-      .insertInto("broadcastSender")
-      .values([
-        { userId: await getUserId(PERSONA) },
-        { userId: await getUserId(SECOND_PERSONA) },
-      ])
-      .execute();
+    await write(async (transaction) =>
+      transaction
+        .insertInto("broadcastSender")
+        .values([
+          { userId: await getUserId(PERSONA) },
+          { userId: await getUserId(SECOND_PERSONA) },
+        ])
+        .execute()
+    );
 
     await deleteMailFor([`${TESTER}@example.com`, `${OTHER}@example.com`]);
 
@@ -202,14 +207,16 @@ Deno.test("eine Test-Rundmail lässt den echten Faden und seine offene Frage in 
     );
     assertExists(real);
 
-    await db
-      .insertInto("chatMessage")
-      .values({
-        chatGroupId: real,
-        text: "Eine echte Frage.",
-        createdBy: tester,
-      })
-      .execute();
+    await write((transaction) =>
+      transaction
+        .insertInto("chatMessage")
+        .values({
+          chatGroupId: real,
+          text: "Eine echte Frage.",
+          createdBy: tester,
+        })
+        .execute()
+    );
 
     const response = await sendTest(cookies.tester);
     const { chatGroupId } = await response.json();

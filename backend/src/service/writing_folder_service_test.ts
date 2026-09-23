@@ -1,6 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { plainTextToDocument } from "@/src/document/document_text.ts";
-import { db } from "@/src/database/client.ts";
 import {
   clearRateLimits,
   createGroup,
@@ -175,15 +174,17 @@ Deno.test("a folder holding a page is refused", async () => {
 Deno.test("a folder holding a thread is refused", async () => {
   const { groupId, ownerId } = await aGroup();
   const folder = await make(groupId, ownerId, "Weltenbau");
-  await db
-    .insertInto("writingThread")
-    .values({
-      writingGroupId: groupId,
-      title: "Der lange Aufstieg",
-      createdBy: ownerId,
-      folderId: folder.id,
-    })
-    .execute();
+  await write((transaction) =>
+    transaction
+      .insertInto("writingThread")
+      .values({
+        writingGroupId: groupId,
+        title: "Der lange Aufstieg",
+        createdBy: ownerId,
+        folderId: folder.id,
+      })
+      .execute()
+  );
 
   assertEquals(
     await write((transaction) =>

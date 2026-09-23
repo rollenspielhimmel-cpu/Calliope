@@ -1,8 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { STATUS_CODE } from "@std/http/status";
 import app from "@/src/app.ts";
-import { db } from "@/src/database/client.ts";
-import { clearRateLimits, deleteUsers } from "@/src/test/support.ts";
+import { clearRateLimits, deleteUsers, write } from "@/src/test/support.ts";
 import { authFixture, sessionCookie } from "@/src/test/auth.ts";
 
 // Its own account, so a file running beside this one cannot register or delete it.
@@ -76,11 +75,13 @@ Deno.test("GET /api/auth/me treats a malformed session cookie as no session", as
  */
 Deno.test("GET /api/auth/me tells a moderator they may prepare publications", async () => {
   const cookie = sessionCookie(await register());
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator" })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator" })
+      .where("username", "=", username)
+      .execute()
+  );
 
   const response = await app.request("/api/auth/me", { headers: { cookie } });
   const body = await response.json();

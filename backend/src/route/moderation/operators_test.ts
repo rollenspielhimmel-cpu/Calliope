@@ -6,6 +6,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -26,11 +27,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 // Räumt auf — vorher wie nachher, mit Sperre und Wiederholung. Die Reihenfolge (erst der Platz,
@@ -163,11 +166,13 @@ Deno.test("the database refuses to demote the first administrator even without a
 
     try {
       // deno-lint-ignore no-await-in-loop -- two statements, each expected to throw
-      await db
-        .updateTable("user")
-        .set({ platformRole: role })
-        .where("username", "=", PRIMORDIAL)
-        .execute();
+      await write((transaction) =>
+        transaction
+          .updateTable("user")
+          .set({ platformRole: role })
+          .where("username", "=", PRIMORDIAL)
+          .execute()
+      );
     } catch {
       refused = true;
     }

@@ -9,7 +9,7 @@ import {
   ensureRootAdmin,
   ROOT_ADMIN_USERNAME,
 } from "@/src/service/root_admin_service.ts";
-import { deleteUsers, registerUser } from "@/src/test/support.ts";
+import { deleteUsers, registerUser, write } from "@/src/test/support.ts";
 
 /**
  * Die Vorrichtung für den Ur-Admin-Platz, an ihrer heikelsten Stelle.
@@ -45,11 +45,13 @@ Deno.test("nobody borrows the seat while it is empty on purpose", async () => {
   await deleteUsers([BORROWER]);
   await registerUser(BORROWER);
   // Den Platz darf nur halten, wer Administrator ist (`user_primordial_admin_is_an_administrator`).
-  await db
-    .updateTable("user")
-    .set({ platformRole: "administrator" })
-    .where("username", "=", BORROWER)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "administrator" })
+      .where("username", "=", BORROWER)
+      .execute()
+  );
 
   let borrowed = false;
   let lent: Promise<void> | undefined;
@@ -57,31 +59,37 @@ Deno.test("nobody borrows the seat while it is empty on purpose", async () => {
   try {
     await withVacantPrimordialSeat(
       async () => {
-        await db
-          .updateTable("user")
-          .set({
-            username: STANDIN,
-            emailAddress: `${STANDIN}@example.invalid`,
-            isPrimordialAdmin: false,
-          })
-          .where("username", "=", ROOT_ADMIN_USERNAME)
-          .execute();
+        await write((transaction) =>
+          transaction
+            .updateTable("user")
+            .set({
+              username: STANDIN,
+              emailAddress: `${STANDIN}@example.invalid`,
+              isPrimordialAdmin: false,
+            })
+            .where("username", "=", ROOT_ADMIN_USERNAME)
+            .execute()
+        );
       },
       async () => {
-        await db
-          .deleteFrom("user")
-          .where("username", "=", ROOT_ADMIN_USERNAME)
-          .execute();
+        await write((transaction) =>
+          transaction
+            .deleteFrom("user")
+            .where("username", "=", ROOT_ADMIN_USERNAME)
+            .execute()
+        );
 
-        await db
-          .updateTable("user")
-          .set({
-            username: ROOT_ADMIN_USERNAME,
-            emailAddress: "admin@rollenspielhimmel.invalid",
-            isPrimordialAdmin: true,
-          })
-          .where("username", "=", STANDIN)
-          .execute();
+        await write((transaction) =>
+          transaction
+            .updateTable("user")
+            .set({
+              username: ROOT_ADMIN_USERNAME,
+              emailAddress: "admin@rollenspielhimmel.invalid",
+              isPrimordialAdmin: true,
+            })
+            .where("username", "=", STANDIN)
+            .execute()
+        );
       },
       async () => {
         Deno.env.set("ROOT_ADMIN_PASSWORD", "a-seat-test-password");

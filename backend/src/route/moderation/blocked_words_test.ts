@@ -7,6 +7,7 @@ import {
   deleteUsers,
   registerUser,
   request,
+  write,
 } from "@/src/test/support.ts";
 
 /**
@@ -28,18 +29,22 @@ const WRITTEN = `Was für ein ${WORD} hier.`;
 Deno.test.beforeEach(clearRateLimits);
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("blockedWord").where("word", "=", WORD).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("blockedWord").where("word", "=", WORD).execute()
+  );
   WordFilterService.forgetCachedWords();
   await deleteUsers([administrator, member]);
 });
 
 async function asAdministrator(): Promise<string> {
   const cookie = await registerUser(administrator);
-  await db
-    .updateTable("user")
-    .set({ platformRole: "administrator" })
-    .where("username", "=", administrator)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "administrator" })
+      .where("username", "=", administrator)
+      .execute()
+  );
   return cookie;
 }
 
@@ -137,11 +142,13 @@ Deno.test("a moderator may not touch the list, and neither may a member", async 
   assertEquals((await listWords(memberCookie)).status, STATUS_CODE.Forbidden);
   assertEquals((await block(memberCookie, WORD)).status, STATUS_CODE.Forbidden);
 
-  await db
-    .updateTable("user")
-    .set({ platformRole: "moderator" })
-    .where("username", "=", member)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: "moderator" })
+      .where("username", "=", member)
+      .execute()
+  );
 
   // Administrator territory, like the domain list beside it: this decides what the whole
   // community may print, not what happens to one account.

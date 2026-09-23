@@ -7,6 +7,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -51,11 +52,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 function fixture() {
@@ -74,13 +77,15 @@ function fixture() {
     await setRole(MOD, "moderator");
 
     // Beide freigeschaltet, nach der Migration — also zunächst nur für Administrationen.
-    await db
-      .insertInto("broadcastSender")
-      .values([
-        { userId: await getUserId(FLAMINGO) },
-        { userId: await getUserId(OTHER_PERSONA) },
-      ])
-      .execute();
+    await write(async (transaction) =>
+      transaction
+        .insertInto("broadcastSender")
+        .values([
+          { userId: await getUserId(FLAMINGO) },
+          { userId: await getUserId(OTHER_PERSONA) },
+        ])
+        .execute()
+    );
 
     return cookies;
   });

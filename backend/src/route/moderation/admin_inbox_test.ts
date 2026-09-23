@@ -11,6 +11,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -44,11 +45,13 @@ async function setRole(
   username: string,
   role: "administrator" | "moderator" | null,
 ) {
-  await db
-    .updateTable("user")
-    .set({ platformRole: role })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ platformRole: role })
+      .where("username", "=", username)
+      .execute()
+  );
 }
 
 // **Beide Betreffs, nicht nur einer.** Sonst bleibt eine Veröffentlichung stehen und wächst dem
@@ -97,10 +100,12 @@ function fixture() {
     await setRole(MODERATOR, "moderator");
     await setRole(OUTSIDER, null);
 
-    await db
-      .insertInto("broadcastSender")
-      .values({ userId: await getUserId(PERSONA) })
-      .execute();
+    await write(async (transaction) =>
+      transaction
+        .insertInto("broadcastSender")
+        .values({ userId: await getUserId(PERSONA) })
+        .execute()
+    );
 
     await borrowPrimordialSeat(ROOT);
 
@@ -169,7 +174,7 @@ async function chatOf(broadcastId: string, username: string) {
 }
 
 /** Das Mitglied schreibt — über den gewöhnlichen Chat-Weg, denn mehr ist es nicht. */
-function write(cookie: string, chatGroupId: string, text: string) {
+function writeAsMember(cookie: string, chatGroupId: string, text: string) {
   return request("POST", `/api/chats/${chatGroupId}/messages`, cookie, {
     text,
   });
@@ -210,7 +215,11 @@ Deno.test("was zurückkommt, liegt im Postfach", async () => {
 
   try {
     const broadcastId = await sendBroadcast(cookies.root);
-    await write(cookies.member, await chatOf(broadcastId, MEMBER), REPLY);
+    await writeAsMember(
+      cookies.member,
+      await chatOf(broadcastId, MEMBER),
+      REPLY,
+    );
 
     const response = await inbox(cookies.root);
     assertEquals(response.status, STATUS_CODE.OK);
@@ -238,7 +247,11 @@ Deno.test("bloß zugestellt ist nicht dasselbe wie gemeldet", async () => {
 
   try {
     const broadcastId = await sendBroadcast(cookies.root);
-    await write(cookies.member, await chatOf(broadcastId, MEMBER), REPLY);
+    await writeAsMember(
+      cookies.member,
+      await chatOf(broadcastId, MEMBER),
+      REPLY,
+    );
 
     const { results } = await (await inbox(cookies.root)).json();
     const names = ours(results).map((row) => row.username);
@@ -267,7 +280,11 @@ Deno.test("eine Rundmail beantwortet keine offene Frage", async () => {
 
   try {
     const broadcastId = await sendBroadcast(cookies.root);
-    await write(cookies.member, await chatOf(broadcastId, MEMBER), REPLY);
+    await writeAsMember(
+      cookies.member,
+      await chatOf(broadcastId, MEMBER),
+      REPLY,
+    );
 
     const [before] = ours((await (await inbox(cookies.root)).json()).results);
     assertExists(before);
@@ -295,7 +312,7 @@ Deno.test("eine Antwort bleibt eine Antwort, auch wenn danach eine Rundmail komm
     const broadcastId = await sendBroadcast(cookies.root);
     const chatGroupId = await chatOf(broadcastId, MEMBER);
 
-    await write(cookies.member, chatGroupId, REPLY);
+    await writeAsMember(cookies.member, chatGroupId, REPLY);
     await answer(cookies.silent, chatGroupId, ANSWER);
     await sendBroadcast(cookies.root, SECOND_SUBJECT);
 
@@ -314,7 +331,7 @@ Deno.test("offen heißt: die letzte Nachricht ist noch vom Mitglied", async () =
     const broadcastId = await sendBroadcast(cookies.root);
     const chatGroupId = await chatOf(broadcastId, MEMBER);
 
-    await write(cookies.member, chatGroupId, REPLY);
+    await writeAsMember(cookies.member, chatGroupId, REPLY);
 
     const [before] = ours((await (await inbox(cookies.root)).json()).results);
     assertExists(before);
@@ -344,7 +361,7 @@ Deno.test("der Verlauf zeigt beide Seiten und den Verfasser", async () => {
     const broadcastId = await sendBroadcast(cookies.root);
     const chatGroupId = await chatOf(broadcastId, MEMBER);
 
-    await write(cookies.member, chatGroupId, REPLY);
+    await writeAsMember(cookies.member, chatGroupId, REPLY);
     await answer(cookies.silent, chatGroupId, ANSWER);
 
     const response = await request(
@@ -441,7 +458,7 @@ Deno.test("die Rundmail heißt Rundmail, nicht Team", async () => {
     const broadcastId = await sendBroadcast(cookies.root);
     const chatGroupId = await chatOf(broadcastId, MEMBER);
 
-    await write(cookies.member, chatGroupId, REPLY);
+    await writeAsMember(cookies.member, chatGroupId, REPLY);
     await answer(cookies.silent, chatGroupId, ANSWER);
 
     const { messages } = await (await request(
@@ -483,7 +500,7 @@ Deno.test("zwei Rundmails landen im selben Faden", async () => {
     const first = await sendBroadcast(cookies.root);
     const chatGroupId = await chatOf(first, MEMBER);
 
-    await write(cookies.member, chatGroupId, REPLY);
+    await writeAsMember(cookies.member, chatGroupId, REPLY);
     await sendBroadcast(cookies.root, SECOND_SUBJECT);
 
     // **Der Kern des Umbaus.** Vorher war jede Ankündigung ein eigener Faden mit einer Nachricht;
@@ -586,7 +603,11 @@ Deno.test("was die Administration sich selbst schreibt, ist keine Arbeit", async
     // ROOT hält den Ur-Admin-Platz und steht selbst im Empfängerkreis — er bekommt seine eigene
     // Rundmail wie jeder andere. Schreibt er in seinem eigenen Faden, ist das keine Frage an
     // jemanden.
-    await write(cookies.root, await chatOf(broadcastId, ROOT), "Notiz an mich");
+    await writeAsMember(
+      cookies.root,
+      await chatOf(broadcastId, ROOT),
+      "Notiz an mich",
+    );
 
     const { results } = await (await inbox(cookies.root)).json();
     const names = ours(results).map((row) => row.username);
@@ -630,7 +651,7 @@ Deno.test("wer Admin benennt, bekommt den Faden statt einer Einladung", async ()
 
     // Keine Annahme nötig: Das Mitglied sitzt von Anfang an drin, also trägt die gewöhnliche
     // Nachrichtenroute.
-    const sent = await write(cookies.member, chatGroupId, REPLY);
+    const sent = await writeAsMember(cookies.member, chatGroupId, REPLY);
     assertEquals(sent.status, STATUS_CODE.Created);
 
     const { results } = await (await inbox(cookies.root)).json();
@@ -669,7 +690,7 @@ Deno.test("wer erst schreibt und dann eine Rundmail bekommt, hat einen Faden", a
   try {
     const { response } = await writeToTheAdministration(cookies.member);
     const { chatGroupId } = await response.json();
-    await write(cookies.member, chatGroupId, REPLY);
+    await writeAsMember(cookies.member, chatGroupId, REPLY);
 
     const broadcastId = await sendBroadcast(cookies.root);
 
@@ -796,7 +817,7 @@ Deno.test("erledigt ohne Antwort, und von selbst wieder offen, wenn das Mitglied
 
   try {
     const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
-    await write(cookies.member, chatId, "Danke!");
+    await writeAsMember(cookies.member, chatId, "Danke!");
 
     assertEquals((await entryOf(cookies.root, chatId))?.isOpen, true);
 
@@ -808,7 +829,7 @@ Deno.test("erledigt ohne Antwort, und von selbst wieder offen, wenn das Mitglied
     assertEquals(done?.markedDoneByUsername, ROOT);
     assertExists(done?.markedDoneAt);
 
-    await write(cookies.member, chatId, "Ach, noch eine Frage.");
+    await writeAsMember(cookies.member, chatId, "Ach, noch eine Frage.");
 
     const again = await entryOf(cookies.root, chatId);
     assertEquals(again?.isOpen, true, "wieder offen");
@@ -827,7 +848,7 @@ Deno.test("„erledigt“ lässt sich zurücknehmen", async () => {
 
   try {
     const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
-    await write(cookies.member, chatId, REPLY);
+    await writeAsMember(cookies.member, chatId, REPLY);
     await markDone(cookies.root, chatId);
 
     assertEquals((await reopen(cookies.root, chatId)).status, STATUS_CODE.OK);
@@ -842,7 +863,7 @@ Deno.test("erledigt nennt ein Gespräch nur die Administration", async () => {
 
   try {
     const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
-    await write(cookies.member, chatId, REPLY);
+    await writeAsMember(cookies.member, chatId, REPLY);
 
     assertEquals(
       (await markDone(cookies.moderator, chatId)).status,
@@ -860,20 +881,24 @@ Deno.test("erledigt nennt ein Gespräch nur die Administration", async () => {
 
 /** Ein privates Gespräch zweier Mitglieder, am Postfach vorbei — mit einer Nachricht darin. */
 async function privateChat(): Promise<{ chatId: string; messageId: string }> {
-  const chat = await db
-    .insertInto("chatGroup")
-    .values({ title: "ai-privat", createdBy: await getUserId(OUTSIDER) })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  const message = await db
-    .insertInto("chatMessage")
-    .values({
-      chatGroupId: chat.id,
-      text: "Nur unter uns.",
-      createdBy: await getUserId(OUTSIDER),
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const chat = await write(async (transaction) =>
+    transaction
+      .insertInto("chatGroup")
+      .values({ title: "ai-privat", createdBy: await getUserId(OUTSIDER) })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
+  const message = await write(async (transaction) =>
+    transaction
+      .insertInto("chatMessage")
+      .values({
+        chatGroupId: chat.id,
+        text: "Nur unter uns.",
+        createdBy: await getUserId(OUTSIDER),
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow()
+  );
   return { chatId: chat.id, messageId: message.id };
 }
 
@@ -902,7 +927,9 @@ Deno.test("erledigt nur, was im Postfach liegt und worin das Mitglied geschriebe
         { inboxDoneAt: null },
       );
     } finally {
-      await db.deleteFrom("chatGroup").where("id", "=", chatId).execute();
+      await write((transaction) =>
+        transaction.deleteFrom("chatGroup").where("id", "=", chatId).execute()
+      );
     }
   } finally {
     await cleanUp();
@@ -915,7 +942,7 @@ Deno.test("das Mitglied sieht nicht, dass und von wem erledigt wurde", async () 
 
   try {
     const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
-    await write(cookies.member, chatId, "Danke!");
+    await writeAsMember(cookies.member, chatId, "Danke!");
     await markDone(cookies.root, chatId);
 
     const chats = await (await request("QUERY", "/api/chats", cookies.member, {
@@ -984,9 +1011,9 @@ Deno.test("Ordner: ganze Gespräche und einzelne Nachrichten, und beides wieder 
 
   try {
     const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
-    await write(cookies.member, chatId, "Erste wichtige Nachricht.");
-    await write(cookies.member, chatId, "Unwichtiges dazwischen.");
-    await write(cookies.member, chatId, "Zweite wichtige Nachricht.");
+    await writeAsMember(cookies.member, chatId, "Erste wichtige Nachricht.");
+    await writeAsMember(cookies.member, chatId, "Unwichtiges dazwischen.");
+    await writeAsMember(cookies.member, chatId, "Zweite wichtige Nachricht.");
 
     const messages = await messagesOf(cookies.root, chatId);
     const important = messages.filter((message) =>
@@ -1111,7 +1138,9 @@ Deno.test("Ordner nehmen nichts auf, was nicht im Postfach liegt", async () => {
         0,
       );
     } finally {
-      await db.deleteFrom("chatGroup").where("id", "=", chatId).execute();
+      await write((transaction) =>
+        transaction.deleteFrom("chatGroup").where("id", "=", chatId).execute()
+      );
     }
   } finally {
     await cleanUp();
@@ -1165,7 +1194,7 @@ Deno.test("einen Ordner löschen lässt Gespräche und Nachrichten im Postfach",
 
   try {
     const chatId = await chatOf(await sendBroadcast(cookies.root), MEMBER);
-    await write(cookies.member, chatId, REPLY);
+    await writeAsMember(cookies.member, chatId, REPLY);
     const [message] = (await messagesOf(cookies.root, chatId)).filter((one) =>
       one.text === REPLY
     );
@@ -1307,16 +1336,25 @@ Deno.test("die Datenbank hält Ordner und Einsortierung sauber", async () => {
     for (
       const attempt of [
         () =>
-          db.insertInto("inboxFolderItem").values({ inboxFolderId: folderId })
-            .execute(),
+          write((transaction) =>
+            transaction.insertInto("inboxFolderItem").values({
+              inboxFolderId: folderId,
+            }).execute()
+          ),
         () =>
-          db.insertInto("inboxFolder").values({ title: "  ", position: 9999 })
-            .execute(),
+          write((transaction) =>
+            transaction.insertInto("inboxFolder").values({
+              title: "  ",
+              position: 9999,
+            }).execute()
+          ),
         () =>
-          db.updateTable("chatGroup").set({
-            inboxDoneThrough: chatId,
-            inboxDoneAt: null,
-          }).where("id", "=", chatId).execute(),
+          write((transaction) =>
+            transaction.updateTable("chatGroup").set({
+              inboxDoneThrough: chatId,
+              inboxDoneAt: null,
+            }).where("id", "=", chatId).execute()
+          ),
       ]
     ) {
       try {

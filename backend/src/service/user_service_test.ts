@@ -1,6 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { write } from "@/src/test/support.ts";
-import { db } from "@/src/database/client.ts";
 import { UserService } from "./user_service.ts";
 
 const username = "username";
@@ -8,7 +7,9 @@ const password = "a-complex-password";
 const emailAddress = "user@example.com";
 
 Deno.test.afterEach(async () => {
-  await db.deleteFrom("user").where("username", "=", username).execute();
+  await write((transaction) =>
+    transaction.deleteFrom("user").where("username", "=", username).execute()
+  );
 });
 
 Deno.test("Register and login user", async () => {
