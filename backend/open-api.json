@@ -34927,6 +34927,9 @@
                                 "type": ["string", "null"]
                               },
                               "isOfficial": { "type": "boolean" },
+                              "madeOfficialAfterwards": {
+                                "type": ["boolean", "null"]
+                              },
                               "isFavourite": { "type": "boolean" },
                               "effectiveMemberPermission": {
                                 "type": "string",
@@ -34943,6 +34946,7 @@
                               "memberPermission",
                               "createdByUsername",
                               "isOfficial",
+                              "madeOfficialAfterwards",
                               "isFavourite",
                               "effectiveMemberPermission"
                             ]
@@ -66406,6 +66410,9 @@
                           },
                           "createdByUsername": { "type": ["string", "null"] },
                           "isOfficial": { "type": "boolean" },
+                          "madeOfficialAfterwards": {
+                            "type": ["boolean", "null"]
+                          },
                           "isFavourite": { "type": "boolean" },
                           "effectiveMemberPermission": {
                             "type": "string",
@@ -66422,6 +66429,7 @@
                           "memberPermission",
                           "createdByUsername",
                           "isOfficial",
+                          "madeOfficialAfterwards",
                           "isFavourite",
                           "effectiveMemberPermission"
                         ]
@@ -66725,6 +66733,7 @@
                     },
                     "createdByUsername": { "type": ["string", "null"] },
                     "isOfficial": { "type": "boolean" },
+                    "madeOfficialAfterwards": { "type": ["boolean", "null"] },
                     "isFavourite": { "type": "boolean" },
                     "effectiveMemberPermission": {
                       "type": "string",
@@ -66741,6 +66750,7 @@
                     "memberPermission",
                     "createdByUsername",
                     "isOfficial",
+                    "madeOfficialAfterwards",
                     "isFavourite",
                     "effectiveMemberPermission"
                   ]
@@ -67068,6 +67078,7 @@
                     },
                     "createdByUsername": { "type": ["string", "null"] },
                     "isOfficial": { "type": "boolean" },
+                    "madeOfficialAfterwards": { "type": ["boolean", "null"] },
                     "isFavourite": { "type": "boolean" },
                     "effectiveMemberPermission": {
                       "type": "string",
@@ -67084,6 +67095,7 @@
                     "memberPermission",
                     "createdByUsername",
                     "isOfficial",
+                    "madeOfficialAfterwards",
                     "isFavourite",
                     "effectiveMemberPermission"
                   ]
@@ -67425,6 +67437,7 @@
                     },
                     "createdByUsername": { "type": ["string", "null"] },
                     "isOfficial": { "type": "boolean" },
+                    "madeOfficialAfterwards": { "type": ["boolean", "null"] },
                     "isFavourite": { "type": "boolean" },
                     "effectiveMemberPermission": {
                       "type": "string",
@@ -67441,6 +67454,7 @@
                     "memberPermission",
                     "createdByUsername",
                     "isOfficial",
+                    "madeOfficialAfterwards",
                     "isFavourite",
                     "effectiveMemberPermission"
                   ]

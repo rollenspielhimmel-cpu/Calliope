@@ -1046,6 +1046,62 @@ Deno.test("offiziell machen lässt sich zurücknehmen, mit Grund und im Protokol
   );
 });
 
+/** Die eine Angabe, an der die Oberfläche entscheidet, ob sie „Nicht mehr offiziell" anbietet. */
+async function origin(cookie: string, threadId: string) {
+  const response = await request(
+    "GET",
+    `/api/forum/threads/${threadId}`,
+    cookie,
+  );
+  assertEquals(response.status, STATUS_CODE.OK);
+  const { isOfficial, madeOfficialAfterwards } = await response.json() as {
+    isOfficial: boolean;
+    madeOfficialAfterwards: boolean | null;
+  };
+  return { isOfficial, madeOfficialAfterwards };
+}
+
+/**
+ * **Ein Knopf, der immer scheitert, ist kein Knopf.** Die Oberfläche kann „Nicht mehr offiziell"
+ * nur dann weglassen, wenn sie die beiden Fälle unterscheiden kann — also sagt die API es, und
+ * zwar nur der Administration: Unter wessen Namen ein Thread vorher stand, geht die Lesenden
+ * nichts an.
+ */
+Deno.test("die Herkunft eines offiziellen Threads sieht nur die Administration", async () => {
+  const cookies = await fixture();
+
+  const open = await createForumFolder("ot-herkunft", "write");
+  const { threadId: made } = await ordinaryThread(cookies.mod, open.id);
+  await makeOfficial(cookies.admin, made);
+  const { threadId: written } = await submitted(cookies.admin);
+
+  // Nachträglich offiziell: Es gibt einen Namen, der zurückkäme.
+  assertEquals(await origin(cookies.admin, made), {
+    isOfficial: true,
+    madeOfficialAfterwards: true,
+  });
+
+  // Als offizieller geschrieben: Es gibt keinen.
+  assertEquals(await origin(cookies.admin, written), {
+    isOfficial: true,
+    madeOfficialAfterwards: false,
+  });
+
+  // Ein gewöhnlicher Thread ist gar nicht erst offiziell.
+  const { threadId: plain } = await ordinaryThread(cookies.mod, open.id);
+  assertEquals(await origin(cookies.admin, plain), {
+    isOfficial: false,
+    madeOfficialAfterwards: false,
+  });
+
+  // Und für alle anderen steht dort nichts — auch nicht für die Moderation.
+  const others = await Promise.all(
+    [cookies.member, cookies.mod].map((cookie) => origin(cookie, made)),
+  );
+  assertEquals(others[0]?.madeOfficialAfterwards, null, "Mitglied");
+  assertEquals(others[1]?.madeOfficialAfterwards, null, "Mod");
+});
+
 /**
  * **Ein als offiziell geschriebener Thread hat keinen Namen, der zurückkäme.** Ihn zurückzunehmen
  * setzte die Person darunter, die ihn getippt hat — und die hat nie unter ihrem Namen geschrieben.

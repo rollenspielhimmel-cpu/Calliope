@@ -86,6 +86,18 @@ const IS_OFFICIAL = {
   isOfficial: z.boolean(),
 };
 
+/**
+ * Ob ein offizieller Thread vorher ein gewöhnlicher war.
+ *
+ * **Null für alle außer der Administration**, aus demselben Grund, aus dem `publicationId` gar
+ * nicht erst mitkommt: Unter wessen Namen ein Thread vorher stand, ist Buchführung des Teams.
+ * Sie braucht die Angabe, weil nur ein nachträglich offizieller Thread einen Namen hat, der
+ * zurückkäme — „Nicht mehr offiziell" wird sonst gar nicht erst angeboten.
+ */
+const MADE_OFFICIAL_AFTERWARDS = {
+  madeOfficialAfterwards: z.boolean().nullable(),
+};
+
 export const THREAD_RESPONSE = WRITING_THREAD_SCHEMA
   // `publicationId` bleibt drinnen: Ob ein Thread aus einer Veröffentlichung entstanden ist, ist
   // Buchführung des Teams und keine Angabe, aus der eine Lesende etwas machen kann. Sichtbar wird
@@ -162,6 +174,7 @@ export const FORUM_THREAD_RESPONSE = WRITING_THREAD_SCHEMA
   })
   .extend(CREATED_BY_USERNAME)
   .extend(IS_OFFICIAL)
+  .extend(MADE_OFFICIAL_AFTERWARDS)
   .extend(OWN_FAVOURITE)
   .extend(FORUM_PERMISSION)
   .extend({ memberPermission: FORUM_PERMISSION_SCHEMA });

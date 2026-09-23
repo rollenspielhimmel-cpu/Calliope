@@ -17,6 +17,7 @@ import {
   effectiveMemberPermission,
   isOperator,
 } from "@/src/service/forum_permission.ts";
+import { mayAdministerPlatform } from "@/src/service/platform_authorization.ts";
 import { planFolderMove } from "@/src/service/folder_move.ts";
 import { MAX_FOLDER_DEPTH } from "@/src/service/writing_folder_service.ts";
 import type { PostDocument } from "@/src/document/document_schema.ts";
@@ -62,6 +63,15 @@ export type ForumThread = Permitted & {
   isFavourite: boolean;
   /** Unter einem Absender der Plattform veröffentlicht. */
   isOfficial: boolean;
+  /**
+   * Ob der Thread erst nachträglich offiziell wurde — nur dann gibt es einen Namen, der
+   * zurückkäme, und nur dann lässt sich „offiziell" zurücknehmen.
+   *
+   * **Null für alle außer der Administration**, aus demselben Grund, aus dem `publicationId`
+   * gar nicht erst mitkommt: Wem der Thread gezeigt wird, den geht es nichts an, unter wessen
+   * Namen er vorher stand.
+   */
+  madeOfficialAfterwards: boolean | null;
 };
 
 export type ForumPageSummary = Permitted & {
@@ -201,7 +211,10 @@ function forumThreads(user: User, executor: typeof db | Transaction = db) {
   return executor
     .selectFrom("writingThread")
     .leftJoin("writingFolder", "writingFolder.id", "writingThread.folderId")
+    // Nur für die eine Angabe darunter, und nur die Administration bekommt sie zu sehen.
+    .leftJoin("publication", "publication.id", "writingThread.publicationId")
     .select([
+      "publication.forExistingThread as fromAnExistingThread",
       "writingThread.id",
       "writingThread.folderId",
       "writingThread.title",
@@ -223,6 +236,30 @@ function forumThreads(user: User, executor: typeof db | Transaction = db) {
     .$if(!isOperator(user), (builder) => builder.where(leafNotHidden));
 }
 
+/**
+ * Woher ein offizieller Thread kommt — eine Angabe für die Administration und für sonst niemanden.
+ *
+ * Sie entscheidet, ob „Nicht mehr offiziell" überhaupt angeboten wird: Ein als offizieller
+ * geschriebener Thread hat keinen früheren Namen, also gibt es dort nichts zurückzunehmen. Das
+ * stand vorher nur im Nein des Servers, und ein Knopf, der immer scheitert, ist kein Knopf.
+ */
+function withOfficialOrigin<
+  Row extends { fromAnExistingThread: boolean | null; isOfficial: boolean },
+>(
+  row: Row,
+  user: User,
+): Omit<Row, "fromAnExistingThread"> & {
+  madeOfficialAfterwards: boolean | null;
+} {
+  const { fromAnExistingThread, ...rest } = row;
+  return {
+    ...rest,
+    madeOfficialAfterwards: mayAdministerPlatform(user.platformRole)
+      ? rest.isOfficial && fromAnExistingThread === true
+      : null,
+  };
+}
+
 /** Threads of the forum, most recently written in first — the tree nests them by `folderId`. */
 async function listThreads(user: User): Promise<ForumThread[]> {
   const threads = await forumThreads(user)
@@ -233,7 +270,8 @@ async function listThreads(user: User): Promise<ForumThread[]> {
     .orderBy("writingThread.id", "desc")
     .execute();
 
-  return threads.map(withEffectivePermission);
+  return threads.map(withEffectivePermission)
+    .map((row) => withOfficialOrigin(row, user));
 }
 
 /** One function rather than the group's gate-and-view pair: two callers, both wanting the favourite. */
@@ -253,7 +291,7 @@ async function selectThread(
     return undefined;
   }
 
-  return withEffectivePermission(thread);
+  return withOfficialOrigin(withEffectivePermission(thread), user);
 }
 
 function forumPages(user: User, executor: typeof db | Transaction = db) {
@@ -349,7 +387,12 @@ async function searchThreads(
     );
 
   const found = await listResultsWithCount(threads, query);
-  return { ...found, results: found.results.map(withEffectivePermission) };
+  return {
+    ...found,
+    results: found.results.map(withEffectivePermission).map((row) =>
+      withOfficialOrigin(row, user)
+    ),
+  };
 }
 
 /**

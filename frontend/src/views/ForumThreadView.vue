@@ -27,7 +27,7 @@ import type { GetForumThread200, ListForumPosts200ResultsItem, PostDocument } fr
 import { BadgeCheck, Flag, Pencil, ScrollText, ShieldCheck, Undo2 } from '@lucide/vue'
 import { useForumTree } from '@/composables/useForumTree'
 import { useIsOperator } from '@/composables/useIsOperator'
-import { mayWriteInForum } from '@/lib/forum/permission'
+import { mayUnmakeOfficial, mayWriteInForum } from '@/lib/forum/permission'
 import { usePagedList } from '@/composables/usePagedList'
 import PathToHere from '@/components/folder/PathToHere.vue'
 import PostItem from '@/components/thread/PostItem.vue'
@@ -101,6 +101,16 @@ const makingOfficial = ref<boolean>(false)
 const administersOfficial = computed<boolean>(
   () => thread.value?.isOfficial === true && isAdministrator.value,
 )
+
+/**
+ * „Nicht mehr offiziell" nur dort, wo es etwas zurückzunehmen gibt.
+ *
+ * Ein als offizieller geschriebener Thread hat keinen früheren Namen — der Server weist es ab, und
+ * das tat er auch vorher schon. Aber ein Knopf, der in der Hälfte der Fälle nur eine Absage holt,
+ * ist kein Knopf. `madeOfficialAfterwards` steht ausschließlich der Administration zur Verfügung
+ * und ist genau diese Unterscheidung.
+ */
+const mayUnmake = computed<boolean>(() => mayUnmakeOfficial(thread.value, isAdministrator.value))
 const changingTitle = ref<boolean>(false)
 const unmakingOfficial = ref<boolean>(false)
 const readingRevisions = ref<boolean>(false)
@@ -453,6 +463,7 @@ async function refreshOfficial(): Promise<void> {
                 Protokoll
               </button>
               <button
+                v-if="mayUnmake"
                 type="button"
                 class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
                 @click="unmakingOfficial = true"
