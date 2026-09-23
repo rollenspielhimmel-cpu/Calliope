@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { USER_SCHEMA } from "@/src/database/schema.ts";
@@ -122,9 +123,12 @@ export default new OpenAPIHono()
         );
       }
 
-      const refusal = await BlindDateAccessService.setManagement(
-        c.req.valid("param").userId,
-        c.req.valid("json").mayManage,
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateAccessService.setManagement(
+          transaction,
+          c.req.valid("param").userId,
+          c.req.valid("json").mayManage,
+        )
       );
 
       switch (refusal) {

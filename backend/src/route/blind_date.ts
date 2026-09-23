@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { BLIND_DATE_TAG } from "@/src/open_api_specification.ts";
 import {
@@ -378,8 +379,11 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await BlindDateRevealService.withdrawRevealConsent(
-        c.get("user").id,
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateRevealService.withdrawRevealConsent(
+          transaction,
+          c.get("user").id,
+        )
       );
 
       return refusal === "not_found"
@@ -486,15 +490,17 @@ export default new OpenAPIHono()
     async (c) => {
       const body = c.req.valid("json");
 
-      const refusal = await BlindDateService.apply(c.get("user").id, {
-        offerId: body.offerId ?? null,
-        plotTitle: body.plotTitle,
-        writingStyle: body.writingStyle,
-        postLength: body.postLength,
-        roleGender: body.roleGender,
-        pairing: body.pairing,
-        note: body.note ?? null,
-      });
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateService.apply(transaction, c.get("user").id, {
+          offerId: body.offerId ?? null,
+          plotTitle: body.plotTitle,
+          writingStyle: body.writingStyle,
+          postLength: body.postLength,
+          roleGender: body.roleGender,
+          pairing: body.pairing,
+          note: body.note ?? null,
+        })
+      );
 
       switch (refusal) {
         case undefined:
@@ -555,7 +561,9 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await BlindDateService.withdraw(c.get("user").id);
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateService.withdraw(transaction, c.get("user").id)
+      );
 
       return refusal === "not_found"
         ? c.json({ error: "Not found" }, STATUS_CODE.NotFound)
@@ -662,14 +670,17 @@ export default new OpenAPIHono()
     async (c) => {
       const body = c.req.valid("json");
 
-      const refusal = await BlindDateEndingService.submitFeedback(
-        c.get("user").id,
-        body.pairId,
-        {
-          worked: body.worked ?? null,
-          again: body.again ?? null,
-          note: body.note ?? null,
-        },
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateEndingService.submitFeedback(
+          transaction,
+          c.get("user").id,
+          body.pairId,
+          {
+            worked: body.worked ?? null,
+            again: body.again ?? null,
+            note: body.note ?? null,
+          },
+        )
       );
 
       switch (refusal) {

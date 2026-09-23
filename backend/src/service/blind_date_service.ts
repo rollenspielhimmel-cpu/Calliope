@@ -1,5 +1,5 @@
 import { sql } from "kysely";
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type {
   BlindDatePairing,
   BlindDatePostLength,
@@ -361,6 +361,7 @@ export type ApplicationRefusal =
  * it can explain itself, and a check that only ran there would be a check anybody could skip.
  */
 async function apply(
+  transaction: Transaction,
   userId: string,
   values: ApplicationValues,
   now: Date = new Date(),
@@ -398,7 +399,7 @@ async function apply(
     }
   }
 
-  await db
+  await transaction
     .insertInto("blindDateApplication")
     .values({ userId, ...values })
     .execute();
@@ -410,8 +411,11 @@ async function apply(
  * Withdrawing is a status, not a delete — the team asked to keep every application, and somebody
  * who applied and thought better of it is part of what the queue says.
  */
-async function withdraw(userId: string): Promise<"not_found" | undefined> {
-  const withdrawn = await db
+async function withdraw(
+  transaction: Transaction,
+  userId: string,
+): Promise<"not_found" | undefined> {
+  const withdrawn = await transaction
     .updateTable("blindDateApplication")
     .set({ status: "withdrawn", decidedAt: new Date().toISOString() })
     .where("userId", "=", userId)

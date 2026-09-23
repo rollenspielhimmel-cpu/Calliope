@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import {
@@ -296,10 +297,13 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await BlindDateMatchingService.declineApplication(
-        c.req.valid("param").applicationId,
-        c.get("user").id,
-        c.req.valid("json").note ?? null,
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateMatchingService.declineApplication(
+          transaction,
+          c.req.valid("param").applicationId,
+          c.get("user").id,
+          c.req.valid("json").note ?? null,
+        )
       );
 
       return refusal === "not_found"
@@ -516,8 +520,11 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      await BlindDateMatchingService.removeExclusion(
-        c.req.valid("param").userId,
+      await db.transaction().execute((transaction) =>
+        BlindDateMatchingService.removeExclusion(
+          transaction,
+          c.req.valid("param").userId,
+        )
       );
 
       return c.json({ ok: true } as const, STATUS_CODE.OK);
@@ -580,16 +587,15 @@ export default new OpenAPIHono()
     async (c) => {
       const body = c.req.valid("json");
 
-      await BlindDateMatchingService.createOffer(
-        {
+      await db.transaction().execute((transaction) =>
+        BlindDateMatchingService.createOffer(transaction, {
           title: body.title,
           description: body.description,
           roles: body.roles,
           closesAt: body.closesAt ?? null,
           pairing: body.pairing ?? null,
           genres: body.genres,
-        },
-        c.get("user").id,
+        }, c.get("user").id)
       );
 
       return c.json({ ok: true } as const, STATUS_CODE.OK);
@@ -624,16 +630,19 @@ export default new OpenAPIHono()
     async (c) => {
       const body = c.req.valid("json");
 
-      const refusal = await BlindDateMatchingService.updateOffer(
-        c.req.valid("param").offerId,
-        {
-          title: body.title,
-          description: body.description,
-          roles: body.roles,
-          closesAt: body.closesAt ?? null,
-          pairing: body.pairing ?? null,
-          genres: body.genres,
-        },
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateMatchingService.updateOffer(
+          transaction,
+          c.req.valid("param").offerId,
+          {
+            title: body.title,
+            description: body.description,
+            roles: body.roles,
+            closesAt: body.closesAt ?? null,
+            pairing: body.pairing ?? null,
+            genres: body.genres,
+          },
+        )
       );
 
       return refusal === "not_found"
@@ -667,8 +676,11 @@ export default new OpenAPIHono()
       },
     }),
     async (c) => {
-      const refusal = await BlindDateMatchingService.closeOffer(
-        c.req.valid("param").offerId,
+      const refusal = await db.transaction().execute((transaction) =>
+        BlindDateMatchingService.closeOffer(
+          transaction,
+          c.req.valid("param").offerId,
+        )
       );
 
       return refusal === "not_found"

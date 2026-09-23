@@ -8,6 +8,7 @@ import {
   registerUser,
   request,
   scopedTestData,
+  write,
 } from "@/src/test/support.ts";
 import { borrowPrimordialSeat } from "@/src/test/primordial_seat.ts";
 
@@ -358,15 +359,17 @@ Deno.test("whoever holds the administration account cannot apply", async () => {
 
   // Said before every other reason, so the answer does not change with the day: the others
   // describe a moment, this one describes what the account is for.
-  const refused = await BlindDateService.apply(primordial, {
-    offerId: null,
-    plotTitle: "Probe",
-    writingStyle: "prose",
-    postLength: "medium",
-    roleGender: "weiblich",
-    pairing: "offen",
-    note: null,
-  });
+  const refused = await write((transaction) =>
+    BlindDateService.apply(transaction, primordial, {
+      offerId: null,
+      plotTitle: "Probe",
+      writingStyle: "prose",
+      postLength: "medium",
+      roleGender: "weiblich",
+      pairing: "offen",
+      note: null,
+    })
+  );
   assertEquals(refused, "administration_account");
 
   // And nothing was written.
@@ -419,7 +422,9 @@ Deno.test("only the root administrator gives the right out", async () => {
   // account and `operators_test.ts` borrows it, so a second file depending on it is a flake
   // waiting for a busy afternoon.
   assertEquals(
-    await BlindDateAccessService.setManagement(managerId, true),
+    await write((transaction) =>
+      BlindDateAccessService.setManagement(transaction, managerId, true)
+    ),
     undefined,
   );
   // Asked about this member rather than about the length: the list covers the whole database,
@@ -428,7 +433,9 @@ Deno.test("only the root administrator gives the right out", async () => {
   assertEquals(await holdsIt(managerId), true);
 
   assertEquals(
-    await BlindDateAccessService.setManagement(managerId, false),
+    await write((transaction) =>
+      BlindDateAccessService.setManagement(transaction, managerId, false)
+    ),
     undefined,
   );
   assertEquals(await holdsIt(managerId), false);
@@ -438,7 +445,13 @@ Deno.test("the right cannot be given to somebody who is not on the team", async 
   await registerUser(member);
 
   assertEquals(
-    await BlindDateAccessService.setManagement(await getUserId(member), true),
+    await write(async (transaction) =>
+      await BlindDateAccessService.setManagement(
+        transaction,
+        await getUserId(member),
+        true,
+      )
+    ),
     "not_an_operator",
   );
 });

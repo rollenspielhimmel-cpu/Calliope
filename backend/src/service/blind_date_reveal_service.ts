@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import { NotificationService } from "@/src/service/notification_service.ts";
 
 /**
@@ -245,9 +245,10 @@ async function agreeToReveal(
  * about.
  */
 async function withdrawRevealConsent(
+  transaction: Transaction,
   userId: string,
 ): Promise<"not_found" | undefined> {
-  const updated = await db
+  const updated = await transaction
     .updateTable("blindDatePartner")
     .set({ wantsRevealAt: null })
     .where("userId", "=", userId)

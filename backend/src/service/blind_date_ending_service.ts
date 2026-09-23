@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type {
   BlindDateAgain,
   BlindDateVerdict,
@@ -190,11 +190,12 @@ export type FeedbackRefusal = "not_found" | "already_answered";
  * the page, and a page can be edited. Somebody may only answer about a Blind-Date they were in.
  */
 async function submitFeedback(
+  transaction: Transaction,
   userId: string,
   pairId: string,
   answers: FeedbackAnswers,
 ): Promise<FeedbackRefusal | undefined> {
-  const theirs = await db
+  const theirs = await transaction
     .selectFrom("blindDatePartner")
     .innerJoin("blindDatePair", "blindDatePair.id", "blindDatePartner.pairId")
     .select("blindDatePair.id")
@@ -215,7 +216,7 @@ async function submitFeedback(
   // Insert rather than upsert: the form is offered once, and a second answer would be somebody
   // changing what they said about a thing that is over. The unique key is what enforces it; the
   // race between two submits lands here rather than on a later read.
-  const inserted = await db
+  const inserted = await transaction
     .insertInto("blindDateFeedback")
     .values({ pairId, userId, ...answers })
     .onConflict((conflict) =>

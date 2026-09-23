@@ -1,5 +1,5 @@
 import { sql } from "kysely";
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type {
   BlindDatePairing,
   BlindDatePostLength,
@@ -310,11 +310,12 @@ async function matchApplications(
 
 /** Declining keeps the row, like every other answer to an application. */
 async function declineApplication(
+  transaction: Transaction,
   applicationId: string,
   decidedBy: string,
   note: string | null,
 ): Promise<"not_found" | undefined> {
-  const declined = await db
+  const declined = await transaction
     .updateTable("blindDateApplication")
     .set({
       status: "declined",
@@ -418,8 +419,15 @@ async function exclude(
 }
 
 /** Nothing is undone by this — a Blind-Date already running stays. It only lifts the bar. */
-async function removeExclusion(userId: string): Promise<void> {
-  await db.deleteFrom("blindDateExclusion").where("userId", "=", userId)
+async function removeExclusion(
+  transaction: Transaction,
+  userId: string,
+): Promise<void> {
+  await transaction.deleteFrom("blindDateExclusion").where(
+    "userId",
+    "=",
+    userId,
+  )
     .execute();
 }
 
@@ -561,10 +569,11 @@ export type OfferValues = {
 };
 
 async function createOffer(
+  transaction: Transaction,
   values: OfferValues,
   createdBy: string,
 ): Promise<void> {
-  await db
+  await transaction
     .insertInto("blindDateOffer")
     .values({ ...values, createdBy })
     .execute();
@@ -582,10 +591,11 @@ async function createOffer(
  * a later edit cannot rewrite what anybody applied for.
  */
 async function updateOffer(
+  transaction: Transaction,
   offerId: string,
   values: OfferValues,
 ): Promise<"not_found" | undefined> {
-  const updated = await db
+  const updated = await transaction
     .updateTable("blindDateOffer")
     .set(values)
     .where("id", "=", offerId)
@@ -597,8 +607,11 @@ async function updateOffer(
 }
 
 /** Closed rather than deleted: applications point at it, and it has to stay readable. */
-async function closeOffer(offerId: string): Promise<"not_found" | undefined> {
-  const closed = await db
+async function closeOffer(
+  transaction: Transaction,
+  offerId: string,
+): Promise<"not_found" | undefined> {
+  const closed = await transaction
     .updateTable("blindDateOffer")
     .set({ closedAt: new Date().toISOString() })
     .where("id", "=", offerId)

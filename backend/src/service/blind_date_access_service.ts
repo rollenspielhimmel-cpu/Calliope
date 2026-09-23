@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type { User } from "@/src/service/user_service.ts";
 import { mayModeratePlatform } from "@/src/service/platform_authorization.ts";
 
@@ -131,10 +131,11 @@ export type GrantRefusal = "not_found" | "not_an_operator";
  * being that account, and a row saying so would suggest it could be removed.
  */
 async function setManagement(
+  transaction: Transaction,
   userId: string,
   mayManage: boolean,
 ): Promise<GrantRefusal | undefined> {
-  const user = await db
+  const user = await transaction
     .selectFrom("user")
     .select(["id", "platformRole", "isPrimordialAdmin"])
     .where("id", "=", userId)
@@ -148,7 +149,7 @@ async function setManagement(
     return "not_an_operator";
   }
 
-  await db
+  await transaction
     .updateTable("user")
     .set({ mayManageBlindDate: mayManage })
     .where("id", "=", userId)
