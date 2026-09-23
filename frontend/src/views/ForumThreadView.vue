@@ -27,7 +27,7 @@ import type { GetForumThread200, ListForumPosts200ResultsItem, PostDocument } fr
 import { BadgeCheck, Flag, Pencil, ScrollText, ShieldCheck, Undo2 } from '@lucide/vue'
 import { useForumTree } from '@/composables/useForumTree'
 import { useIsOperator } from '@/composables/useIsOperator'
-import { mayUnmakeOfficial, mayWriteInForum } from '@/lib/forum/permission'
+import { maySeeOfficialLog, mayUnmakeOfficial, mayWriteInForum } from '@/lib/forum/permission'
 import { usePagedList } from '@/composables/usePagedList'
 import PathToHere from '@/components/folder/PathToHere.vue'
 import PostItem from '@/components/thread/PostItem.vue'
@@ -111,6 +111,12 @@ const administersOfficial = computed<boolean>(
  * und ist genau diese Unterscheidung.
  */
 const mayUnmake = computed<boolean>(() => mayUnmakeOfficial(thread.value, isAdministrator.value))
+
+/**
+ * Das Protokoll steht offen, solange etwas darin steht — auch dann, wenn der Thread längst nicht
+ * mehr offiziell ist. Genau dann steht am meisten darin.
+ */
+const maySeeLog = computed<boolean>(() => maySeeOfficialLog(thread.value, isAdministrator.value))
 const changingTitle = ref<boolean>(false)
 const unmakingOfficial = ref<boolean>(false)
 const readingRevisions = ref<boolean>(false)
@@ -445,33 +451,35 @@ async function refreshOfficial(): Promise<void> {
               Offiziell machen
             </button>
 
-            <template v-if="administersOfficial">
-              <button
-                type="button"
-                class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
-                @click="changingTitle = true"
-              >
-                <Pencil :size="14" :stroke-width="1.5" aria-hidden="true" />
-                Überschrift ändern
-              </button>
-              <button
-                type="button"
-                class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
-                @click="readingRevisions = true"
-              >
-                <ScrollText :size="14" :stroke-width="1.5" aria-hidden="true" />
-                Protokoll
-              </button>
-              <button
-                v-if="mayUnmake"
-                type="button"
-                class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
-                @click="unmakingOfficial = true"
-              >
-                <Undo2 :size="14" :stroke-width="1.5" aria-hidden="true" />
-                Nicht mehr offiziell
-              </button>
-            </template>
+            <button
+              v-if="administersOfficial"
+              type="button"
+              class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+              @click="changingTitle = true"
+            >
+              <Pencil :size="14" :stroke-width="1.5" aria-hidden="true" />
+              Überschrift ändern
+            </button>
+            <button
+              v-if="mayUnmake"
+              type="button"
+              class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+              @click="unmakingOfficial = true"
+            >
+              <Undo2 :size="14" :stroke-width="1.5" aria-hidden="true" />
+              Nicht mehr offiziell
+            </button>
+            <!-- Zuletzt und für sich: bleibt auch dann stehen, wenn der Thread nicht mehr
+                 offiziell ist — dann steht am meisten darin. -->
+            <button
+              v-if="maySeeLog"
+              type="button"
+              class="flex min-h-11 items-center gap-1.5 hover:text-oak-deep md:min-h-0"
+              @click="readingRevisions = true"
+            >
+              <ScrollText :size="14" :stroke-width="1.5" aria-hidden="true" />
+              Protokoll
+            </button>
           </div>
         </div>
 

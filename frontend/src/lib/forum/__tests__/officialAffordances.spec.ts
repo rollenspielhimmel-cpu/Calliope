@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mayUnmakeOfficial } from '@/lib/forum/permission'
+import { maySeeOfficialLog, mayUnmakeOfficial } from '@/lib/forum/permission'
 
 /**
  * Der Knopf, der auf der Beta in jedem Fall in eine Absage lief: einmal zu Recht, einmal zu
@@ -34,5 +34,33 @@ describe('mayUnmakeOfficial', () => {
 
   it('bietet ihn nicht, solange der Thread noch nicht da ist', () => {
     expect(mayUnmakeOfficial(undefined, true)).toBe(false)
+  })
+})
+
+/**
+ * Der zweite Knopf, den die Beta verschluckt hat: Nach dem Zurücknehmen war der Thread nicht mehr
+ * offiziell, und mit ihm verschwand die Aufzeichnung beider Namenstausche.
+ */
+describe('maySeeOfficialLog', () => {
+  it('zeigt das Protokoll eines offiziellen Threads', () => {
+    expect(maySeeOfficialLog({ hasOfficialHistory: true }, true)).toBe(true)
+  })
+
+  it('zeigt es weiterhin, nachdem „offiziell" zurückgenommen wurde', () => {
+    // Der Thread ist dann gewöhnlich — und hat trotzdem etwas zu erzählen.
+    expect(maySeeOfficialLog({ hasOfficialHistory: true }, true)).toBe(true)
+  })
+
+  it('zeigt kein leeres Protokoll an einem gewöhnlichen Thread', () => {
+    expect(maySeeOfficialLog({ hasOfficialHistory: false }, true)).toBe(false)
+  })
+
+  it('zeigt es niemandem außer der Administration', () => {
+    expect(maySeeOfficialLog({ hasOfficialHistory: true }, false)).toBe(false)
+    expect(maySeeOfficialLog({ hasOfficialHistory: null }, true)).toBe(false)
+  })
+
+  it('zeigt es nicht, solange der Thread noch nicht da ist', () => {
+    expect(maySeeOfficialLog(undefined, true)).toBe(false)
   })
 })

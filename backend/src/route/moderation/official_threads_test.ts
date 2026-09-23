@@ -1054,11 +1054,13 @@ async function origin(cookie: string, threadId: string) {
     cookie,
   );
   assertEquals(response.status, STATUS_CODE.OK);
-  const { isOfficial, madeOfficialAfterwards } = await response.json() as {
-    isOfficial: boolean;
-    madeOfficialAfterwards: boolean | null;
-  };
-  return { isOfficial, madeOfficialAfterwards };
+  const { isOfficial, madeOfficialAfterwards, hasOfficialHistory } =
+    await response.json() as {
+      isOfficial: boolean;
+      madeOfficialAfterwards: boolean | null;
+      hasOfficialHistory: boolean | null;
+    };
+  return { isOfficial, madeOfficialAfterwards, hasOfficialHistory };
 }
 
 /**
@@ -1079,12 +1081,14 @@ Deno.test("die Herkunft eines offiziellen Threads sieht nur die Administration",
   assertEquals(await origin(cookies.admin, made), {
     isOfficial: true,
     madeOfficialAfterwards: true,
+    hasOfficialHistory: true,
   });
 
   // Als offizieller geschrieben: Es gibt keinen.
   assertEquals(await origin(cookies.admin, written), {
     isOfficial: true,
     madeOfficialAfterwards: false,
+    hasOfficialHistory: true,
   });
 
   // Ein gewöhnlicher Thread ist gar nicht erst offiziell.
@@ -1092,6 +1096,7 @@ Deno.test("die Herkunft eines offiziellen Threads sieht nur die Administration",
   assertEquals(await origin(cookies.admin, plain), {
     isOfficial: false,
     madeOfficialAfterwards: false,
+    hasOfficialHistory: false,
   });
 
   // Und für alle anderen steht dort nichts — auch nicht für die Moderation.
@@ -1100,6 +1105,52 @@ Deno.test("die Herkunft eines offiziellen Threads sieht nur die Administration",
   );
   assertEquals(others[0]?.madeOfficialAfterwards, null, "Mitglied");
   assertEquals(others[1]?.madeOfficialAfterwards, null, "Mod");
+});
+
+/**
+ * **Das Protokoll überlebt das Zurücknehmen.** Auf der Beta war es umgekehrt: Der Zugang hing am
+ * Offiziell-Sein, also verschwand die Aufzeichnung genau in dem Moment, in dem sie zum ersten Mal
+ * etwas zu erzählen hatte — beide Namenstausche, hin und zurück.
+ */
+Deno.test("nach dem Zurücknehmen steht der Thread nicht mehr offiziell, das Protokoll aber offen", async () => {
+  const cookies = await fixture();
+  const open = await createForumFolder("ot-protokoll-bleibt", "write");
+  const { threadId } = await ordinaryThread(cookies.mod, open.id);
+
+  // Vorher: nichts aufzuzeichnen, also auch nichts anzubieten.
+  assertEquals(
+    (await origin(cookies.admin, threadId)).hasOfficialHistory,
+    false,
+  );
+
+  await makeOfficial(cookies.admin, threadId);
+  assertEquals(
+    (await unmake(cookies.admin, threadId, "Falscher Absender")).status,
+    STATUS_CODE.OK,
+  );
+
+  assertEquals(await origin(cookies.admin, threadId), {
+    isOfficial: false,
+    madeOfficialAfterwards: false,
+    hasOfficialHistory: true,
+  });
+
+  // Und es steht beides drin, mit beiden Namen.
+  const entries = await log(cookies, threadId);
+  assertEquals(entries.map((entry) => entry.kind), [
+    "unmade_official",
+    "made_official",
+  ]);
+  assertEquals(entries[1]?.nameBefore, MOD);
+  assertEquals(entries[1]?.nameAfter, FLAMINGO);
+  assertEquals(entries[0]?.nameBefore, FLAMINGO);
+  assertEquals(entries[0]?.nameAfter, MOD);
+
+  // Für alle anderen steht dort weiterhin nichts.
+  assertEquals(
+    (await origin(cookies.member, threadId)).hasOfficialHistory,
+    null,
+  );
 });
 
 /**

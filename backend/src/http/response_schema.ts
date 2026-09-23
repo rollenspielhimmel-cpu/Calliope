@@ -96,6 +96,12 @@ const IS_OFFICIAL = {
  */
 const MADE_OFFICIAL_AFTERWARDS = {
   madeOfficialAfterwards: z.boolean().nullable(),
+  /**
+   * Ob zu diesem Thread etwas im Protokoll steht — die Bedingung dafür, dass „Protokoll"
+   * angeboten wird. **Nicht `isOfficial`**: Ein zurückgenommener Thread ist nicht mehr
+   * offiziell, hat aber die vollständigste Aufzeichnung von allen.
+   */
+  hasOfficialHistory: z.boolean().nullable(),
 };
 
 export const THREAD_RESPONSE = WRITING_THREAD_SCHEMA

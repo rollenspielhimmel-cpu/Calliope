@@ -3,7 +3,7 @@ import {
   shownAuthorId,
   shownAuthorName,
 } from "@/src/service/shown_author.ts";
-import type { ExpressionBuilder, NotNull } from "kysely";
+import type { ExpressionBuilder, NotNull, SqlBool } from "kysely";
 import { db, type Transaction } from "@/src/database/client.ts";
 import type { DB, ForumPermission } from "@/src/database/schema.ts";
 import type { User } from "@/src/service/user_service.ts";
@@ -72,6 +72,17 @@ export type ForumThread = Permitted & {
    * Namen er vorher stand.
    */
   madeOfficialAfterwards: boolean | null;
+  /**
+   * Ob zu diesem Thread etwas im Protokoll steht.
+   *
+   * **Nicht dasselbe wie `isOfficial`.** Ein zurückgenommener Thread ist nicht mehr offiziell,
+   * aber gerade dann steht am meisten darüber im Protokoll — beide Namenstausche. Hinge der
+   * Zugang am Offiziell-Sein, wäre die Aufzeichnung genau ab dem Moment unerreichbar, in dem sie
+   * gebraucht wird. Auf der Beta war sie das.
+   *
+   * Null für alle außer der Administration, wie `madeOfficialAfterwards`.
+   */
+  hasOfficialHistory: boolean | null;
 };
 
 export type ForumPageSummary = Permitted & {
@@ -226,6 +237,17 @@ function forumThreads(user: User, executor: typeof db | Transaction = db) {
       shownAuthorName("writing_thread").as("createdByUsername"),
       isOfficial("writing_thread").as("isOfficial"),
     ])
+    .select((eb) =>
+      eb.exists(
+        eb.selectFrom("officialRevision")
+          .select("officialRevision.id")
+          .whereRef(
+            "officialRevision.writingThreadId",
+            "=",
+            "writingThread.id",
+          ),
+      ).as("hasAnyRevision")
+    )
     .where("writingThread.writingGroupId", "is", null)
     // **Ein offizieller Thread vor seinem Termin steht für niemanden im Forum**, auch nicht für
     // das Team: Er ist in der Warteschlange zu sehen, dort, wo er freigegeben wird. Weil jede
@@ -244,19 +266,27 @@ function forumThreads(user: User, executor: typeof db | Transaction = db) {
  * stand vorher nur im Nein des Servers, und ein Knopf, der immer scheitert, ist kein Knopf.
  */
 function withOfficialOrigin<
-  Row extends { fromAnExistingThread: boolean | null; isOfficial: boolean },
+  Row extends {
+    fromAnExistingThread: boolean | null;
+    hasAnyRevision: SqlBool;
+    isOfficial: boolean;
+  },
 >(
   row: Row,
   user: User,
-): Omit<Row, "fromAnExistingThread"> & {
+): Omit<Row, "fromAnExistingThread" | "hasAnyRevision"> & {
   madeOfficialAfterwards: boolean | null;
+  hasOfficialHistory: boolean | null;
 } {
-  const { fromAnExistingThread, ...rest } = row;
+  const { fromAnExistingThread, hasAnyRevision, ...rest } = row;
+  const administers = mayAdministerPlatform(user.platformRole);
+
   return {
     ...rest,
-    madeOfficialAfterwards: mayAdministerPlatform(user.platformRole)
+    madeOfficialAfterwards: administers
       ? rest.isOfficial && fromAnExistingThread === true
       : null,
+    hasOfficialHistory: administers ? Boolean(hasAnyRevision) : null,
   };
 }
 

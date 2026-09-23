@@ -35,3 +35,21 @@ export function mayUnmakeOfficial(
 ): boolean {
   return isAdministrator && thread?.isOfficial === true && thread.madeOfficialAfterwards === true
 }
+
+/**
+ * Ob „Protokoll" angeboten wird.
+ *
+ * **Nicht am Offiziell-Sein festgemacht.** Ein zurückgenommener Thread ist nicht mehr offiziell,
+ * hat aber die vollständigste Aufzeichnung von allen: beide Namenstausche, hin und zurück. Hing
+ * der Zugang daran, verschwand das Protokoll genau in dem Moment, in dem es zum ersten Mal etwas
+ * zu erzählen hatte — so war es auf der Beta.
+ *
+ * Und umgekehrt: An einem gewöhnlichen Thread, zu dem nichts aufgezeichnet ist, steht der Knopf
+ * nicht. Ein leeres Protokoll ist keine Auskunft.
+ */
+export function maySeeOfficialLog(
+  thread: { hasOfficialHistory: boolean | null } | undefined,
+  isAdministrator: boolean,
+): boolean {
+  return isAdministrator && thread?.hasOfficialHistory === true
+}
