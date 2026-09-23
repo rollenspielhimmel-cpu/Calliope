@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import type { Transaction } from "@/src/database/client.ts";
 import type { Insertable } from "kysely";
 import type {
   StoryIdea as StoryIdeaTable,
@@ -232,7 +232,7 @@ function newestPostOfThread(index: number, total: number): number {
   return (total - index) * STEPS_BETWEEN_THREADS + 1;
 }
 
-async function writeAccounts(): Promise<void> {
+async function writeAccounts(transaction: Transaction): Promise<void> {
   // Hashed once and shared: scrypt is deliberately slow, and these are fixtures.
   //
   // **From the environment.** It used to stand here as a literal, in a public repository, on nine
@@ -243,7 +243,7 @@ async function writeAccounts(): Promise<void> {
     getRequiredEnvVariable("SEED_PASSWORD"),
   );
 
-  await db.insertInto("user").values(
+  await transaction.insertInto("user").values(
     VERIFIED_USERNAMES.map((name) => ({
       id: USER[name],
       username: name,
@@ -261,7 +261,7 @@ async function writeAccounts(): Promise<void> {
 
   // Reaches the verification wall and nothing else, so that screen can be worked on without
   // registering by hand and digging the link out of Mailpit each time.
-  await db.insertInto("user").values({
+  await transaction.insertInto("user").values({
     id: USER.unverified,
     username: "unverified",
     emailAddress: "unverified@example.test",
@@ -269,8 +269,8 @@ async function writeAccounts(): Promise<void> {
   }).execute();
 }
 
-async function writeBlocks(): Promise<void> {
-  await db.insertInto("userBlock").values(BLOCKS.map((block) => ({
+async function writeBlocks(transaction: Transaction): Promise<void> {
+  await transaction.insertInto("userBlock").values(BLOCKS.map((block) => ({
     blockerId: block.blocker,
     blockedId: block.blocked,
   }))).execute();
@@ -294,10 +294,10 @@ true satisfies OnlyColumns<
 >;
 true satisfies OnlyColumns<StoryIdeaFixture, "by", StoryIdeaTable>;
 
-async function writeGroups(): Promise<void> {
+async function writeGroups(transaction: Transaction): Promise<void> {
   // The fixture is the columns plus what becomes its own insert, so naming those is shorter than
   // naming the columns — and a column added to the table flows through without touching this.
-  await db.insertInto("writingGroup").values(
+  await transaction.insertInto("writingGroup").values(
     GROUPS.map((group): Insertable<WritingGroupTable> => ({
       ...omitFromObject(
         group,
@@ -312,7 +312,7 @@ async function writeGroups(): Promise<void> {
     })),
   ).execute();
 
-  await db.insertInto("userInWritingGroup").values(
+  await transaction.insertInto("userInWritingGroup").values(
     GROUPS.flatMap((group) =>
       group.members.map((member) => ({
         writingGroupId: group.id,
@@ -342,7 +342,7 @@ async function writeGroups(): Promise<void> {
       : (depthOf.get(folder.in) ?? 0) + 1;
     depthOf.set(folder.id, depth);
     // deno-lint-ignore no-await-in-loop -- sequential on purpose: a child needs its parent's depth
-    await db.insertInto("writingFolder").values({
+    await transaction.insertInto("writingFolder").values({
       id: folder.id,
       writingGroupId: group.id,
       parentFolderId: folder.in ?? null,
@@ -353,7 +353,7 @@ async function writeGroups(): Promise<void> {
     }).execute();
   }
 
-  await db.insertInto("writingThread").values(
+  await transaction.insertInto("writingThread").values(
     threads.map(({ group, thread }) => ({
       id: thread.id,
       writingGroupId: group.id,
@@ -368,7 +368,7 @@ async function writeGroups(): Promise<void> {
   );
 
   if (pages.length > 0) {
-    await db.insertInto("writingPage").values(
+    await transaction.insertInto("writingPage").values(
       pages.map(({ group, page }) => ({
         id: page.id,
         writingGroupId: group.id,
@@ -384,7 +384,7 @@ async function writeGroups(): Promise<void> {
     ).execute();
   }
 
-  await db.insertInto("writingPost").values(
+  await transaction.insertInto("writingPost").values(
     threads.flatMap(({ thread }, threadIndex) =>
       thread.posts.map((post, index) => ({
         id: post.id,
@@ -406,7 +406,7 @@ async function writeGroups(): Promise<void> {
     ),
   ).execute();
 
-  await db.insertInto("writingGroupNextStep").values(
+  await transaction.insertInto("writingGroupNextStep").values(
     GROUPS.flatMap((group) =>
       (group.steps ?? []).map((step) => ({
         id: step.id,
@@ -428,7 +428,7 @@ async function writeGroups(): Promise<void> {
  * as the service will derive it: from the parent already written, which is what makes a hidden
  * folder hide its children.
  */
-async function writeForum(): Promise<void> {
+async function writeForum(transaction: Transaction): Promise<void> {
   const depthOf = new Map<string, number>();
 
   for (const folder of FORUM_FOLDERS) {
@@ -440,7 +440,7 @@ async function writeForum(): Promise<void> {
     // Sequential on purpose: a child needs its parent's depth, and the trigger that derives
     // `effective_member_permission` reads the parent row, which has to be there already.
     // deno-lint-ignore no-await-in-loop
-    await db.insertInto("writingFolder").values({
+    await transaction.insertInto("writingFolder").values({
       id: folder.id,
       writingGroupId: null,
       parentFolderId: folder.in ?? null,
@@ -452,7 +452,7 @@ async function writeForum(): Promise<void> {
     }).execute();
   }
 
-  await db.insertInto("writingThread").values(
+  await transaction.insertInto("writingThread").values(
     FORUM_THREADS.map((thread) => ({
       id: thread.id,
       writingGroupId: null,
@@ -464,7 +464,7 @@ async function writeForum(): Promise<void> {
     })),
   ).execute();
 
-  await db.insertInto("writingPage").values(
+  await transaction.insertInto("writingPage").values(
     FORUM_PAGES.map((page) => ({
       id: page.id,
       writingGroupId: null,
@@ -478,7 +478,7 @@ async function writeForum(): Promise<void> {
     })),
   ).execute();
 
-  await db.insertInto("writingPost").values(
+  await transaction.insertInto("writingPost").values(
     FORUM_THREADS.flatMap((thread, threadIndex) =>
       thread.posts.map((post, index) => ({
         id: post.id,
@@ -498,14 +498,14 @@ async function writeForum(): Promise<void> {
   ).execute();
 }
 
-async function writeChats(): Promise<void> {
-  await db.insertInto("chatGroup").values(CHATS.map((chat) => ({
+async function writeChats(transaction: Transaction): Promise<void> {
+  await transaction.insertInto("chatGroup").values(CHATS.map((chat) => ({
     id: chat.id,
     title: chat.title,
     createdBy: chat.by,
   }))).execute();
 
-  await db.insertInto("userInChatGroup").values(
+  await transaction.insertInto("userInChatGroup").values(
     CHATS.flatMap((chat) =>
       chat.members.map((member) => ({
         chatGroupId: chat.id,
@@ -515,7 +515,7 @@ async function writeChats(): Promise<void> {
     ),
   ).execute();
 
-  await db.insertInto("chatMessage").values(
+  await transaction.insertInto("chatMessage").values(
     CHATS.flatMap((chat, chatIndex) => {
       // Same reason as a thread's posts: the chat list is ordered by last activity, and one
       // insert statement would give every chat the same one.
@@ -542,8 +542,8 @@ async function writeChats(): Promise<void> {
  */
 const STEPS_BETWEEN_IDEAS = 60;
 
-async function writeStoryIdeas(): Promise<void> {
-  await db.insertInto("storyIdea").values(
+async function writeStoryIdeas(transaction: Transaction): Promise<void> {
+  await transaction.insertInto("storyIdea").values(
     STORY_IDEAS.map((idea, index): Insertable<StoryIdeaTable> => ({
       // `by` is the only thing the fixture carries that is not a column; see writeGroups.
       ...omitFromObject(idea, "by"),
@@ -558,7 +558,7 @@ async function writeStoryIdeas(): Promise<void> {
  * announced, and with eight groups a hand-written list is where the fixture goes stale.
  * This restates service behaviour, so it changes when that rule does.
  */
-async function writeNotifications(): Promise<void> {
+async function writeNotifications(transaction: Transaction): Promise<void> {
   const invitations = [
     ...GROUPS.flatMap((group) =>
       group.members
@@ -582,7 +582,7 @@ async function writeNotifications(): Promise<void> {
     ),
   ];
 
-  await db.insertInto("notification").values(
+  await transaction.insertInto("notification").values(
     invitations.map((invitation, index) => ({
       id: notificationId(index + 1),
       ...invitation,
@@ -616,8 +616,8 @@ function reportedAt(index: number, total: number): Temporal.Instant {
  * timestamps are what a state *is* here: `status` is generated from them, so a fixture cannot
  * state a status its own timestamps contradict.
  */
-async function writeReports(): Promise<void> {
-  await db.insertInto("report").values(
+async function writeReports(transaction: Transaction): Promise<void> {
+  await transaction.insertInto("report").values(
     REPORTS.map((report, index) => {
       const at = reportedAt(index, REPORTS.length);
       const progress = report.progress;
@@ -664,8 +664,8 @@ async function writeReports(): Promise<void> {
  * seeded accounts takes the favourites with them; `report` needs its own delete only because its
  * references are SET NULL.
  */
-async function writeFavourites(): Promise<void> {
-  await db.insertInto("favourite").values(
+async function writeFavourites(transaction: Transaction): Promise<void> {
+  await transaction.insertInto("favourite").values(
     FAVOURITES.map((favourite) => ({
       id: favourite.id,
       userId: favourite.user,
@@ -675,21 +675,21 @@ async function writeFavourites(): Promise<void> {
 }
 
 /** In dependency order, which is the reason this lives in one place. */
-export async function writeFixtures(): Promise<void> {
+export async function writeFixtures(transaction: Transaction): Promise<void> {
   assertDistinctIds();
   assertFoldersFollowTheirParents();
   assertFoundersAdminister();
   assertBlocksHaveNoPendingInvitation();
   assertFavouritesNameSomething();
 
-  await writeAccounts();
-  await writeBlocks();
-  await writeGroups();
-  await writeForum();
-  await writeChats();
-  await writeStoryIdeas();
-  await writeNotifications();
-  await writeFavourites();
+  await writeAccounts(transaction);
+  await writeBlocks(transaction);
+  await writeGroups(transaction);
+  await writeForum(transaction);
+  await writeChats(transaction);
+  await writeStoryIdeas(transaction);
+  await writeNotifications(transaction);
+  await writeFavourites(transaction);
   // Last, because a report points at a post, an idea or an account that has to exist first.
-  await writeReports();
+  await writeReports(transaction);
 }

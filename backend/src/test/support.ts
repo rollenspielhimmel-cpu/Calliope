@@ -51,11 +51,13 @@ export async function registerUser(username: string): Promise<string> {
   const setCookie = response.headers.get("set-cookie");
   assertExists(setCookie, `could not register ${username}`);
 
-  await db
-    .updateTable("user")
-    .set({ emailAddressVerifiedAt: Temporal.Now.instant().toString() })
-    .where("username", "=", username)
-    .execute();
+  await write((transaction) =>
+    transaction
+      .updateTable("user")
+      .set({ emailAddressVerifiedAt: Temporal.Now.instant().toString() })
+      .where("username", "=", username)
+      .execute()
+  );
 
   return setCookie.split(";")[0] ?? setCookie;
 }

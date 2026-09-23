@@ -1,4 +1,4 @@
-import { type Database, db, type Transaction } from "@/src/database/client.ts";
+import { db, type Executor, type Transaction } from "@/src/database/client.ts";
 import { Mailer } from "@/src/mail/mailer.ts";
 import { broadcastMail } from "@/src/mail/broadcast_mail.ts";
 import { runInBackground } from "@/src/util/background.ts";
@@ -114,7 +114,6 @@ export type BroadcastResult = BroadcastReach;
  * nicht. Dieselbe Abfrage bedient beide; sie auf `db` festzunageln hieße, aus der Transaktion
  * heraus an ihr vorbeizulesen.
  */
-type Executor = Database | Transaction;
 
 /**
  * Was der Versand zurückgibt: die Reichweite, und das, was erst **nach** dem Festschreiben laufen

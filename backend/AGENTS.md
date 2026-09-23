@@ -474,6 +474,46 @@ keeps the draft-7 `RateLimit` headers coherent, since the skipped one sets none.
 travels in the 429 body** rather than being inferred from the limit in the header, because the
 client says something different for each and a number changing must not silently reclassify.
 
+## Schreiben heißt Transaktion
+
+`db` kann nicht mehr schreiben. Der Typ heißt `WriteFreeDatabase` und kennt `insertInto`,
+`updateTable`, `deleteFrom`, `replaceInto` und `mergeInto` nicht — wer es versucht, bekommt
+keinen Hinweis im Review, sondern einen Fehler beim Übersetzen.
+
+**Ein schreibender Dienst nimmt die Transaktion entgegen, er öffnet sie nicht:**
+
+```ts
+export function insertWord(transaction: Transaction, word: string) { … }
+```
+
+**Geöffnet wird sie am Einstiegspunkt** — einer Route, `cron.ts`, einer Hintergrundaufgabe, dem
+Seed, einem Test:
+
+```ts
+await db.transaction().execute((transaction) => WordFilterService.insertWord(transaction, word));
+```
+
+In Tests tut `write()` aus `test/support.ts` dasselbe, nur kürzer.
+
+**Drei Dinge, die dabei regelmäßig schiefgehen:**
+
+- **Zurücklesen ohne die Transaktion.** Ein Dienst schreibt und liest die Zeile danach über eine
+  Lesehilfe neu — die läuft auf einer anderen Verbindung und sieht nichts, was noch nicht
+  festgeschrieben ist. Das ergibt einen 500er, und es ist uns beim Umbau fünfmal passiert.
+  Lesehilfen nehmen deshalb `executor: Executor = db` entgegen und bekommen die Transaktion
+  durchgereicht, wenn eine offen ist.
+- **Fremde Dienste in der offenen Klammer.** E-Mail, die Prüfung gegen geleakte Passwörter, jeder
+  Netzaufruf: nicht drin. Die Transaktion hielte Sperren, während sie auf jemand anderen wartet.
+- **Ereignisse vor dem Festschreiben.** Was einen Strom bedient, meldet **nach** dem Commit. Sonst
+  sieht jemand eine Nachricht, die gleich wieder verschwindet. Das Muster dafür: `approve()`
+  schreibt in der Transaktion, `releaseIfDue()` ruft der Einstiegspunkt danach.
+
+Ist der Schreibvorgang heiß und selten — etwa die Aktivität einer Sitzung —, steht ein billiger
+Vorabtest **außerhalb** und die Transaktion wird nur geöffnet, wenn wirklich geschrieben wird
+(`ActivityService.needsRecording`).
+
+Die Geschichte des Umbaus steht in `docs/transaktions-umbau.md`.
+
 ## Never raw SQL without asking
 
 Kysely's builder is checked; a template string is not. `sql\`nov()\`` compiles, ships, and

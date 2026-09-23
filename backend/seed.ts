@@ -5,7 +5,7 @@
  *
  * The fixtures themselves are in `seed/`; this file is the guard, the cleanup and the order.
  */
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import { ENVIRONMENT, type Environment } from "@/src/environment.ts";
 import {
   getOptionalEnvVariable,
@@ -61,29 +61,29 @@ function assertSeedable(): void {
 
 // Only its own rows, so half-built state survives a re-seed. Users cascade; the groups and
 // chats need removing explicitly because their creator is not their only member.
-async function removePreviousSeed(): Promise<void> {
+async function removePreviousSeed(transaction: Transaction): Promise<void> {
   // Before the accounts, and explicitly: a report's references are SET NULL rather than CASCADE
   // so that it outlives its reporter and its target, which is exactly why deleting the users
   // below would leave these rows behind. Their events go with them.
-  await db.deleteFrom("report")
+  await transaction.deleteFrom("report")
     .where("id", "in", REPORTS.map((report) => report.id))
     .execute();
-  await db.deleteFrom("writingGroup")
+  await transaction.deleteFrom("writingGroup")
     .where("id", "in", GROUPS.map((group) => group.id))
     .execute();
   // The forum's rows have no group to cascade from — that absence is what makes them the
   // forum's (#32) — so each kind goes explicitly. Leaves first, because a folder holding one is
   // not empty, and then the folders in reverse fixture order, which is children before parents.
-  await db.deleteFrom("writingPage")
+  await transaction.deleteFrom("writingPage")
     .where("id", "in", FORUM_PAGES.map((page) => page.id))
     .execute();
-  await db.deleteFrom("writingThread")
+  await transaction.deleteFrom("writingThread")
     .where("id", "in", FORUM_THREADS.map((thread) => thread.id))
     .execute();
   // Deepest first, read from the database rather than from the fixture's order: `RESTRICT` is
   // checked per row, so a parent cannot go before its children, and `depth` is the one ordering
   // that is true whatever order the fixture happens to list them in.
-  const folders = await db
+  const folders = await transaction
     .selectFrom("writingFolder")
     .select("id")
     .where("id", "in", FORUM_FOLDERS.map((folder) => folder.id))
@@ -91,14 +91,15 @@ async function removePreviousSeed(): Promise<void> {
     .execute();
   for (const folder of folders) {
     // deno-lint-ignore no-await-in-loop
-    await db.deleteFrom("writingFolder").where("id", "=", folder.id).execute();
+    await transaction.deleteFrom("writingFolder").where("id", "=", folder.id)
+      .execute();
   }
-  await db.deleteFrom("chatGroup")
+  await transaction.deleteFrom("chatGroup")
     .where("id", "in", CHATS.map((chat) => chat.id))
     .execute();
   // By name as well as by id: on id alone, an account somebody made by hand under a seeded
   // name would block every re-run.
-  await db
+  await transaction
     .deleteFrom("user")
     .where((eb) =>
       eb.or([
@@ -161,8 +162,14 @@ ${urls}`;
 
 export async function seedDatabase() {
   assertSeedable();
-  await removePreviousSeed();
-  await writeFixtures();
+
+  // **Ein Einstiegspunkt, also eine Transaktion** — und hier fällt sie zusätzlich ins Gewicht:
+  // Der Seed räumt erst ab, was er gleich neu schreibt. Bricht er dazwischen, stünde die
+  // Entwicklungsdatenbank sonst leer da. So gilt entweder der alte Stand oder der neue.
+  await db.transaction().execute(async (transaction) => {
+    await removePreviousSeed(transaction);
+    await writeFixtures(transaction);
+  });
 
   console.log(summary());
 

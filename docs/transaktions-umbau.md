@@ -1,5 +1,7 @@
 # Jeder Schreibvorgang in einer Transaktion
 
+**Erledigt am 23.09.2026.** Was dabei herauskam, steht unten unter „Wie es gelaufen ist".
+
 **Warum:** Eine Rundmail galt bei uns als versendet, ohne zugestellt zu sein — zwei Schreibvorgänge,
 einer ging durch, der andere nicht. Upstream hat dieselbe Klasse von Fehler abgestellt
 (`058fd7c`, „All writes in a transaction"), und zwar so, dass sie nicht wiederkommen kann: Das
@@ -71,3 +73,33 @@ braucht Ruhe. Deployt wird am Ende in einem Stück, nicht zwischendurch.
 **Und früh.** Es ist der eine Umbau, der mit jeder Woche teurer wird, weil er alles anfasst, was wir
 neu schreiben. Maxi ist unterrichtet, dass wir ihn bei uns nachziehen — damit nicht beide
 gleichzeitig durch dieselben Dateien räumen.
+
+## Wie es gelaufen ist
+
+Acht Schritte, jeder für sich grün, jeder für sich gepusht. Der Schlussstein sitzt in
+`src/database/client.ts`: `db` wird als `WriteFreeDatabase` exportiert, und der Typ kennt
+`insertInto`, `updateTable`, `deleteFrom`, `replaceInto` und `mergeInto` nicht mehr. Nach
+dem Umbau: 974 Tests grün, `validate:check` sauber, Seed auf eine frische Datenbank durchgelaufen.
+
+**Was mehr Arbeit war als gedacht.** Das Zurücklesen — fünfmal, in fünf verschiedenen Diensten,
+immer derselbe 500er. Es steht oben als vierter Sonderfall, gehört aber ganz nach vorn: Wer einen
+Dienst umstellt, sucht als Erstes die Lesehilfen, die er danach aufruft. Dafür gibt es jetzt
+`Executor` in `client.ts` — das gemeinsame Handle **oder** eine offene Transaktion, mit dem
+Grund an Ort und Stelle.
+
+**Was weniger Arbeit war als gedacht.** Die Aufrufer. Ein kurzes Skript hat die Schreibstellen
+gezählt und umgeschrieben; der Compiler hat den Rest aufgezählt. Von 86 offenen Schreibstellen im
+Produktivcode auf null in neun Commits.
+
+**Was sich nebenbei verbessert hat.**
+
+- `approve()` schreibt in der Transaktion des Aufrufers, `releaseIfDue()` läuft **danach**. Die
+  Rundmail geht damit nie aus einer offenen Transaktion heraus — genau der Fehler, der den Umbau
+  ausgelöst hat, ist jetzt strukturell ausgeschlossen.
+- Der Seed räumt und schreibt in **einer** Transaktion. Bricht er in der Mitte, steht die
+  Entwicklungsdatenbank nicht mehr leer da.
+- Zwei Testdateien hatten eine eigene Hilfe namens `write`. Sie heißen jetzt `writePost` und
+  `writeAsMember` und sagen damit auch besser, was sie tun.
+
+**Was offen blieb.** Nichts am Umbau selbst. Was noch aussteht, steht in der Liste an Chiara am Ende
+des Durchgangs — es gehört zum Abhängigkeits-Paket, nicht hierher.

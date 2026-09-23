@@ -1,6 +1,6 @@
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import type { Selectable } from "kysely";
-import { type Database, db, type Transaction } from "@/src/database/client.ts";
+import { db, type Executor, type Transaction } from "@/src/database/client.ts";
 import type {
   StatusUpdate as DatabaseStatusUpdate,
   StatusUpdateComment as DatabaseStatusUpdateComment,
@@ -35,7 +35,7 @@ const STATUS_UPDATE_COLUMNS = [
  * dieselbe sehen, sonst findet es die eben geschriebene Zeile nicht — gemessen, als genau das
  * einen 500er ergab.
  */
-function statusUpdatesWithAuthor(executor: Database | Transaction = db) {
+function statusUpdatesWithAuthor(executor: Executor = db) {
   return executor
     .selectFrom("statusUpdate")
     .innerJoin("user", "user.id", "statusUpdate.createdBy")
@@ -109,7 +109,7 @@ async function createStatusUpdate(
 
 export type StatusUpdateRefusal = "not_found";
 
-function commentsWithAuthor(executor: Database | Transaction = db) {
+function commentsWithAuthor(executor: Executor = db) {
   return executor
     .selectFrom("statusUpdateComment")
     .innerJoin("user", "user.id", "statusUpdateComment.createdBy")
