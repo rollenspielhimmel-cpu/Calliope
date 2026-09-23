@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
 import { USER_SCHEMA } from "@/src/database/schema.ts";
@@ -110,7 +111,14 @@ export default new OpenAPIHono()
     }),
     async (c) => {
       const { ipAddress, reason } = c.req.valid("json");
-      await IpModerationService.banIp(ipAddress, c.get("user").id, reason);
+      await db.transaction().execute((transaction) =>
+        IpModerationService.banIp(
+          transaction,
+          ipAddress,
+          c.get("user").id,
+          reason,
+        )
+      );
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },
   )
@@ -142,7 +150,9 @@ export default new OpenAPIHono()
     }),
     async (c) => {
       const { ipAddress } = c.req.valid("param");
-      await IpModerationService.unbanIp(ipAddress);
+      await db.transaction().execute((transaction) =>
+        IpModerationService.unbanIp(transaction, ipAddress)
+      );
       return c.json({ ok: true } as const, STATUS_CODE.OK);
     },
   );

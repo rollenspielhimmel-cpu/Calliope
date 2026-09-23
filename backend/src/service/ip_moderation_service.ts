@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import {
   type ListQuery,
   type ListResults,
@@ -304,11 +304,12 @@ async function listBannedIps(): Promise<BannedIp[]> {
 }
 
 async function banIp(
+  transaction: Transaction,
   ipAddress: string,
   bannedBy: string,
   reason: string,
 ): Promise<void> {
-  await db
+  await transaction
     .insertInto("bannedIp")
     .values({ ipAddress, bannedBy, reason })
     // Banning an address twice is the same as banning it once; only the reason and who decided
@@ -319,8 +320,12 @@ async function banIp(
     .execute();
 }
 
-async function unbanIp(ipAddress: string): Promise<void> {
-  await db.deleteFrom("bannedIp").where("ipAddress", "=", ipAddress).execute();
+async function unbanIp(
+  transaction: Transaction,
+  ipAddress: string,
+): Promise<void> {
+  await transaction.deleteFrom("bannedIp").where("ipAddress", "=", ipAddress)
+    .execute();
 }
 
 /** Checked on every request by `middleware/ip_ban.ts`. */

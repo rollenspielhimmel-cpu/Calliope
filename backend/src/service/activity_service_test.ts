@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { db } from "@/src/database/client.ts";
+import { write } from "@/src/test/support.ts";
 import {
   ActivityService,
   windowStartFor,
@@ -151,12 +152,19 @@ Deno.test("recording twice in a window writes one row, and the memo does not lie
   const otherId = await getUserId(other);
   const now = new Date("2026-09-02T12:00:00Z");
 
-  await ActivityService.recordActivity(memberId, now);
-  await ActivityService.recordActivity(
-    memberId,
-    new Date(now.getTime() + MINUTE),
+  await write((transaction) =>
+    ActivityService.recordActivity(transaction, memberId, now)
   );
-  await ActivityService.recordActivity(otherId, now);
+  await write((transaction) =>
+    ActivityService.recordActivity(
+      transaction,
+      memberId,
+      new Date(now.getTime() + MINUTE),
+    )
+  );
+  await write((transaction) =>
+    ActivityService.recordActivity(transaction, otherId, now)
+  );
 
   assertEquals(
     await ActivityService.onlineMinutesInLast30Days(memberId, now),
@@ -183,7 +191,9 @@ Deno.test("the sweep takes what is past retention and leaves what the rule still
     new Date(now.getTime() - 40 * DAY),
   );
 
-  const deleted = await ActivityService.deleteWindowsOlderThanRetention(now);
+  const deleted = await write((transaction) =>
+    ActivityService.deleteWindowsOlderThanRetention(transaction, now)
+  );
 
   assertEquals(deleted, 1);
   // The two the rule can still ask about are untouched.
@@ -201,7 +211,12 @@ Deno.test("the sweep keeps a window inside the retention margin", async () => {
   // deleting live data on any clock skew, which is the whole reason the margin exists.
   await seen(member, new Date(now.getTime() - 31 * DAY));
 
-  assertEquals(await ActivityService.deleteWindowsOlderThanRetention(now), 0);
+  assertEquals(
+    await write((transaction) =>
+      ActivityService.deleteWindowsOlderThanRetention(transaction, now)
+    ),
+    0,
+  );
 });
 
 Deno.test("an ordinary signed-in request records a window", async () => {

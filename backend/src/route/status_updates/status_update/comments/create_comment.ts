@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { StatusUpdateService } from "@/src/service/status_update_service.ts";
@@ -55,10 +56,13 @@ export default new OpenAPIHono().openapi(
     const { statusUpdateId } = c.req.valid("param");
     const { body } = c.req.valid("json");
 
-    const result = await StatusUpdateService.createComment(
-      statusUpdateId,
-      c.get("user").id,
-      body,
+    const result = await db.transaction().execute((transaction) =>
+      StatusUpdateService.createComment(
+        transaction,
+        statusUpdateId,
+        c.get("user").id,
+        body,
+      )
     );
 
     return result === "not_found"

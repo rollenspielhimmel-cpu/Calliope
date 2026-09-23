@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { db } from "@/src/database/client.ts";
 import { STATUS_CODE } from "@std/http/status";
 import authenticated from "@/src/middleware/authenticated.ts";
 import { StatusUpdateService } from "@/src/service/status_update_service.ts";
@@ -44,9 +45,12 @@ export default new OpenAPIHono().openapi(
   }),
   async (c) => {
     const { body } = c.req.valid("json");
-    const statusUpdate = await StatusUpdateService.createStatusUpdate(
-      c.get("user").id,
-      body,
+    const statusUpdate = await db.transaction().execute((transaction) =>
+      StatusUpdateService.createStatusUpdate(
+        transaction,
+        c.get("user").id,
+        body,
+      )
     );
     return c.json(statusUpdate, STATUS_CODE.Created);
   },

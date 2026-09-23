@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { db } from "@/src/database/client.ts";
 import { type User, UserService } from "@/src/service/user_service.ts";
 import { SessionCookieService } from "@/src/service/session_cookie_service.ts";
 import { ActivityService } from "@/src/service/activity_service.ts";
@@ -31,7 +32,11 @@ export async function resolveSessionUser(
   // Awaited rather than left to run on its own. It is one statement per member per fifteen
   // minutes thanks to the memo, and a floating promise here would be an unhandled rejection
   // whenever the database is unwell.
-  await ActivityService.recordActivity(user.id);
+  if (ActivityService.needsRecording(user.id)) {
+    await db.transaction().execute((transaction) =>
+      ActivityService.recordActivity(transaction, user.id)
+    );
+  }
 
   return user;
 }

@@ -51,6 +51,12 @@ Anfang: Sonst ist der Baum kaputt, bis alles fertig ist.
   Umbau, will aber nachgemessen sein: Die Sperre gilt bis zum Ende der Transaktion, und die wird
   danach vom Aufrufer geöffnet.
 
+- **Das Zurücklesen muss dieselbe Transaktion benutzen.** Ein Dienst, der schreibt und die Zeile
+  danach über eine Lesehilfe an `db` neu liest, findet sie nicht: Die Transaktion ist noch nicht
+  festgeschrieben, und die zweite Verbindung sieht nichts. Das ergab bei den Statusmeldungen prompt
+  einen 500er. Die Lesehilfen nehmen deshalb den Ausführenden entgegen — ohne Transaktion bleibt
+  alles wie bisher.
+
 ## Woran wir merken, dass nichts kaputtging
 
 Es ist ein Umbau **ohne Verhaltensänderung und ohne Migration**. Der Prüfstein ist die bestehende

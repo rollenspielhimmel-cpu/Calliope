@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type { PlatformRole } from "@/src/database/schema.ts";
 
 /**
@@ -64,6 +64,7 @@ export type RoleRefusal =
  * by anybody, and only it may grant or revoke `administrator`. See the refusals below.
  */
 async function setRole(
+  transaction: Transaction,
   userId: string,
   role: PlatformRole | null,
   actingAs: { id: string; isPrimordialAdmin: boolean },
@@ -72,7 +73,7 @@ async function setRole(
     return "is_self";
   }
 
-  const target = await db
+  const target = await transaction
     .selectFrom("user")
     .select(["id", "bannedAt", "platformRole", "isPrimordialAdmin"])
     .where("id", "=", userId)
@@ -107,7 +108,7 @@ async function setRole(
     return "is_banned";
   }
 
-  await db
+  await transaction
     .updateTable("user")
     .set({ platformRole: role })
     .where("id", "=", userId)

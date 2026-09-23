@@ -1,4 +1,4 @@
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 
 /**
  * How much time a member has actually spent here, recorded in fifteen-minute windows.
@@ -52,7 +52,19 @@ const lastWritten = new Map<string, number>();
  * Records that this member was here. Called from the session middleware, so it runs for every
  * signed-in request and for nothing else.
  */
+/**
+ * Ob fuer dieses Fenster ueberhaupt geschrieben werden muss — eine reine Rechnung, ohne Datenbank.
+ *
+ * Steht getrennt, damit die Sitzungs-Middleware nicht bei jeder Anfrage eine Transaktion oeffnet,
+ * nur um sofort wieder herauszukommen: Geschrieben wird einmal je Mitglied und Fenster, gefragt
+ * wird bei jedem Aufruf.
+ */
+function needsRecording(userId: string, now: Date = new Date()): boolean {
+  return lastWritten.get(userId) !== windowStartFor(now).getTime();
+}
+
 async function recordActivity(
+  transaction: Transaction,
   userId: string,
   now: Date = new Date(),
 ): Promise<void> {
@@ -62,7 +74,7 @@ async function recordActivity(
     return;
   }
 
-  await db
+  await transaction
     .insertInto("activityWindow")
     .values({ userId, windowStart: windowStart.toISOString() })
     // The same window twice is the same fact. Writing it again is free rather than an error.
@@ -101,13 +113,14 @@ async function onlineMinutesInLast30Days(
 
 /** Swept nightly. What it deletes cannot be asked about any more, so nothing is lost. */
 async function deleteWindowsOlderThanRetention(
+  transaction: Transaction,
   now: Date = new Date(),
 ): Promise<number> {
   const cutoff = new Date(
     now.getTime() - RETENTION_DAYS * 24 * 60 * MILLISECONDS_PER_MINUTE,
   );
 
-  const deleted = await db
+  const deleted = await transaction
     .deleteFrom("activityWindow")
     .where("windowStart", "<", cutoff.toISOString())
     .executeTakeFirst();
@@ -130,6 +143,7 @@ function forgetRecordedActivity(): void {
 }
 
 export const ActivityService = {
+  needsRecording,
   recordActivity,
   onlineMinutesInLast30Days,
   deleteWindowsOlderThanRetention,

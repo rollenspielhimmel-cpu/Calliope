@@ -1,6 +1,6 @@
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import type { Selectable } from "kysely";
-import { db } from "@/src/database/client.ts";
+import { type Database, db, type Transaction } from "@/src/database/client.ts";
 import type {
   StatusUpdate as DatabaseStatusUpdate,
   StatusUpdateComment as DatabaseStatusUpdateComment,
@@ -30,8 +30,13 @@ const STATUS_UPDATE_COLUMNS = [
   "statusUpdate.createdAt",
 ] as const;
 
-function statusUpdatesWithAuthor() {
-  return db
+/**
+ * Liest mit dem Ausführenden, den der Aufrufer mitbringt: In einer Transaktion muss das Zurücklesen
+ * dieselbe sehen, sonst findet es die eben geschriebene Zeile nicht — gemessen, als genau das
+ * einen 500er ergab.
+ */
+function statusUpdatesWithAuthor(executor: Database | Transaction = db) {
+  return executor
     .selectFrom("statusUpdate")
     .innerJoin("user", "user.id", "statusUpdate.createdBy")
     .select([...STATUS_UPDATE_COLUMNS, "user.username as createdByUsername"]);
@@ -80,12 +85,13 @@ async function listStatusUpdates(
 }
 
 async function createStatusUpdate(
+  transaction: Transaction,
   createdBy: string,
   body: string,
 ): Promise<StatusUpdate> {
   const trimmed = body.trim().slice(0, TEXT_LIMIT.statusUpdateBody);
 
-  const { id } = await db
+  const { id } = await transaction
     .insertInto("statusUpdate")
     .values({ createdBy, body: trimmed })
     .returning(["id"])
@@ -94,7 +100,7 @@ async function createStatusUpdate(
   // Re-read rather than RETURNING, which cannot reach the joined author name. The comment
   // count is not re-read: a status update this is the response to has just been created, so it
   // is zero by construction.
-  const created = await statusUpdatesWithAuthor()
+  const created = await statusUpdatesWithAuthor(transaction)
     .where("statusUpdate.id", "=", id)
     .executeTakeFirstOrThrow();
 
@@ -103,8 +109,8 @@ async function createStatusUpdate(
 
 export type StatusUpdateRefusal = "not_found";
 
-function commentsWithAuthor() {
-  return db
+function commentsWithAuthor(executor: Database | Transaction = db) {
+  return executor
     .selectFrom("statusUpdateComment")
     .innerJoin("user", "user.id", "statusUpdateComment.createdBy")
     .select([
@@ -139,11 +145,12 @@ async function listComments(
 }
 
 async function createComment(
+  transaction: Transaction,
   statusUpdateId: string,
   createdBy: string,
   body: string,
 ): Promise<StatusUpdateComment | StatusUpdateRefusal> {
-  const statusUpdate = await db
+  const statusUpdate = await transaction
     .selectFrom("statusUpdate")
     .select("id")
     .where("id", "=", statusUpdateId)
@@ -155,13 +162,13 @@ async function createComment(
 
   const trimmed = body.trim().slice(0, TEXT_LIMIT.statusUpdateCommentBody);
 
-  const { id } = await db
+  const { id } = await transaction
     .insertInto("statusUpdateComment")
     .values({ statusUpdateId, createdBy, body: trimmed })
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
-  return await commentsWithAuthor()
+  return await commentsWithAuthor(transaction)
     .where("statusUpdateComment.id", "=", id)
     .executeTakeFirstOrThrow();
 }

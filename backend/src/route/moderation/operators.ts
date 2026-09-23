@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_CODE } from "@std/http/status";
 import { MODERATION_TAG } from "@/src/open_api_specification.ts";
+import { db } from "@/src/database/client.ts";
 import { PLATFORM_ROLE_SCHEMA, USER_SCHEMA } from "@/src/database/schema.ts";
 import authenticated from "@/src/middleware/authenticated.ts";
 import {
@@ -102,10 +103,12 @@ export default new OpenAPIHono()
 
       const actor = c.get("user");
 
-      const refusal = await PlatformRoleService.setRole(userId, platformRole, {
-        id: actor.id,
-        isPrimordialAdmin: actor.isPrimordialAdmin,
-      });
+      const refusal = await db.transaction().execute((transaction) =>
+        PlatformRoleService.setRole(transaction, userId, platformRole, {
+          id: actor.id,
+          isPrimordialAdmin: actor.isPrimordialAdmin,
+        })
+      );
 
       switch (refusal) {
         case "not_found":

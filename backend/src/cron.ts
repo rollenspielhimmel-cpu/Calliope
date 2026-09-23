@@ -1,4 +1,5 @@
 import { OfficialThreadService } from "@/src/service/official_thread_service.ts";
+import { db } from "@/src/database/client.ts";
 import { BroadcastQueueService } from "./service/broadcast_queue_service.ts";
 import { ActivityService } from "./service/activity_service.ts";
 import { UserAvatarService } from "./service/user_avatar_service.ts";
@@ -36,7 +37,9 @@ export function scheduleCronJobs() {
     "45 4 * * *",
     { signal: getAbortSignalForShutdown() },
     async () => {
-      const deleted = await ActivityService.deleteWindowsOlderThanRetention();
+      const deleted = await db.transaction().execute((transaction) =>
+        ActivityService.deleteWindowsOlderThanRetention(transaction)
+      );
       console.log(`Deleted ${deleted} activity window(s)`);
     },
   );
