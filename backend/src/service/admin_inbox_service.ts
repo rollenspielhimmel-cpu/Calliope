@@ -404,11 +404,12 @@ export type InboxReplyResult =
  * es kennt, in einem gewöhnlichen Gespräch.
  */
 async function reply(
+  transaction: Transaction,
   chatGroupId: string,
   text: string,
   writtenBy: string,
 ): Promise<InboxReplyResult> {
-  const chat = await db
+  const chat = await transaction
     .selectFrom("chatGroup")
     .select(["id", "createdBy", "administrationPartnerId"])
     .where("id", "=", chatGroupId)
@@ -431,6 +432,7 @@ async function reply(
   }
 
   const message = await ChatMessageService.insertMessage(
+    transaction,
     chat.id,
     text,
     chat.createdBy,

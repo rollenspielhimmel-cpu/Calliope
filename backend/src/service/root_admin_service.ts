@@ -54,26 +54,32 @@ export async function ensureRootAdmin(): Promise<void> {
     return;
   }
 
-  const created = await db
-    .insertInto("user")
-    .values({
-      username: ROOT_ADMIN_USERNAME,
-      hashedPassword: await hashPassword(password),
-      emailAddress: ROOT_ADMIN_EMAIL_ADDRESS,
-      platformRole: "administrator",
-      isPrimordialAdmin: true,
-      // Marked verified at creation, which is what lets this account sign in without ever
-      // confirming an address. The gate in `authenticated.ts` is untouched: this account
-      // satisfies it rather than being excused from it, so there is no second code path in
-      // which a member could reach the application unverified.
-      emailAddressVerifiedAt: Temporal.Now.instant().toString(),
-    })
-    // Another instance starting at the same moment wins the unique index rather than throwing.
-    // The username and the address are unique too, so an account already holding either also
-    // lands here — which is why what happened is read back rather than assumed.
-    .onConflict((conflict) => conflict.doNothing())
-    .returning("id")
-    .executeTakeFirst();
+  const gehasht = await hashPassword(password);
+
+  // Das Hochfahren ist selbst ein Einstiegspunkt: Hier wird die Transaktion geöffnet, nicht
+  // weitergereicht — es gibt niemanden darüber, der sie halten könnte.
+  const created = await db.transaction().execute((transaction) =>
+    transaction
+      .insertInto("user")
+      .values({
+        username: ROOT_ADMIN_USERNAME,
+        hashedPassword: gehasht,
+        emailAddress: ROOT_ADMIN_EMAIL_ADDRESS,
+        platformRole: "administrator",
+        isPrimordialAdmin: true,
+        // Marked verified at creation, which is what lets this account sign in without ever
+        // confirming an address. The gate in `authenticated.ts` is untouched: this account
+        // satisfies it rather than being excused from it, so there is no second code path in
+        // which a member could reach the application unverified.
+        emailAddressVerifiedAt: Temporal.Now.instant().toString(),
+      })
+      // Another instance starting at the same moment wins the unique index rather than throwing.
+      // The username and the address are unique too, so an account already holding either also
+      // lands here — which is why what happened is read back rather than assumed.
+      .onConflict((conflict) => conflict.doNothing())
+      .returning("id")
+      .executeTakeFirst()
+  );
 
   if (created === undefined) {
     logger.warn(

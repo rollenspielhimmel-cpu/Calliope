@@ -206,10 +206,13 @@ export default new OpenAPIHono()
       const { text } = c.req.valid("json");
       const writer = c.get("user");
 
-      const result = await AdminInboxService.reply(
-        chatGroupId,
-        text,
-        writer.id,
+      const result = await db.transaction().execute((transaction) =>
+        AdminInboxService.reply(
+          transaction,
+          chatGroupId,
+          text,
+          writer.id,
+        )
       );
 
       if (!result.ok) {

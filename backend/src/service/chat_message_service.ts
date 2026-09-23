@@ -1,6 +1,6 @@
 import { WordFilterService } from "@/src/service/word_filter_service.ts";
 import type { Selectable } from "kysely";
-import { db } from "@/src/database/client.ts";
+import { db, type Transaction } from "@/src/database/client.ts";
 import type { ChatMessage as DatabaseChatMessage } from "@/src/database/schema.ts";
 
 export type ChatMessage =
@@ -36,8 +36,8 @@ const SELECTED_COLUMNS = [
   "chatMessage.subject",
 ] as const;
 
-function messagesWithAuthor() {
-  return db
+function messagesWithAuthor(executor: typeof db | Transaction = db) {
+  return executor
     .selectFrom("chatMessage")
     .leftJoin("user", "user.id", "chatMessage.createdBy")
     .select((eb) => [
@@ -97,19 +97,20 @@ async function listMessages(
  * unter dem die Rundmail lief, und wer wirklich getippt hat, muss trotzdem festgehalten sein.
  */
 async function insertMessage(
+  transaction: Transaction,
   chatGroupId: string,
   text: string,
   createdBy: string,
   { writtenBy }: { writtenBy?: string } = {},
 ): Promise<ChatMessage> {
-  const { id } = await db
+  const { id } = await transaction
     .insertInto("chatMessage")
     .values({ chatGroupId, text, createdBy, writtenBy: writtenBy ?? null })
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
   // Re-read rather than RETURNING, which cannot reach the joined author name.
-  return await messagesWithAuthor()
+  return await messagesWithAuthor(transaction)
     .where("chatMessage.id", "=", id)
     .executeTakeFirstOrThrow();
 }
