@@ -189,8 +189,9 @@ async function selectPost(
   threadId: string,
   postId: string,
   viewerId: string,
+  executor: typeof db | Transaction = db,
 ): Promise<Post | undefined> {
-  const post = await postsWithAuthor(viewerId)
+  const post = await postsWithAuthor(viewerId, executor)
     .where("writingPost.writingThreadId", "=", threadId)
     .where("writingPost.id", "=", postId)
     .executeTakeFirst();

@@ -197,8 +197,8 @@ async function listFolders(user: User): Promise<ForumFolder[]> {
   return folders;
 }
 
-function forumThreads(user: User) {
-  return db
+function forumThreads(user: User, executor: typeof db | Transaction = db) {
+  return executor
     .selectFrom("writingThread")
     .leftJoin("writingFolder", "writingFolder.id", "writingThread.folderId")
     .select([
@@ -240,8 +240,9 @@ async function listThreads(user: User): Promise<ForumThread[]> {
 async function selectThread(
   user: User,
   threadId: string,
+  executor: typeof db | Transaction = db,
 ): Promise<ForumThread | undefined> {
-  const thread = await forumThreads(user)
+  const thread = await forumThreads(user, executor)
     .$call((builder) =>
       withFavourite(builder, "writing_thread", "writingThread.id", user.id)
     )
@@ -255,8 +256,8 @@ async function selectThread(
   return withEffectivePermission(thread);
 }
 
-function forumPages(user: User) {
-  return db
+function forumPages(user: User, executor: typeof db | Transaction = db) {
+  return executor
     .selectFrom("writingPage")
     .leftJoin("user", "user.id", "writingPage.createdBy")
     .leftJoin("writingFolder", "writingFolder.id", "writingPage.folderId")
@@ -300,8 +301,9 @@ async function listPages(user: User): Promise<ForumPageSummary[]> {
 async function selectPageForReader(
   user: User,
   pageId: string,
+  executor: typeof db | Transaction = db,
 ): Promise<ForumPage | undefined> {
-  const page = await forumPages(user)
+  const page = await forumPages(user, executor)
     .$call((builder) =>
       withFavourite(builder, "writing_page", "writingPage.id", user.id)
     )
@@ -436,11 +438,12 @@ async function insertFolder(
 
 /** Title and description only: where a folder sits is `moveFolder`, and its permission is its own. */
 async function updateFolder(
+  transaction: Transaction,
   user: User,
   folderId: string,
   values: { title: string; description: string | null },
 ): Promise<ForumFolder | undefined> {
-  const updated = await db
+  const updated = await transaction
     .updateTable("writingFolder")
     .set(values)
     .where("writingGroupId", "is", null)
@@ -448,7 +451,9 @@ async function updateFolder(
     .returning("id")
     .executeTakeFirst();
 
-  return updated === undefined ? undefined : await selectFolder(user, folderId);
+  return updated === undefined
+    ? undefined
+    : await selectFolder(user, folderId, transaction);
 }
 
 async function moveFolder(
@@ -514,8 +519,11 @@ export type DeleteFolderOutcome = "deleted" | "notEmpty" | "notFound";
  * history behind it. Emptiness is a condition on the delete rather than a read before it, so
  * nothing can be added in between.
  */
-async function deleteFolder(folderId: string): Promise<DeleteFolderOutcome> {
-  const { numDeletedRows } = await db
+async function deleteFolder(
+  transaction: Transaction,
+  folderId: string,
+): Promise<DeleteFolderOutcome> {
+  const { numDeletedRows } = await transaction
     .deleteFrom("writingFolder")
     .where("writingGroupId", "is", null)
     .where("id", "=", folderId)
@@ -585,11 +593,12 @@ const PERMISSION_TABLE = {
  * still close it, and re-opening that folder restores what was set here.
  */
 async function setPermission(
+  transaction: Transaction,
   targetType: ForumPermissionTargetType,
   targetId: string,
   memberPermission: ForumPermission,
 ): Promise<"set" | "notFound"> {
-  const updated = await db
+  const updated = await transaction
     .updateTable(PERMISSION_TABLE[targetType])
     .set({ memberPermission })
     .where("writingGroupId", "is", null)
@@ -606,11 +615,12 @@ async function setPermission(
  * has already resolved the target through `selectFolder`, which is the forum's own.
  */
 async function moveThread(
+  transaction: Transaction,
   user: User,
   threadId: string,
   folderId: string | null,
 ): Promise<ForumThread | undefined> {
-  const moved = await db
+  const moved = await transaction
     .updateTable("writingThread")
     .set({ folderId })
     .where("writingGroupId", "is", null)
@@ -618,15 +628,18 @@ async function moveThread(
     .returning("id")
     .executeTakeFirst();
 
-  return moved === undefined ? undefined : await selectThread(user, threadId);
+  return moved === undefined
+    ? undefined
+    : await selectThread(user, threadId, transaction);
 }
 
 async function movePage(
+  transaction: Transaction,
   user: User,
   pageId: string,
   folderId: string | null,
 ): Promise<ForumPageSummary | undefined> {
-  const moved = await db
+  const moved = await transaction
     .updateTable("writingPage")
     .set({ folderId })
     .where("writingGroupId", "is", null)
@@ -636,7 +649,7 @@ async function movePage(
 
   return moved === undefined
     ? undefined
-    : await selectPageForReader(user, pageId);
+    : await selectPageForReader(user, pageId, transaction);
 }
 
 /**
@@ -647,20 +660,21 @@ async function movePage(
  * create at all is the folder's answer, checked by the route.
  */
 async function insertThread(
+  transaction: Transaction,
   user: User,
   title: string,
   folderId: string | null,
   /**
    * Der erste Beitrag, zusammen mit dem Thema.
    *
-   * **Ein Thema ohne Beitrag ist kein Thema.** Beides in einer Transaktion: Geht der Beitrag
+   * **Ein Thema ohne Beitrag ist kein Thema.** Beides in derselben Transaktion: Geht der Beitrag
    * schief, entsteht auch das Thema nicht — sonst stünde eine leere Überschrift im Forum, die
    * niemand mehr füllt, weil der Ort dafür nicht offensichtlich ist. Genau so ist es auf der Beta
-   * passiert.
+   * passiert. Geöffnet wird sie jetzt in der Route, nicht mehr hier.
    */
   openingPost?: PostDocument,
 ): Promise<ForumThread> {
-  const { id } = await db.transaction().execute(async (transaction) => {
+  const { id } = await (async () => {
     const thread = await transaction
       .insertInto("writingThread")
       .values({
@@ -687,11 +701,11 @@ async function insertThread(
     }
 
     return thread;
-  });
+  })();
 
   // The whole user, not their id: a stand-in would read as an operator, since an absent
   // `platformRole` is `undefined` rather than null.
-  const thread = await selectThread(user, id);
+  const thread = await selectThread(user, id, transaction);
   if (thread === undefined) {
     throw new Error(`Thread ${id} was written and could not be read back`);
   }
@@ -703,12 +717,13 @@ async function insertThread(
  * through `WritingPostService.selectPost`, which is scoped to the thread and not to a group.
  */
 async function insertPost(
+  transaction: Transaction,
   threadId: string,
   document: PostDocument,
   isDraft: boolean,
   createdBy: string,
 ): Promise<Post> {
-  const { id } = await db
+  const { id } = await transaction
     .insertInto("writingPost")
     .values({
       writingThreadId: threadId,
@@ -721,7 +736,12 @@ async function insertPost(
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
-  const post = await WritingPostService.selectPost(threadId, id, createdBy);
+  const post = await WritingPostService.selectPost(
+    threadId,
+    id,
+    createdBy,
+    transaction,
+  );
   if (post === undefined) {
     throw new Error(`Post ${id} was written and could not be read back`);
   }
@@ -729,12 +749,13 @@ async function insertPost(
 }
 
 async function insertPage(
+  transaction: Transaction,
   user: User,
   title: string,
   document: PostDocument,
-  folderId: string | null = null,
+  folderId: string | null,
 ): Promise<ForumPage> {
-  const { id } = await db
+  const { id } = await transaction
     .insertInto("writingPage")
     .values({
       writingGroupId: null,
@@ -751,7 +772,7 @@ async function insertPage(
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
-  const page = await selectPageForReader(user, id);
+  const page = await selectPageForReader(user, id, transaction);
   if (page === undefined) {
     throw new Error(`Page ${id} was written and could not be read back`);
   }
@@ -768,12 +789,13 @@ export type UpdateOutcome =
  * `last_activity_at` the client loaded, as the group's is.
  */
 async function updatePage(
+  transaction: Transaction,
   user: User,
   pageId: string,
   loadedAt: string,
   values: { title: string; document: PostDocument },
 ): Promise<UpdateOutcome | undefined> {
-  const written = await db
+  const written = await transaction
     .updateTable("writingPage")
     .set({
       title: values.title,
@@ -788,7 +810,7 @@ async function updatePage(
     .executeTakeFirst();
 
   // Re-read either way: on a stale write it is the *other* editor's name the refusal needs.
-  const page = await selectPageForReader(user, pageId);
+  const page = await selectPageForReader(user, pageId, transaction);
   if (page === undefined) {
     return undefined;
   }
