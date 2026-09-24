@@ -16,6 +16,11 @@
  * ohne Angebot hineinpasst; wenn nicht, mit dem Angebot im Absatz, damit die Suche dessen Breite
  * kennt und der Text genau dort endet, wo noch Platz dafür ist.
  *
+ * **Linksbündig, auch im Kasten.** Mittig wurde zweimal probiert und zweimal verworfen:
+ * Fließtext zerfällt so in Zeilen, die jede für sich anfangen. Seit der Text über die volle
+ * Breite läuft und das Angebot in der letzten Zeile steht, gibt es dafür auch keinen Anlass mehr
+ * — die Zeilen füllen sich von selbst.
+ *
  * **Aufgeklappt wird an Ort und Stelle**, mit einem Weg zurück. Ohne „weniger" ließe sich eine
  * einmal aufgeklappte Meldung nicht wieder wegräumen, und der Kasten hat feste Höhe.
  */
@@ -23,24 +28,11 @@ import { nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { shortenToFit } from '@/lib/text/shortenToFit'
 
-const props = withDefaults(
-  defineProps<{
-    text: string
-    /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
-    lines: number
-    /**
-     * Ob Text und Angebot mittig stehen.
-     *
-     * Im Kasten schon: Dort sind es drei Zeilen über die volle Breite, und die stehen als Block
-     * ruhiger, wenn sie eine Mitte teilen.
-     *
-     * Auf der Seite nicht: Acht Zeilen sind Fließtext, und Fließtext liest sich linksbündig —
-     * mittig gesetzt fängt jede Zeile für sich an.
-     */
-    centered?: boolean
-  }>(),
-  { centered: false },
-)
+const props = defineProps<{
+  text: string
+  /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
+  lines: number
+}>()
 
 /**
  * Der Absatz ist sein eigenes Maßband: Die Höhendeckelung und `overflow-hidden` halten ihn dort,
@@ -121,7 +113,7 @@ function toggle() {
   <p
     ref="body"
     class="text-sm leading-snug whitespace-pre-wrap text-ink-2"
-    :class="[expanded ? '' : 'overflow-hidden', centered ? 'text-center' : '']"
+    :class="expanded ? '' : 'overflow-hidden'"
     :style="expanded ? undefined : { maxHeight: `${lines * LINE_HEIGHT}em` }"
   ><span ref="textSpan">{{ expanded ? text : shown }}</span><button
       v-if="wasCut"

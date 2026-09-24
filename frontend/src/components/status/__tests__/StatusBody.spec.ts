@@ -104,21 +104,12 @@ describe('StatusBody', () => {
     expect(wrapper.find('button').text()).toBe('weiterlesen')
   })
 
-  /**
-   * Drei Zeilen über die volle Breite stehen als Block ruhiger, wenn sie eine Mitte teilen. Acht
-   * Zeilen sind Fließtext und bleiben links. Das Angebot steht im Absatz, also richtet es sich
-   * mit ihm aus — eine eigene Ausrichtung braucht es nicht.
-   */
-  it('stellt den Absatz mittig, wo der Ort es verlangt', async () => {
-    const mitte = mount(StatusBody, { props: { text: LONG, lines: 3, centered: true } })
+  /** Mittig wurde zweimal probiert und zweimal verworfen — Fließtext liest sich linksbündig. */
+  it('stellt den Absatz nirgends mittig', async () => {
+    const wrapper = mount(StatusBody, { props: { text: LONG, lines: 3 } })
     await flushPromises()
 
-    expect(mitte.find('p').classes()).toContain('text-center')
-
-    const links = mount(StatusBody, { props: { text: LONG, lines: 8 } })
-    await flushPromises()
-
-    expect(links.find('p').classes()).not.toContain('text-center')
+    expect(wrapper.find('p').classes()).not.toContain('text-center')
   })
 
   /**
