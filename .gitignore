@@ -23,3 +23,8 @@ node_modules/
 
 # Diese Freigabe gilt nur für diesen Rechner und nennt die Adresse des Servers.
 .claude/settings.local.json
+
+# Das Windows-Programm, mit dem hier Migrationen laufen. Es liegt auf der Platte, nicht im
+# Repository: 32,7 MB, die sonst jeder Klon mitschleppt. CI lädt sich dbmate selbst herunter,
+# der Deploy benutzt das Abbild `amacneil/dbmate` — gebraucht wird die Datei also nur lokal.
+dbmate.exe

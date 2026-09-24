@@ -4,6 +4,18 @@ Postgres 18, migrated with [dbmate](https://github.com/amacneil/dbmate), typed w
 `kysely-codegen`. Tasks are `deno task …` — see the root [AGENTS.md](../AGENTS.md) for the
 conventions shared with the other projects.
 
+**dbmate ist ein Programm, keine Abhängigkeit**, und es liegt nicht im Repository: 32,7 MB, die
+sonst jeder Klon mitschleppt. CI lädt es sich selbst herunter, der Deploy benutzt das Abbild
+`amacneil/dbmate` — lokal gebraucht wird es nur hier. Auf diesem Rechner liegt es als
+`dbmate.exe` im Wurzelverzeichnis und ist in `.gitignore` eingetragen. Wer neu anfängt, holt es
+von den [Releases](https://github.com/amacneil/dbmate/releases) oder über `winget install
+amacneil.dbmate`.
+
+Liegt es nicht im Suchpfad, scheitern die Migrationsaufgaben mit „dbmate: command not found". Dann
+hilft, es einmal mit vollem Pfad zu rufen:
+
+    PATH="$PWD:$PATH" bash -c 'cd database && dbmate.exe --env-file ../.env migrate'
+
 ## Eine angewandte Migration wird nicht mehr angefasst
 
 Auch nicht um eine Zeile. Was sich ändern soll, kommt als neue Migration nach.
