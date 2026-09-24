@@ -7,6 +7,11 @@
  * arbeitet gegen genau diese Entscheidung: Man scrollt durch ein Guckloch. Hier ist Platz, also
  * gibt es keine feste Höhe, keinen Scrollbereich im Scrollbereich und keine Vorschau vor den
  * Kommentaren.
+ *
+ * **Und die Stränge stehen offen.** Hinter einer Sprechblase mit einer Zahl versteckt sah es aus,
+ * als ließe sich hier gar nicht kommentieren — obwohl es ging, nur nicht sichtbar. Wer diese Seite
+ * öffnet, will lesen, was geschrieben wurde; eine Meldung ohne Kommentare bleibt zu, dort gibt es
+ * nichts aufzuklappen.
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
@@ -87,14 +92,16 @@ watch(
               :key="update.id"
               :update="update"
               layout="page"
-              :open-at-once="update.id === wanted"
+              :open-at-once="update.id === wanted || update.commentCount > 0"
             />
           </div>
 
+          <!-- Mittig wie „Alle Statusmeldungen" unter dem Kasten: Die beiden Wege weiter stehen
+               an beiden Orten gleich. -->
           <Button
             v-if="hasOlder"
             variant="outline"
-            class="mt-4"
+            class="mt-4 block"
             :disabled="isLoadingOlder"
             @click="loadOlder()"
           >
@@ -102,7 +109,7 @@ watch(
             Mehr Statusmeldungen
           </Button>
 
-          <p v-else class="mt-4 text-[12.5px] text-ink-5">Das war die erste.</p>
+          <p v-else class="mt-4 text-center text-[12.5px] text-ink-5">Das war die erste.</p>
         </template>
       </div>
     </div>

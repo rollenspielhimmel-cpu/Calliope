@@ -9,6 +9,21 @@
  * hieße hier, sich durch ein Guckloch von vier Zeilen Höhe immer weiter nach unten zu arbeiten.
  * Wer weiter zurück will, geht auf die Seite — über die Uhrzeit einer Meldung oder über den
  * Verweis darunter.
+ *
+ * ── Ein Gedanke für später, festgehalten und nicht gebaut ──────────────────────────────────
+ *
+ * **Was Bekannte kommentiert haben, könnte hier daneben stehen.** Nicht die eigenen Meldungen,
+ * sondern die Spur der anderen: wer wo etwas geschrieben hat. Das ist der Unterschied zwischen
+ * einem Kasten, in dem die eigene Nachbarschaft redet, und einem, in dem man selbst sendet.
+ *
+ * Dazu gehörte ein zweiter Gedanke: **Mitgliedern folgen können**, deren Kommentare man gern
+ * liest — dieselbe Mechanik wie der Schalter an einer einzelnen Meldung, nur an einer Person
+ * statt an einem Strang.
+ *
+ * Beides ist bewusst *nicht* gebaut. Es steht hier, weil es die natürliche Fortsetzung dieses
+ * Kastens ist und beim nächsten Mal nicht neu erfunden werden soll. Vorher zu klären: Wer sind
+ * „Bekannte" bei uns — es gibt keine Freundschaften, nur gemeinsame Gruppen —, und was sieht
+ * jemand, dem man folgt, davon.
  */
 import { RouterLink } from 'vue-router'
 import { useStatusUpdates } from '@/composables/useStatusUpdates'

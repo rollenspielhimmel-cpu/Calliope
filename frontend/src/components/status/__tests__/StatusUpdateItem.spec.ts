@@ -271,19 +271,36 @@ describe('Zitieren', () => {
  * 76 weitere Kommentare, die mich nicht interessieren" — dann für diese eine Meldung Ruhe, ohne
  * alle Mitteilungen abzuschalten.
  */
+/** Die Glocke steht am Eintrag, nicht hinter dem Aufklapper — sie soll von Anfang an stimmen. */
+function bell(wrapper: ReturnType<typeof item>) {
+  return wrapper
+    .findAll('button')
+    .find((candidate) =>
+      ['Keine Mitteilungen mehr', 'Mitteilungen einschalten'].includes(
+        candidate.attributes('aria-label') ?? '',
+      ),
+    )
+}
+
 describe('Mitteilungen für eine Meldung', () => {
-  it('bietet Ruhe an, solange Mitteilungen kämen', async () => {
+  it('zeigt an der Glocke, ob von hier etwas kommt', async () => {
+    const wrapper = item('box')
+    await flushPromises()
+
+    const button = bell(wrapper)
+    expect(button).toBeDefined()
+    // Ein Zustand, den man sieht, statt eines Satzes, den man lesen muss.
+    expect(button?.attributes('aria-pressed')).toBe('true')
+    expect(button?.attributes('aria-label')).toBe('Keine Mitteilungen mehr')
+  })
+
+  it('schaltet Mitteilungen für diese Meldung ab', async () => {
     setSubscription.mockResolvedValue({ status: 200, data: {} })
 
-    const wrapper = await itemWithCommentsOpen()
+    const wrapper = item('box')
+    await flushPromises()
 
-    // Der Knopf sagt, was als Nächstes passiert, nicht wie der Zustand heißt.
-    const button = wrapper
-      .findAll('button')
-      .find((candidate) => candidate.text() === 'Keine Mitteilungen mehr')
-    expect(button).toBeDefined()
-
-    await button?.trigger('click')
+    await bell(wrapper)?.trigger('click')
     await flushPromises()
 
     expect(setSubscription).toHaveBeenCalledWith('s1', { subscribed: false })

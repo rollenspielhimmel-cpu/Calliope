@@ -23,6 +23,7 @@ import type {
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
+import { Bell, BellOff } from '@lucide/vue'
 import QuotedComment from '@/components/status/QuotedComment.vue'
 import StatusBody from '@/components/status/StatusBody.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -119,12 +120,10 @@ function quoteComment(comment: ListStatusUpdateComments200ResultsItem) {
  * kommentiert haben, hören mit. Ausdrücklich an bekommt auch mit, wer nie etwas geschrieben hat;
  * ausdrücklich aus gibt Ruhe, auch wenn man mitgeschrieben hat.
  *
- * Erst gefragt, wenn jemand aufklappt: Für zehn Meldungen im Kasten wären es sonst zehn Anfragen
- * für etwas, das dort niemand sucht.
+ * Immer gefragt, anders als die Kommentare: Die Glocke steht sichtbar am Eintrag und muss von
+ * Anfang an das Richtige zeigen. Es ist eine kleine Abfrage je Meldung, und vue-query hält sie.
  */
-const subscriptionQuery = useGetStatusUpdateSubscription(() => props.update.id, {
-  query: { enabled: open },
-})
+const subscriptionQuery = useGetStatusUpdateSubscription(() => props.update.id)
 
 const subscribed = computed<boolean | undefined>(() => {
   const answer = subscriptionQuery.data.value
@@ -224,6 +223,29 @@ async function submitComment() {
           <span v-else class="text-ink-3">{{ formatActivityTime(update.createdAt) }}</span>
         </p>
         <StatusBody :text="update.body" :lines="layout === 'page' ? 8 : 3" />
+        <!-- **Die Glocke neben der Sprechblase**, nicht als Satz unter dem Feld.
+             Durchgestrichen und grau heißt: von hier kommt nichts. In Farbe: es kommt etwas.
+             Ein Zustand, den man sieht, statt eines Satzes, den man lesen muss — und er steht
+             dort, wo auch die Kommentare stehen, um die es geht. -->
+        <button
+          v-if="subscribed !== undefined"
+          type="button"
+          class="absolute top-0 right-11 rounded-full p-1"
+          :disabled="switching"
+          :title="subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten'"
+          :aria-label="subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten'"
+          :aria-pressed="subscribed"
+          @click="toggleSubscription"
+        >
+          <component
+            :is="subscribed ? Bell : BellOff"
+            :size="14"
+            :stroke-width="1.5"
+            :class="subscribed ? 'text-oak-deep' : 'text-ink-5'"
+            aria-hidden="true"
+          />
+        </button>
+
         <button
           type="button"
           class="absolute top-0 right-0 flex items-center gap-1 rounded-full bg-paper-3 px-2 py-0.5"
@@ -325,18 +347,6 @@ async function submitComment() {
         :maxlength="TEXT_LIMIT.createStatusUpdateComment.body.maxLength"
         @keydown.enter="submitComment"
       />
-
-      <!-- Sagt, was als Nächstes passiert, nicht wie der Zustand heißt: „Keine Mitteilungen mehr"
-           liest sich als Handlung, „Mitteilungen: an" als Etikett. -->
-      <button
-        v-if="subscribed !== undefined"
-        type="button"
-        class="mt-1.5 text-[11px] text-ink-4 underline-offset-[3px] hover:text-oak-deep hover:underline"
-        :disabled="switching"
-        @click="toggleSubscription"
-      >
-        {{ subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten' }}
-      </button>
     </div>
   </div>
 </template>
