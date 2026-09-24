@@ -62,6 +62,7 @@ const quotingComment = {
 }
 
 const createComment = vi.fn<(...args: unknown[]) => Promise<unknown>>()
+const setSubscription = vi.fn<(...args: unknown[]) => Promise<unknown>>()
 
 vi.mock('@/api/status-updates/status-updates', () => ({
   useListStatusUpdateComments: () => ({
@@ -73,6 +74,11 @@ vi.mock('@/api/status-updates/status-updates', () => ({
     refetch: () => Promise.resolve(),
   }),
   createStatusUpdateComment: (...args: unknown[]) => createComment(...args),
+  useGetStatusUpdateSubscription: () => ({
+    data: ref({ status: 200, data: { subscribed: true, explicit: false } }),
+    refetch: () => Promise.resolve(),
+  }),
+  setStatusUpdateSubscription: (...args: unknown[]) => setSubscription(...args),
   listStatusUpdates: () =>
     Promise.resolve({ status: 200, data: { results: [update], nextCursor: null } }),
   getListStatusUpdatesQueryKey: () => ['QUERY', 'api', 'status-updates', {}],
@@ -255,5 +261,31 @@ describe('Zitieren', () => {
     expect(chip.props('quoted')).toMatchObject({ createdByUsername: 'randnotiz' })
     // Ohne Kreuz: Ein abgeschickter Kommentar lässt sein Zitat nicht mehr verwerfen.
     expect(chip.props('removable')).toBeFalsy()
+  })
+})
+
+/**
+ * Der Schalter für eine einzelne Meldung.
+ *
+ * **Der Fall, für den es ihn gibt:** „Ich kommentiere, wir schreiben kurz hin und her, dann folgen
+ * 76 weitere Kommentare, die mich nicht interessieren" — dann für diese eine Meldung Ruhe, ohne
+ * alle Mitteilungen abzuschalten.
+ */
+describe('Mitteilungen für eine Meldung', () => {
+  it('bietet Ruhe an, solange Mitteilungen kämen', async () => {
+    setSubscription.mockResolvedValue({ status: 200, data: {} })
+
+    const wrapper = await itemWithCommentsOpen()
+
+    // Der Knopf sagt, was als Nächstes passiert, nicht wie der Zustand heißt.
+    const button = wrapper
+      .findAll('button')
+      .find((candidate) => candidate.text() === 'Keine Mitteilungen mehr')
+    expect(button).toBeDefined()
+
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(setSubscription).toHaveBeenCalledWith('s1', { subscribed: false })
   })
 })

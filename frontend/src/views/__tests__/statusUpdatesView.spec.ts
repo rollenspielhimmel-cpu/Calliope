@@ -41,6 +41,11 @@ vi.mock('@/api/status-updates/status-updates', () => ({
   getListStatusUpdatesQueryKey: (body?: unknown) => ['QUERY', 'api', 'status-updates', body],
   createStatusUpdate: () => Promise.resolve({ status: 201, data: statusUpdate('neu', 'Neu.') }),
   createStatusUpdateComment: () => Promise.resolve({ status: 201, data: {} }),
+  useGetStatusUpdateSubscription: () => ({
+    data: ref({ status: 200, data: { subscribed: true, explicit: false } }),
+    refetch: () => Promise.resolve(),
+  }),
+  setStatusUpdateSubscription: () => Promise.resolve({ status: 200, data: {} }),
   useListStatusUpdateComments: () => ({
     data: ref({ status: 200, data: { totalResults: 0, results: [] } }),
     isPending: ref(false),

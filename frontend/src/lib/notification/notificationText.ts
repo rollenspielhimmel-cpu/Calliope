@@ -77,6 +77,13 @@ export function notificationText(notification: ListNotifications200ResultsItem):
       return notification.actorUsername === null
         ? `Rundmail „${notification.chatGroupTitle}“.`
         : `${notification.actorUsername} hat eine Rundmail geschickt: „${notification.chatGroupTitle}“.`
+    case 'status_update_commented':
+      // **Eine Zeile für alles, was seit dem letzten Hinsehen dazukam.** Achtzig Kommentare
+      // ergeben eine Mitteilung mit einer Zahl, nicht achtzig Zeilen — sonst stünde für alles
+      // andere kein Platz mehr. Genannt wird, wer zuletzt geschrieben hat.
+      return notification.newCommentCount === 1
+        ? `${actor} hat deine Statusmeldung kommentiert.`
+        : `${notification.newCommentCount} neue Kommentare zu deiner Statusmeldung, zuletzt von ${actor}.`
     default:
       return assertUnreachable(notification)
   }
@@ -135,6 +142,13 @@ export function notificationAction(
     // Dasselbe Ziel wie die Einladung: Gelesen wird im Postfach, die Glocke weist nur hin.
     case 'broadcast_received':
       return { kind: 'chat', chatGroupId: notification.chatGroupId }
+    case 'status_update_commented':
+      // Auf die Seite mit allen Meldungen, zu genau dieser — dort ist Platz für den ganzen
+      // Strang, den der Kasten auf der Startseite nur andeutet.
+      return {
+        kind: 'route',
+        to: { name: 'statusUpdates', hash: `#${notification.statusUpdateId}` },
+      }
     default:
       // A new notification type reaches here as a compile error, not a silent fallthrough to
       // some group page that may not be what it was about.

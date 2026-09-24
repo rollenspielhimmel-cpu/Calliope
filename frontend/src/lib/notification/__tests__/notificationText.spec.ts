@@ -111,3 +111,37 @@ describe('notificationAction', () => {
     ).toEqual({ kind: 'route', to: { name: 'thread', params: { groupId: 'g1', threadId: 't1' } } })
   })
 })
+
+/**
+ * Kommentare unter einer Statusmeldung: eine Zeile für alles, was seit dem letzten Hinsehen
+ * dazukam. Achtzig Kommentare ergeben eine Mitteilung mit einer Zahl, nicht achtzig Zeilen.
+ */
+describe('Kommentare zu einer Statusmeldung', () => {
+  const kommentar = {
+    id: 'n1',
+    occurredAt: '2026-09-24T10:00:00.000Z',
+    readAt: null,
+    actorUsername: 'randnotiz',
+    type: 'status_update_commented' as const,
+    statusUpdateId: 's1',
+  }
+
+  it('nennt den Namen, solange es ein einzelner Kommentar ist', () => {
+    expect(notificationText({ ...kommentar, newCommentCount: 1 })).toBe(
+      'randnotiz hat deine Statusmeldung kommentiert.',
+    )
+  })
+
+  it('fasst zusammen und nennt den zuletzt Schreibenden', () => {
+    expect(notificationText({ ...kommentar, newCommentCount: 3 })).toBe(
+      '3 neue Kommentare zu deiner Statusmeldung, zuletzt von randnotiz.',
+    )
+  })
+
+  it('führt auf die Seite, zu genau dieser Meldung', () => {
+    expect(notificationAction({ ...kommentar, newCommentCount: 1 })).toEqual({
+      kind: 'route',
+      to: { name: 'statusUpdates', hash: '#s1' },
+    })
+  })
+})

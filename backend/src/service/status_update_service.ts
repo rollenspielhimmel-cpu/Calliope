@@ -6,6 +6,7 @@ import type {
   StatusUpdateComment as DatabaseStatusUpdateComment,
 } from "@/src/database/schema.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
+import { NotificationService } from "@/src/service/notification_service.ts";
 
 export type StatusUpdate =
   & Pick<
@@ -270,6 +271,14 @@ async function createComment(
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
+  // In derselben Transaktion: Der Kommentar und die Mitteilung darüber gelten zusammen oder gar
+  // nicht. Genau das war der Fehler, der den Transaktions-Umbau ausgelöst hat.
+  await NotificationService.insertStatusUpdateCommentNotifications(
+    transaction,
+    statusUpdateId,
+    createdBy,
+  );
+
   // Aus derselben Transaktion gelesen: Sonst läuft die Rückfrage auf einer anderen Verbindung und
   // sieht die eben geschriebene Zeile nicht.
   return withQuote(
@@ -279,7 +288,99 @@ async function createComment(
   );
 }
 
+/**
+ * Was jemand über eine einzelne Meldung hören will.
+ *
+ * **Drei Stellungen, nicht zwei.** Nichts eingetragen heißt: die Regel gilt — Mitteilungen
+ * bekommt, wer die Meldung geschrieben hat, und wer darunter kommentiert hat. Ausdrücklich an
+ * heißt: auch ohne je etwas geschrieben zu haben. Ausdrücklich aus heißt: Ruhe, auch wenn man
+ * mitgeschrieben hat.
+ *
+ * Zurück auf „die Regel gilt" kommt man, indem der Eintrag verschwindet — dafür ist `undefined`
+ * da.
+ */
+async function setSubscription(
+  transaction: Transaction,
+  statusUpdateId: string,
+  userId: string,
+  subscribed: boolean | undefined,
+): Promise<StatusUpdateRefusal | undefined> {
+  const statusUpdate = await transaction
+    .selectFrom("statusUpdate")
+    .select("id")
+    .where("id", "=", statusUpdateId)
+    .executeTakeFirst();
+
+  if (statusUpdate === undefined) {
+    return "not_found";
+  }
+
+  if (subscribed === undefined) {
+    await transaction
+      .deleteFrom("statusUpdateSubscription")
+      .where("statusUpdateId", "=", statusUpdateId)
+      .where("userId", "=", userId)
+      .execute();
+    return undefined;
+  }
+
+  await transaction
+    .insertInto("statusUpdateSubscription")
+    .values({ statusUpdateId, userId, subscribed })
+    .onConflict((conflict) =>
+      conflict
+        .columns(["userId", "statusUpdateId"])
+        .doUpdateSet({ subscribed })
+    )
+    .execute();
+
+  return undefined;
+}
+
+/**
+ * Was für diese Meldung eingestellt ist — und was gälte, wenn nichts eingestellt wäre.
+ *
+ * Die Oberfläche braucht beides: Sie schreibt an den Knopf, was als Nächstes passiert, und dafür
+ * muss sie wissen, ob gerade Mitteilungen kämen.
+ */
+async function subscriptionFor(
+  statusUpdateId: string,
+  userId: string,
+): Promise<{ subscribed: boolean; explicit: boolean }> {
+  const [entry, author, ownComment] = await Promise.all([
+    db
+      .selectFrom("statusUpdateSubscription")
+      .select("subscribed")
+      .where("statusUpdateId", "=", statusUpdateId)
+      .where("userId", "=", userId)
+      .executeTakeFirst(),
+    db
+      .selectFrom("statusUpdate")
+      .select("id")
+      .where("id", "=", statusUpdateId)
+      .where("createdBy", "=", userId)
+      .executeTakeFirst(),
+    db
+      .selectFrom("statusUpdateComment")
+      .select("id")
+      .where("statusUpdateId", "=", statusUpdateId)
+      .where("createdBy", "=", userId)
+      .executeTakeFirst(),
+  ]);
+
+  if (entry !== undefined) {
+    return { subscribed: entry.subscribed, explicit: true };
+  }
+
+  return {
+    subscribed: author !== undefined || ownComment !== undefined,
+    explicit: false,
+  };
+}
+
 export const StatusUpdateService = {
+  setSubscription,
+  subscriptionFor,
   listStatusUpdates,
   createStatusUpdate,
   listComments,

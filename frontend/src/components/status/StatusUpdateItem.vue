@@ -12,6 +12,8 @@ import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   createStatusUpdateComment,
+  setStatusUpdateSubscription,
+  useGetStatusUpdateSubscription,
   useListStatusUpdateComments,
 } from '@/api/status-updates/status-updates'
 import type {
@@ -108,6 +110,41 @@ function quoteComment(comment: ListStatusUpdateComments200ResultsItem) {
     const end = commentField.value?.value.length ?? 0
     commentField.value?.setSelectionRange(end, end)
   })
+}
+
+/**
+ * Ob von hier Mitteilungen kommen — und ob das jemand ausdrücklich so gesetzt hat.
+ *
+ * **Drei Stellungen, nicht zwei.** Ohne Eintrag gilt die Regel: Die Verfasserin und alle, die
+ * kommentiert haben, hören mit. Ausdrücklich an bekommt auch mit, wer nie etwas geschrieben hat;
+ * ausdrücklich aus gibt Ruhe, auch wenn man mitgeschrieben hat.
+ *
+ * Erst gefragt, wenn jemand aufklappt: Für zehn Meldungen im Kasten wären es sonst zehn Anfragen
+ * für etwas, das dort niemand sucht.
+ */
+const subscriptionQuery = useGetStatusUpdateSubscription(() => props.update.id, {
+  query: { enabled: open },
+})
+
+const subscribed = computed<boolean | undefined>(() => {
+  const answer = subscriptionQuery.data.value
+  return answer?.status === 200 ? answer.data.subscribed : undefined
+})
+
+const switching = ref<boolean>(false)
+
+async function toggleSubscription() {
+  if (subscribed.value === undefined || switching.value) {
+    return
+  }
+
+  switching.value = true
+  try {
+    await setStatusUpdateSubscription(props.update.id, { subscribed: !subscribed.value })
+    await subscriptionQuery.refetch()
+  } finally {
+    switching.value = false
+  }
 }
 
 const refreshStatusUpdates = useRefreshStatusUpdates()
@@ -288,6 +325,18 @@ async function submitComment() {
         :maxlength="TEXT_LIMIT.createStatusUpdateComment.body.maxLength"
         @keydown.enter="submitComment"
       />
+
+      <!-- Sagt, was als Nächstes passiert, nicht wie der Zustand heißt: „Keine Mitteilungen mehr"
+           liest sich als Handlung, „Mitteilungen: an" als Etikett. -->
+      <button
+        v-if="subscribed !== undefined"
+        type="button"
+        class="mt-1.5 text-[11px] text-ink-4 underline-offset-[3px] hover:text-oak-deep hover:underline"
+        :disabled="switching"
+        @click="toggleSubscription"
+      >
+        {{ subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten' }}
+      </button>
     </div>
   </div>
 </template>

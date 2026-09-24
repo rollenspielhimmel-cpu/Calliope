@@ -56,6 +56,7 @@ export type NotificationType =
   | "new_writing_post"
   | "new_writing_thread"
   | "role_changed_in_writing_group"
+  | "status_update_commented"
   | "visibility_changed_in_writing_group";
 
 export type OfficialRevisionKind =
@@ -512,9 +513,14 @@ export interface Notification {
   chatGroupId: string | null;
   createdAt: Generated<string>;
   id: Generated<string>;
+  /**
+   * Wie viele Kommentare seit dem letzten Lesen dazugekommen sind. Nur bei status_update_commented von Bedeutung.
+   */
+  newCommentCount: Generated<number>;
   occurredAt: Generated<string>;
   readAt: string | null;
   recipientId: string;
+  statusUpdateId: string | null;
   type: NotificationType;
   writingGroupId: string | null;
   writingPageId: string | null;
@@ -639,6 +645,13 @@ export interface StatusUpdateComment {
    */
   quotedCommentId: string | null;
   statusUpdateId: string;
+}
+
+export interface StatusUpdateSubscription {
+  createdAt: Generated<string>;
+  statusUpdateId: string;
+  subscribed: boolean;
+  userId: string;
 }
 
 export interface StoryIdea {
@@ -895,6 +908,7 @@ export interface DB {
   senderGrant: SenderGrant;
   statusUpdate: StatusUpdate;
   statusUpdateComment: StatusUpdateComment;
+  statusUpdateSubscription: StatusUpdateSubscription;
   storyIdea: StoryIdea;
   storyIdeaReader: StoryIdeaReader;
   strike: Strike;
@@ -968,6 +982,7 @@ export const NOTIFICATION_TYPES = [
   "new_writing_post",
   "new_writing_thread",
   "role_changed_in_writing_group",
+  "status_update_commented",
   "visibility_changed_in_writing_group",
 ] as const;
 export const NOTIFICATION_TYPE_SCHEMA = z.enum(NOTIFICATION_TYPES);
@@ -1500,6 +1515,10 @@ export const NOTIFICATION_SCHEMA = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   occurredAt: z.iso.datetime({ offset: true }),
   readAt: z.iso.datetime({ offset: true }).nullable(),
+  statusUpdateId: z.uuidv7().nullable(),
+  newCommentCount: int32.describe(
+    "Wie viele Kommentare seit dem letzten Lesen dazugekommen sind. Nur bei status_update_commented von Bedeutung.",
+  ),
 });
 
 export const OFFICIAL_REVISION_SCHEMA = z.object({
@@ -1618,6 +1637,13 @@ export const STATUS_UPDATE_COMMENT_SCHEMA = z.object({
   quotedCommentId: z.uuidv7().nullable().describe(
     "Der zitierte Kommentar, oder null. Das Zitat wird beim Anzeigen aus ihm gebaut, damit Name und Text aktuell bleiben.",
   ),
+});
+
+export const STATUS_UPDATE_SUBSCRIPTION_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  statusUpdateId: z.uuidv7(),
+  subscribed: z.boolean(),
+  createdAt: z.iso.datetime({ offset: true }),
 });
 
 export const STORY_IDEA_SCHEMA = z.object({

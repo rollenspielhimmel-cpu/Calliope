@@ -64,6 +64,8 @@ type NotificationRow = {
   writingPageTitle: string | null;
   chatGroupId: string | null;
   chatGroupTitle: string | null;
+  statusUpdateId: string | null;
+  newCommentCount: number;
 };
 
 function toNotification(row: NotificationRow): Notification {
@@ -148,6 +150,13 @@ function toNotification(row: NotificationRow): Notification {
         chatGroupId: required(row.chatGroupId, "chatGroupId"),
         chatGroupTitle: required(row.chatGroupTitle, "chatGroupTitle"),
       };
+    case "status_update_commented":
+      return {
+        ...base,
+        type: row.type,
+        statusUpdateId: required(row.statusUpdateId, "statusUpdateId"),
+        newCommentCount: row.newCommentCount,
+      };
     default:
       // A new notification type reaches here as a compile error, not a missing line.
       return assertUnreachable(row.type);
@@ -214,6 +223,8 @@ function notificationsFor(recipientId: string) {
       "notification.writingPostId",
       "notification.chatGroupId",
       "chatGroup.title as chatGroupTitle",
+      "notification.statusUpdateId",
+      "notification.newCommentCount",
     ]);
 }
 
@@ -593,7 +604,101 @@ async function insertBlindDateEndedNotification(
     .execute();
 }
 
+/**
+ * Sagt Bescheid, dass unter einer Statusmeldung geschrieben wurde.
+ *
+ * **Wer es erfährt:** wer die Meldung geschrieben hat, und jede und jeder, die darunter schon
+ * kommentiert haben — mitreden heißt mithören. Dazu, wer die Meldung ausdrücklich abonniert hat,
+ * ohne selbst etwas geschrieben zu haben. Nicht, wer gerade schreibt, und nicht, wer für diese
+ * Meldung Ruhe haben will.
+ *
+ * **Zusammengefasst wird hier, nicht beim Lesen.** Eine Zeile je Empfänger und Meldung; trifft ein
+ * weiterer Kommentar darauf, geht ihr Zähler hoch und sie rutscht wieder nach oben. Der Grund ist
+ * das Blättern: Eine Gruppe, die über eine Seitengrenze fällt, ließe sich beim Anzeigen nicht mehr
+ * richtig zusammenlegen — und die Zahl am Glockensymbol zählt Zeilen, also stimmt sie so von
+ * selbst.
+ */
+async function insertStatusUpdateCommentNotifications(
+  transaction: Transaction,
+  statusUpdateId: string,
+  actorId: string,
+): Promise<void> {
+  const [author, commenters, subscriptions] = await Promise.all([
+    transaction
+      .selectFrom("statusUpdate")
+      .select("createdBy as userId")
+      .where("id", "=", statusUpdateId)
+      .execute(),
+    transaction
+      .selectFrom("statusUpdateComment")
+      .select("createdBy as userId")
+      .distinct()
+      .where("statusUpdateId", "=", statusUpdateId)
+      .execute(),
+    transaction
+      .selectFrom("statusUpdateSubscription")
+      .select(["userId", "subscribed"])
+      .where("statusUpdateId", "=", statusUpdateId)
+      .execute(),
+  ]);
+
+  const silenced = new Set(
+    subscriptions.filter((row) => !row.subscribed).map((row) => row.userId),
+  );
+
+  const recipients = new Set(
+    [
+      ...author,
+      ...commenters,
+      ...subscriptions.filter((row) => row.subscribed),
+    ].map((row) => row.userId),
+  );
+
+  recipients.delete(actorId);
+  for (const userId of silenced) {
+    recipients.delete(userId);
+  }
+
+  if (recipients.size === 0) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  await transaction
+    .insertInto("notification")
+    .values([...recipients].map((recipientId) => ({
+      recipientId,
+      type: "status_update_commented" as const,
+      statusUpdateId,
+      actorId,
+      occurredAt: now,
+    })))
+    // **Der Zähler zählt seit dem letzten Hinsehen**, nicht seit jeher: Wurde die Mitteilung schon
+    // gelesen, fängt er wieder bei eins an. Und sie gilt wieder als ungelesen — es ist ja etwas
+    // Neues passiert.
+    .onConflict((conflict) =>
+      conflict
+        .columns(["recipientId", "statusUpdateId"])
+        .where("type", "=", "status_update_commented")
+        .doUpdateSet((eb) => ({
+          occurredAt: now,
+          // Der Neueste steht darin: „X hat kommentiert" meint den letzten, nicht den ersten.
+          actorId,
+          newCommentCount: eb
+            .case()
+            .when(eb.ref("notification.readAt"), "is", null)
+            .then(eb(eb.ref("notification.newCommentCount"), "+", 1))
+            .else(1)
+            .end(),
+          readAt: null,
+        }))
+    )
+    .execute();
+}
+
 export const NotificationService = {
+  insertStatusUpdateCommentNotifications,
   insertBlindDateMatchedNotifications,
   insertBlindDateEndedNotification,
   insertRevealRequestedNotification,

@@ -387,6 +387,23 @@ const PAGE_SUBJECT = {
  */
 export const NOTIFICATION_RESPONSE = z.discriminatedUnion("type", [
   /**
+   * Unter einer Statusmeldung wurde geschrieben.
+   *
+   * **Zusammengefasst**: eine Mitteilung je Meldung, und `newCommentCount` sagt, wie viele
+   * Kommentare seit dem letzten Hinsehen dazugekommen sind. Achtzig Kommentare ergeben eine Zeile
+   * und nicht achtzig — sonst stünde für alles andere kein Platz mehr in der Liste.
+   *
+   * `actorUsername` ist der zuletzt Schreibende: „X hat kommentiert" meint den neuesten, nicht
+   * den ersten. Ein Text steht nicht darin, so wenig wie bei jeder anderen Art — gelesen wird
+   * unter der Meldung.
+   */
+  z.object({
+    ...NOTIFICATION_BASE,
+    statusUpdateId: NOTIFICATION_SCHEMA.shape.statusUpdateId.unwrap(),
+    newCommentCount: z.number().int().positive(),
+    type: z.literal("status_update_commented"),
+  }),
+  /**
    * The one notification with no actor: a Blind-Date is arranged by the team, and naming an
    * operator would answer the question the whole feature exists to hold back. `actorUsername` is
    * null on this kind, which the sentence in `notificationText.ts` is written not to need.
