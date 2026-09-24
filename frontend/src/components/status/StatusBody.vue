@@ -23,12 +23,14 @@ const props = withDefaults(
     /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
     lines: number
     /**
-     * Ob Text und Angebot mittig stehen.
+     * Ob „weiterlesen" mittig steht.
      *
      * Im schmalen Kasten schon: Dort bricht der Text nach zwei Zeilen ab, und linksbündig läse
-     * sich das Angebot darunter wie eine dritte, angefangene Zeile. Zentriert stehen die beiden
-     * als ein Block zusammen. Auf der Seite läuft der Absatz weit genug, dass linksbündig richtig
-     * ist — Fließtext liest sich so, und dort ist es Fließtext.
+     * sich das Angebot darunter wie eine dritte, angefangene Zeile. Mittig ist es sichtbar eine
+     * Handlung und keine Fortsetzung.
+     *
+     * **Nur das Angebot, nie der Text.** Fließtext liest sich linksbündig; mittig gesetzt zerfällt
+     * er in Zeilen, die jede für sich anfangen. Ausprobiert und wieder verworfen.
      */
     centered?: boolean
   }>(),
@@ -96,7 +98,7 @@ function toggle() {
     <p
       ref="body"
       class="text-sm leading-snug whitespace-pre-wrap text-ink-2"
-      :class="[expanded ? '' : 'overflow-hidden', centered ? 'text-center' : '']"
+      :class="expanded ? '' : 'overflow-hidden'"
       :style="expanded ? undefined : { maxHeight: `${lines * LINE_HEIGHT}em` }"
     >
       {{ expanded ? text : shown }}

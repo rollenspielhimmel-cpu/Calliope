@@ -105,21 +105,20 @@ describe('StatusBody', () => {
   })
 
   /**
-   * Im Kasten stehen Text und Angebot als ein Block zusammen; linksbündig läse sich
-   * „weiterlesen" wie eine dritte, angefangene Zeile. Auf der Seite ist es Fließtext und bleibt
-   * links.
+   * Mittig steht **nur** das Angebot, nie der Text: Fließtext liest sich linksbündig, mittig
+   * gesetzt zerfällt er in Zeilen, die jede für sich anfangen. Linksbündig unter zwei Zeilen läse
+   * sich „weiterlesen" aber wie eine dritte, angefangene — also genau eines von beidem.
    */
-  it('stellt Text und Angebot mittig, wo der Ort es verlangt', async () => {
+  it('stellt das Angebot mittig, den Text nie', async () => {
     const mitte = mount(StatusBody, { props: { text: LONG, lines: 2, centered: true } })
     await flushPromises()
 
-    expect(mitte.find('p').classes()).toContain('text-center')
     expect(mitte.find('button').classes()).toContain('text-center')
+    expect(mitte.find('p').classes()).not.toContain('text-center')
 
     const links = mount(StatusBody, { props: { text: LONG, lines: 8 } })
     await flushPromises()
 
-    expect(links.find('p').classes()).not.toContain('text-center')
     expect(links.find('button').classes()).not.toContain('text-center')
   })
 
