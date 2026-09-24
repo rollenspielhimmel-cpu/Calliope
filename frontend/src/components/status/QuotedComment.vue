@@ -40,8 +40,9 @@ const emit = defineEmits<{ remove: [] }>()
         und niemand muss wissen, *ob* gekürzt wurde. `min-w-0`, damit der Text im Flex-Kasten
         überhaupt schrumpfen darf; ohne das schöbe er den Rest hinaus.
 
-        Das schließende Anführungszeichen fällt beim Kürzen mit weg. Das ist richtig so: Ein
-        abgeschnittenes Zitat endet auf „…", nicht auf einem Zeichen, das Vollständigkeit behauptet.
+        Das schließende Anführungszeichen steht außerhalb des gekürzten Teils, damit der Browser
+        es nicht mitabschneidet: Ein Zitat endet auf …“ und nicht mit einem Anfang, der offen
+        bleibt.
       -->
       <Reply :size="11" :stroke-width="1.75" class="shrink-0 text-ink-4" aria-hidden="true" />
       <span class="shrink-0 text-[11px] text-ink-4">
@@ -53,7 +54,12 @@ const emit = defineEmits<{ remove: [] }>()
       >
         {{ quoted.createdByUsername }}
       </RouterLink>
-      <span class="min-w-0 truncate text-[11px] text-ink-3">„{{ quoted.body }}“</span>
+      <span class="flex min-w-0 items-baseline text-[11px] text-ink-3">
+        <span class="truncate">„{{ quoted.body }}</span>
+        <!-- Das schließende Zeichen steht außerhalb des gekürzten Teils, sonst schnitte es der
+             Browser mit ab: Ein Zitat soll auf …“ enden, nicht auf einem offenen Anfang. -->
+        <span class="shrink-0">“</span>
+      </span>
 
       <button
         v-if="removable"
