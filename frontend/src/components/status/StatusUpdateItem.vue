@@ -49,7 +49,7 @@ const props = withDefaults(
  * Blick, alle anderen gehen unter, und man scrollt sich durch etwas, das man gar nicht lesen
  * wollte. Sechs zeigen, was los ist; der Rest kommt auf Klick.
  *
- * Gezeigt werden die **ersten**: Man liest von vorn und klappt nach unten auf.
+ * Gezeigt werden die **neuesten**: Wer aufklappt, will wissen, was gerade dazugekommen ist.
  */
 function previewCount(layout: 'box' | 'page'): number {
   return layout === 'page' ? 6 : 3
@@ -71,16 +71,31 @@ const comments = computed<ListStatusUpdateComments200ResultsItem[]>(() => {
 })
 
 /**
- * Die Vorschau zeigt den **Anfang** des Gesprächs, nicht sein Ende.
+ * **Der neueste Kommentar steht oben**, und das Nachladen hängt die älteren unten an.
  *
- * Vorher standen die letzten drei da. Die Reihenfolge war schon immer alt nach neu — aber wer
- * mitten hineinschaut, liest den Schluss zuerst und muss nach oben aufklappen, um den Anfang zu
- * bekommen. Das sah aus wie eine verkehrte Reihenfolge, auch wenn es keine war.
+ * Hin und her überlegt, und am Ende entscheidet der Zweck: Wer eine Meldung aufklappt, will
+ * wissen, was gerade dazugekommen ist — nicht, womit ein Gespräch vor drei Wochen anfing. Also
+ * steht das Neueste zuerst.
  *
- * Jetzt liest man von vorn und klappt nach unten auf, in die Richtung, in die das Gespräch läuft.
+ * Und weil die Liste rückwärts läuft, landet das Nachgeladene von selbst dort, wo es hingehört:
+ * unter dem ältesten, der schon dasteht. Nichts schiebt sich über das, was man gerade liest.
+ *
+ * Der Server liefert alt nach neu — das ist die Reihenfolge, in der ein Gespräch entstanden ist,
+ * und die soll er behalten. Gedreht wird erst hier, beim Anzeigen.
  */
+const newestFirst = computed<ListStatusUpdateComments200ResultsItem[]>(() =>
+  // Die Ausbreitung kopiert schon; gedreht wird die Kopie, nicht die Liste aus dem
+  // Zwischenspeicher. `toReversed` wäre kürzer, steht aber erst ab ES2023 zur Verfügung, und die
+  // Bibliotheksstufe des ganzen Projekts dafür anzuheben ist eine Entscheidung für mehr als diese
+  // eine Zeile.
+  // eslint-disable-next-line unicorn/no-array-reverse -- siehe oben: es wird eine Kopie gedreht
+  [...comments.value].reverse(),
+)
+
 const visibleComments = computed<ListStatusUpdateComments200ResultsItem[]>(() =>
-  showAllComments.value ? comments.value : comments.value.slice(0, previewCount(props.layout)),
+  showAllComments.value
+    ? newestFirst.value
+    : newestFirst.value.slice(0, previewCount(props.layout)),
 )
 
 function toggleComments() {
@@ -370,8 +385,8 @@ async function submitComment() {
           </div>
         </div>
 
-        <!-- Unter der Liste, nicht darüber: Das Gespräch läuft nach unten, und was fehlt, fehlt
-             hinten. Darüber stehend forderte er auf, nach oben zu lesen. -->
+        <!-- Unter der Liste: Dort stehen die älteren, und dort kommen sie auch dazu. Über der
+             Liste schöbe das Nachgeladene sich über das, was man gerade liest. -->
         <button
           v-if="!showAllComments && comments.length > previewCount(layout)"
           type="button"

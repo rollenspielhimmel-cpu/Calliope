@@ -183,6 +183,19 @@ describe('StatusUpdateItem, der Weg zur Seite', () => {
   })
 })
 
+/**
+ * Der „Antworten"-Knopf am **ältesten** Kommentar.
+ *
+ * Die Liste läuft neueste zuerst, also steht der älteste unten — und seiner ist der letzte Knopf.
+ * Die Tests beziehen sich auf ihn, weil er derjenige mit der bekannten Kennung `c0` ist.
+ */
+function replyToOldest(wrapper: ReturnType<typeof item>) {
+  return wrapper
+    .findAll('button')
+    .filter((button) => button.text() === 'Antworten')
+    .at(-1)
+}
+
 /** Der Streifen über dem Eingabefeld — der einzige, der sich verwerfen lässt. */
 function draftQuote(wrapper: ReturnType<typeof item>) {
   return wrapper.findAllComponents(QuotedComment).find((chip) => chip.props('removable') === true)
@@ -201,10 +214,7 @@ describe('Antworten', () => {
     const field = wrapper.find('input[type="text"]')
     await field.setValue('Sehe ich anders.')
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Antworten')
-      ?.trigger('click')
+    await replyToOldest(wrapper)?.trigger('click')
     await flushPromises()
 
     // Der Entwurf bleibt, wie er war — das Zitat steht daneben, nicht darin.
@@ -221,10 +231,7 @@ describe('Antworten', () => {
 
     const wrapper = await itemWithCommentsOpen()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Antworten')
-      ?.trigger('click')
+    await replyToOldest(wrapper)?.trigger('click')
     await flushPromises()
 
     const field = wrapper.find('input[type="text"]')
@@ -241,10 +248,7 @@ describe('Antworten', () => {
   it('lässt das Zitat wieder verwerfen', async () => {
     const wrapper = await itemWithCommentsOpen()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Antworten')
-      ?.trigger('click')
+    await replyToOldest(wrapper)?.trigger('click')
     await flushPromises()
 
     await draftQuote(wrapper)?.find('button').trigger('click')
@@ -308,21 +312,23 @@ describe('Mitteilungen für eine Meldung', () => {
 })
 
 /**
- * Die Vorschau im Kasten zeigt den **Anfang** des Gesprächs.
+ * **Der neueste Kommentar steht oben.**
  *
- * Die Reihenfolge war schon immer alt nach neu — aber mit den letzten drei las man den Schluss
- * zuerst und musste nach oben aufklappen. Das sah aus wie eine verkehrte Reihenfolge, auch wenn es
- * keine war.
+ * Wer eine Meldung aufklappt, will wissen, was gerade dazugekommen ist — nicht, womit ein Gespräch
+ * vor drei Wochen anfing. Und weil die Liste rückwärts läuft, landen nachgeladene ältere von
+ * selbst unter dem, was man gerade liest, statt sich darüberzuschieben.
  */
-describe('Die Vorschau der Kommentare', () => {
-  it('beginnt vorn und klappt nach unten auf', async () => {
+describe('Die Reihenfolge der Kommentare', () => {
+  it('zeigt den neuesten zuerst', async () => {
     const wrapper = await itemWithCommentsOpen()
 
-    // Zwei Kommentare, PREVIEW_COUNT ist drei: Hier steht ohnehin alles, in der richtigen Folge.
-    const shown = wrapper.text()
-    expect(shown.indexOf(existingComment.body.slice(0, 20))).toBeLessThan(
-      shown.indexOf(quotingComment.body),
-    )
+    // An den Absätzen gemessen, nicht am ganzen Text: Der zitierte Wortlaut steht sonst zweimal
+    // da — einmal als Zitat, einmal als der Kommentar selbst — und die Suche fände den falschen.
+    const bodies = wrapper.findAll('p.leading-5').map((paragraph) => paragraph.text())
+
+    // Der Server liefert alt nach neu; gedreht wird beim Anzeigen.
+    expect(bodies[0]).toContain(quotingComment.body)
+    expect(bodies[1]).toContain('Das ist ein ziemlich langer Kommentar')
   })
 })
 
