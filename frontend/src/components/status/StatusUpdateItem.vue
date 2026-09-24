@@ -391,13 +391,18 @@ async function submitComment() {
       />
 
       <!-- `v-model` statt eines Griffs ans DOM: Das Feld merkt sich seinen Wert selbst, und
-           ein direkt geleertes `input.value` schrieb es beim nächsten Zeichnen zurück. -->
+           ein direkt geleertes `input.value` schrieb es beim nächsten Zeichnen zurück.
+
+           **Der Fokusrahmen ist hier feiner als sonst.** Drei Pixel Braun direkt neben der
+           gedämpften Füllung des Zitats darüber ließen die beiden verschwimmen — zwei kräftige
+           Brauntöne aneinander, das sieht nach alter Oberfläche aus. Einer reicht, um zu zeigen,
+           wo man tippt. Überall sonst bleibt der Rahmen, wie er ist. -->
       <Input
         :ref="setCommentField"
         v-model="draft"
         type="text"
         placeholder="Kommentieren …"
-        class="mt-1 h-7 text-xs"
+        class="mt-1 h-7 text-xs focus-visible:ring-1"
         :disabled="sending"
         :maxlength="TEXT_LIMIT.createStatusUpdateComment.body.maxLength"
         @keydown.enter="submitComment"

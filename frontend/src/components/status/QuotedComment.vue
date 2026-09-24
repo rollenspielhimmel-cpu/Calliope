@@ -43,10 +43,18 @@ const emit = defineEmits<{ remove: [] }>()
           {{ quoted.createdByUsername }}
         </RouterLink>
       </p>
-      <!-- Zwei Zeilen, dann „… weiterlesen": Das Zitat soll zeigen, worauf sich jemand bezieht,
-           und nicht die Antwort darunter verdrängen. Der ganze Text ist da — anders als früher,
-           als nach sechzig Zeichen wirklich Schluss war. -->
-      <StatusBody :text="quoted.body" :lines="2" size="text-[11.5px]" />
+      <!-- **In Anführungszeichen**, damit man den Kommentar wiedererkennt, auf den sich jemand
+           bezieht: Derselbe Mensch schreibt unter einer Meldung oft mehrmals, und ein Name allein
+           sagt dann nicht, welcher der drei gemeint ist. Der Wortlaut sagt es.
+
+           Zwei Zeilen, dann „… weiterlesen" — das Zitat soll zeigen, worauf sich jemand bezieht,
+           und nicht die Antwort darunter verdrängen. Der ganze Text ist da, anders als früher,
+           als nach sechzig Zeichen wirklich Schluss war.
+
+           Das schließende Zeichen gehört in den Text und nicht daneben: Wird gekürzt, fällt es mit
+           dem Rest weg, und das Zitat endet auf „…" — genau so, wie ein abgeschnittenes Zitat
+           aussehen soll. -->
+      <StatusBody :text="`„${quoted.body}“`" :lines="2" size="text-[11.5px]" />
     </div>
 
     <button
