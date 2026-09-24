@@ -22,6 +22,7 @@ import type {
 } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
+import { pluralize } from '@/lib/format/formatText'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
 import { Bell, BellOff } from '@lucide/vue'
 import QuotedComment from '@/components/status/QuotedComment.vue'
@@ -46,6 +47,8 @@ const props = withDefaults(
  * Nur dort: Auf der Seite ist Platz, und ein Zwischenschritt, der nichts spart, ist ein Klick zu
  * viel. Im Kasten schiebt ein Strang mit achtzig Kommentaren sonst alle anderen Meldungen aus dem
  * Blick — genau das, wogegen die Kürzung der langen Meldungen gebaut ist.
+ *
+ * Gezeigt werden die **ersten** drei: Man liest von vorn und klappt nach unten auf.
  */
 const PREVIEW_COUNT = 3
 
@@ -64,8 +67,17 @@ const comments = computed<ListStatusUpdateComments200ResultsItem[]>(() => {
   return answer?.status === 200 ? answer.data.results : []
 })
 
+/**
+ * Die Vorschau zeigt den **Anfang** des Gesprächs, nicht sein Ende.
+ *
+ * Vorher standen die letzten drei da. Die Reihenfolge war schon immer alt nach neu — aber wer
+ * mitten hineinschaut, liest den Schluss zuerst und muss nach oben aufklappen, um den Anfang zu
+ * bekommen. Das sah aus wie eine verkehrte Reihenfolge, auch wenn es keine war.
+ *
+ * Jetzt liest man von vorn und klappt nach unten auf, in die Richtung, in die das Gespräch läuft.
+ */
 const visibleComments = computed<ListStatusUpdateComments200ResultsItem[]>(() =>
-  showAllComments.value ? comments.value : comments.value.slice(-PREVIEW_COUNT),
+  showAllComments.value ? comments.value : comments.value.slice(0, PREVIEW_COUNT),
 )
 
 function toggleComments() {
@@ -169,9 +181,15 @@ async function submitComment() {
     // sind nicht verloren.
     draft.value = ''
     quoted.value = undefined
-    // Die Liste mit, nicht nur die Kommentare: Die Zahl am Sprechblasen-Knopf kommt von dort, und
-    // sie steht an beiden Orten.
-    await Promise.all([commentsQuery.refetch(), refreshStatusUpdates()])
+    // **Drei Dinge, nicht eines.** Die Kommentare selbst; die Liste, weil die Zahl am
+    // Sprechblasen-Knopf von dort kommt und an beiden Orten steht; und die Glocke, weil
+    // Mitkommentieren nach der Regel bedeutet, ab jetzt mitzuhören — sie stand sonst grau da,
+    // bis jemand neu lud, und log damit über den eigenen Zustand.
+    await Promise.all([
+      commentsQuery.refetch(),
+      subscriptionQuery.refetch(),
+      refreshStatusUpdates(),
+    ])
   } finally {
     sending.value = false
   }
@@ -275,15 +293,6 @@ async function submitComment() {
       <p v-if="commentsQuery.isPending.value" class="text-[11.5px] text-ink-5">Wird geladen …</p>
 
       <template v-else>
-        <button
-          v-if="!showAllComments && comments.length > PREVIEW_COUNT"
-          type="button"
-          class="mb-1.5 block text-xs font-medium text-oak-deep"
-          @click="showAllComments = true"
-        >
-          {{ comments.length - PREVIEW_COUNT }} weitere Kommentare anzeigen
-        </button>
-
         <!-- Kein eigener Scrollbereich mehr. Er saß in einem Kasten, der selbst scrollt, und
              zeigte vier Kommentare durch ein Guckloch von 160 Pixeln — zwei Balken ineinander.
              Jetzt wird an einer Stelle gescrollt. -->
@@ -323,6 +332,20 @@ async function submitComment() {
             </p>
           </div>
         </div>
+
+        <!-- Unter der Liste, nicht darüber: Das Gespräch läuft nach unten, und was fehlt, fehlt
+             hinten. Darüber stehend forderte er auf, nach oben zu lesen. -->
+        <button
+          v-if="!showAllComments && comments.length > PREVIEW_COUNT"
+          type="button"
+          class="mb-1.5 block text-xs font-medium text-oak-deep"
+          @click="showAllComments = true"
+        >
+          {{
+            pluralize(comments.length - PREVIEW_COUNT, 'weiteren Kommentar', 'weitere Kommentare')
+          }}
+          anzeigen
+        </button>
       </template>
 
       <!-- Was zitiert wird, steht über dem Feld statt im Feld: Der eigene Text bleibt der eigene,

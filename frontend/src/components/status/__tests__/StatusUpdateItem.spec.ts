@@ -306,3 +306,22 @@ describe('Mitteilungen für eine Meldung', () => {
     expect(setSubscription).toHaveBeenCalledWith('s1', { subscribed: false })
   })
 })
+
+/**
+ * Die Vorschau im Kasten zeigt den **Anfang** des Gesprächs.
+ *
+ * Die Reihenfolge war schon immer alt nach neu — aber mit den letzten drei las man den Schluss
+ * zuerst und musste nach oben aufklappen. Das sah aus wie eine verkehrte Reihenfolge, auch wenn es
+ * keine war.
+ */
+describe('Die Vorschau der Kommentare', () => {
+  it('beginnt vorn und klappt nach unten auf', async () => {
+    const wrapper = await itemWithCommentsOpen()
+
+    // Zwei Kommentare, PREVIEW_COUNT ist drei: Hier steht ohnehin alles, in der richtigen Folge.
+    const shown = wrapper.text()
+    expect(shown.indexOf(existingComment.body.slice(0, 20))).toBeLessThan(
+      shown.indexOf(quotingComment.body),
+    )
+  })
+})
