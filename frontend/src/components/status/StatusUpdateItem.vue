@@ -24,7 +24,7 @@ import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { pluralize } from '@/lib/format/formatText'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
-import { Bell, BellOff } from '@lucide/vue'
+import { Bell, BellOff, Reply } from '@lucide/vue'
 import QuotedComment from '@/components/status/QuotedComment.vue'
 import StatusBody from '@/components/status/StatusBody.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -340,16 +340,22 @@ async function submitComment() {
                 {{ comment.createdByUsername }}
               </RouterLink>
               {{ comment.body }}
-              <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }}</span>
-              <!-- In derselben zurückgenommenen Zeile wie die Uhrzeit: eine Handlung, kein
-                 Angebot, das sich vordrängt. Ein roher Knopf, weil diese Zeile Text ist und
-                 keine Knopfleiste. -->
+              <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }} ·</span>
+              <!-- **„Antworten", nicht „Zitieren", und mit Pfeil.**
+                   „Zitieren" beschreibt die Technik; „Antworten" das, was man vorhat — und
+                   zitieren *ist* auf einen bestimmten Kommentar antworten, der Streifen darüber
+                   zeigt danach, auf welchen. Der Pfeil ist das Zeichen, nach dem man sucht: In
+                   derselben zurückgenommenen Farbe wie die Uhrzeit übersah man das Wort allein.
+
+                   Bleibt in der Metazeile und wird keine Knopfleiste: eine Handlung, kein
+                   Angebot, das sich vordrängt. -->
               <button
                 type="button"
-                class="text-ink-4 hover:text-oak-deep"
+                class="ml-0.5 inline-flex items-baseline gap-0.5 text-ink-4 hover:text-oak-deep"
                 @click="quoteComment(comment)"
               >
-                · Zitieren
+                <Reply :size="11" :stroke-width="1.75" class="self-center" aria-hidden="true" />
+                Antworten
               </button>
             </p>
           </div>

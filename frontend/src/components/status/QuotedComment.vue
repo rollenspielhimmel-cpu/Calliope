@@ -12,7 +12,7 @@
  * zitiert, soll beim Schreiben genauso aussehen wie danach.
  */
 import { RouterLink } from 'vue-router'
-import { X } from '@lucide/vue'
+import { Reply, X } from '@lucide/vue'
 import StatusBody from '@/components/status/StatusBody.vue'
 
 defineProps<{
@@ -29,12 +29,20 @@ const emit = defineEmits<{ remove: [] }>()
     class="flex items-start gap-1.5 rounded-md border-l-2 border-line-2 bg-paper-2 py-1 pr-1 pl-2"
   >
     <div class="min-w-0 flex-1">
-      <RouterLink
-        :to="{ name: 'member', params: { userId: quoted.createdBy } }"
-        class="text-[11.5px] font-medium text-ink-2 hover:underline"
-      >
-        {{ quoted.createdByUsername }}
-      </RouterLink>
+      <!-- **Die Beziehung steht dabei, nicht nur der Name.**
+           Vorher standen hier zwei Namen untereinander — der zitierte über dem antwortenden — und
+           es war nicht zu sehen, welcher sich auf welchen bezieht. „Antwort auf federkiel" sagt
+           es in vier Wörtern. Im Entwurf steht „Du antwortest auf", weil es dort noch bevorsteht. -->
+      <p class="flex items-center gap-1 text-[11px] text-ink-4">
+        <Reply :size="11" :stroke-width="1.75" aria-hidden="true" />
+        <span>{{ removable ? 'Du antwortest auf' : 'Antwort auf' }}</span>
+        <RouterLink
+          :to="{ name: 'member', params: { userId: quoted.createdBy } }"
+          class="font-medium text-ink-2 hover:underline"
+        >
+          {{ quoted.createdByUsername }}
+        </RouterLink>
+      </p>
       <!-- Zwei Zeilen, dann „… weiterlesen": Das Zitat soll zeigen, worauf sich jemand bezieht,
            und nicht die Antwort darunter verdrängen. Der ganze Text ist da — anders als früher,
            als nach sechzig Zeichen wirklich Schluss war. -->

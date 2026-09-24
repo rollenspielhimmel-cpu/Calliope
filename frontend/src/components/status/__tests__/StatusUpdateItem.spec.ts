@@ -188,7 +188,7 @@ function draftQuote(wrapper: ReturnType<typeof item>) {
   return wrapper.findAllComponents(QuotedComment).find((chip) => chip.props('removable') === true)
 }
 
-describe('Zitieren', () => {
+describe('Antworten', () => {
   /**
    * **Als Bezug, nicht als Text.** Früher schrieb „Zitieren" `@name: „die ersten 60 Zeichen …"`
    * ins Feld: Der Rest war damit für immer weg, der Name ließ sich nicht verlinken, und er wäre
@@ -203,7 +203,7 @@ describe('Zitieren', () => {
 
     await wrapper
       .findAll('button')
-      .find((button) => button.text() === '· Zitieren')
+      .find((button) => button.text() === 'Antworten')
       ?.trigger('click')
     await flushPromises()
 
@@ -223,7 +223,7 @@ describe('Zitieren', () => {
 
     await wrapper
       .findAll('button')
-      .find((button) => button.text() === '· Zitieren')
+      .find((button) => button.text() === 'Antworten')
       ?.trigger('click')
     await flushPromises()
 
@@ -243,7 +243,7 @@ describe('Zitieren', () => {
 
     await wrapper
       .findAll('button')
-      .find((button) => button.text() === '· Zitieren')
+      .find((button) => button.text() === 'Antworten')
       ?.trigger('click')
     await flushPromises()
 

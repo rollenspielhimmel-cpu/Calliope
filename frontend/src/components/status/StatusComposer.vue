@@ -57,7 +57,21 @@ async function submit() {
         :maxlength="TEXT_LIMIT.createStatusUpdate.body.maxLength"
         @keydown.enter="submit"
       />
-      <Button size="sm" :disabled="posting || !draft.trim()" @click="submit">
+      <!-- **Zweite Stufe, und ohne Kante.**
+           Ein voll gefüllter Hauptknopf sagt „das ist die Handlung dieser Seite". Auf der
+           Anmeldeseite stimmt das; in einem Kasten zwischen anderen Kästen ist „Posten" eine
+           Nebensache, und ein Hauptknopf darin drückt.
+
+           Die Linie fällt weg, damit die Füllung dieselbe ist wie an den Sprechblasen darunter —
+           ein Kasten, eine Familie. `border-transparent` statt `border-0`: Die Kante bleibt als
+           Platz erhalten, sonst wäre der Knopf zwei Pixel kleiner als die Eingabezeile daneben. -->
+      <Button
+        variant="outline"
+        size="sm"
+        class="border-transparent"
+        :disabled="posting || !draft.trim()"
+        @click="submit"
+      >
         <Spinner v-if="posting" />
         Posten
       </Button>
