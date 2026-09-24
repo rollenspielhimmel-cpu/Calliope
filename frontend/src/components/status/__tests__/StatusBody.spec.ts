@@ -104,6 +104,25 @@ describe('StatusBody', () => {
     expect(wrapper.find('button').text()).toBe('weiterlesen')
   })
 
+  /**
+   * Im Kasten stehen Text und Angebot als ein Block zusammen; linksbündig läse sich
+   * „weiterlesen" wie eine dritte, angefangene Zeile. Auf der Seite ist es Fließtext und bleibt
+   * links.
+   */
+  it('stellt Text und Angebot mittig, wo der Ort es verlangt', async () => {
+    const mitte = mount(StatusBody, { props: { text: LONG, lines: 2, centered: true } })
+    await flushPromises()
+
+    expect(mitte.find('p').classes()).toContain('text-center')
+    expect(mitte.find('button').classes()).toContain('text-center')
+
+    const links = mount(StatusBody, { props: { text: LONG, lines: 8 } })
+    await flushPromises()
+
+    expect(links.find('p').classes()).not.toContain('text-center')
+    expect(links.find('button').classes()).not.toContain('text-center')
+  })
+
   /** Der Ort entscheidet, nicht der Text: Die Deckelung steht in Zeilen, nicht in Zeichen. */
   it('deckelt die Höhe nach der Zeilenzahl, die der Ort vorgibt', async () => {
     const wrapper = mount(StatusBody, { props: { text: SHORT, lines: 4 } })

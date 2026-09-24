@@ -176,7 +176,11 @@ async function submitComment() {
           </RouterLink>
           <span v-else class="text-ink-3">{{ formatActivityTime(update.createdAt) }}</span>
         </p>
-        <StatusBody :text="update.body" :lines="layout === 'page' ? 8 : 4" />
+        <StatusBody
+          :text="update.body"
+          :lines="layout === 'page' ? 8 : 2"
+          :centered="layout === 'box'"
+        />
       </div>
       <button
         type="button"

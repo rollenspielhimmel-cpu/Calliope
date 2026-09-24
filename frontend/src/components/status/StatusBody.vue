@@ -17,11 +17,23 @@ import { ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { shortenToFit } from '@/lib/text/shortenToFit'
 
-const props = defineProps<{
-  text: string
-  /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
-  lines: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    text: string
+    /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
+    lines: number
+    /**
+     * Ob Text und Angebot mittig stehen.
+     *
+     * Im schmalen Kasten schon: Dort bricht der Text nach zwei Zeilen ab, und linksbündig läse
+     * sich das Angebot darunter wie eine dritte, angefangene Zeile. Zentriert stehen die beiden
+     * als ein Block zusammen. Auf der Seite läuft der Absatz weit genug, dass linksbündig richtig
+     * ist — Fließtext liest sich so, und dort ist es Fließtext.
+     */
+    centered?: boolean
+  }>(),
+  { centered: false },
+)
 
 /**
  * Der Absatz ist sein eigenes Maßband: Die Höhendeckelung und `overflow-hidden` halten ihn dort,
@@ -84,7 +96,7 @@ function toggle() {
     <p
       ref="body"
       class="text-sm leading-snug whitespace-pre-wrap text-ink-2"
-      :class="expanded ? '' : 'overflow-hidden'"
+      :class="[expanded ? '' : 'overflow-hidden', centered ? 'text-center' : '']"
       :style="expanded ? undefined : { maxHeight: `${lines * LINE_HEIGHT}em` }"
     >
       {{ expanded ? text : shown }}
@@ -94,6 +106,7 @@ function toggle() {
       v-if="wasCut"
       type="button"
       class="mt-0.5 text-[11.5px] font-medium text-oak-deep underline-offset-[4px] hover:underline"
+      :class="centered ? 'block w-full text-center' : ''"
       @click="toggle"
     >
       {{ expanded ? 'weniger' : 'weiterlesen' }}
