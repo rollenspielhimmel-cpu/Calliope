@@ -1,19 +1,26 @@
 <script setup lang="ts">
 /**
- * Der zitierte Kommentar über einer Antwort.
+ * Eine Antwort mit dem Kommentar darüber, auf den sie sich bezieht.
  *
- * **Er wird aus dem Bezug gebaut, nicht aus einer Kopie.** Deshalb stimmt das Zitat weiterhin,
+ * **Eine Zeile, dann die Antwort.** Oben „↩ Antwort auf federkiel „Mir geht es gerade …"", direkt
+ * darunter, in derselben Box, was man selbst geschrieben hat. Die beiden gehören zusammen und
+ * sehen jetzt auch so aus.
+ *
+ * **Warum der Wortlaut mit in die Zeile muss:** Derselbe Mensch schreibt unter einer Meldung oft
+ * mehrmals. Ein Name allein sagt dann nicht, welcher der drei Kommentare gemeint ist — die ersten
+ * Wörter sagen es.
+ *
+ * **Es wird aus dem Bezug gebaut, nicht aus einer Kopie.** Deshalb stimmt das Zitat weiterhin,
  * wenn jemand seinen Kommentar ändert, und der Name steht sofort richtig da, wenn jemand sich
  * umbenennt. Vorher stand beides als `@name: „die ersten 60 Zeichen …"` im Text der Antwort —
  * eingefroren, nicht verlinkbar, und hinter dem „…" stand nichts mehr.
  *
  * Dieselbe Komponente dient zweimal: über dem Eingabefeld, solange die Antwort getippt wird, und
- * über der fertigen Antwort. Der Unterschied ist ein Abbrechen-Knopf, sonst nichts — was man
+ * über der fertigen Antwort. Der Unterschied ist ein Kreuz zum Verwerfen, sonst nichts — was man
  * zitiert, soll beim Schreiben genauso aussehen wie danach.
  */
 import { RouterLink } from 'vue-router'
 import { Reply, X } from '@lucide/vue'
-import StatusBody from '@/components/status/StatusBody.vue'
 
 defineProps<{
   quoted: { id: string; body: string; createdBy: string; createdByUsername: string }
@@ -25,46 +32,41 @@ const emit = defineEmits<{ remove: [] }>()
 </script>
 
 <template>
-  <div
-    class="flex items-start gap-1.5 rounded-md border-l-2 border-line-2 bg-paper-2 py-1 pr-1 pl-2"
-  >
-    <div class="min-w-0 flex-1">
-      <!-- **Die Beziehung steht dabei, nicht nur der Name.**
-           Vorher standen hier zwei Namen untereinander — der zitierte über dem antwortenden — und
-           es war nicht zu sehen, welcher sich auf welchen bezieht. „Antwort auf federkiel" sagt
-           es in vier Wörtern. Im Entwurf steht „Du antwortest auf", weil es dort noch bevorsteht. -->
-      <p class="flex items-center gap-1 text-[11px] text-ink-4">
-        <Reply :size="11" :stroke-width="1.75" aria-hidden="true" />
-        <span>{{ removable ? 'Du antwortest auf' : 'Antwort auf' }}</span>
-        <RouterLink
-          :to="{ name: 'member', params: { userId: quoted.createdBy } }"
-          class="font-medium text-ink-2 hover:underline"
-        >
-          {{ quoted.createdByUsername }}
-        </RouterLink>
-      </p>
-      <!-- **In Anführungszeichen**, damit man den Kommentar wiedererkennt, auf den sich jemand
-           bezieht: Derselbe Mensch schreibt unter einer Meldung oft mehrmals, und ein Name allein
-           sagt dann nicht, welcher der drei gemeint ist. Der Wortlaut sagt es.
+  <div class="rounded-md border-l-2 border-line-2 bg-paper-2 py-1 pr-1 pl-2">
+    <div class="flex items-center gap-1">
+      <!--
+        **Eine Zeile, abgeschnitten vom Browser.** Sonst misst diese Oberfläche selbst, wie viel
+        Text passt — hier nicht: Bei genau einer Zeile kann `truncate` es, es setzt das „…" selbst,
+        und niemand muss wissen, *ob* gekürzt wurde. `min-w-0`, damit der Text im Flex-Kasten
+        überhaupt schrumpfen darf; ohne das schöbe er den Rest hinaus.
 
-           Zwei Zeilen, dann „… weiterlesen" — das Zitat soll zeigen, worauf sich jemand bezieht,
-           und nicht die Antwort darunter verdrängen. Der ganze Text ist da, anders als früher,
-           als nach sechzig Zeichen wirklich Schluss war.
+        Das schließende Anführungszeichen fällt beim Kürzen mit weg. Das ist richtig so: Ein
+        abgeschnittenes Zitat endet auf „…", nicht auf einem Zeichen, das Vollständigkeit behauptet.
+      -->
+      <Reply :size="11" :stroke-width="1.75" class="shrink-0 text-ink-4" aria-hidden="true" />
+      <span class="shrink-0 text-[11px] text-ink-4">
+        {{ removable ? 'Du antwortest auf' : 'Antwort auf' }}
+      </span>
+      <RouterLink
+        :to="{ name: 'member', params: { userId: quoted.createdBy } }"
+        class="shrink-0 text-[11px] font-medium text-ink-2 hover:underline"
+      >
+        {{ quoted.createdByUsername }}
+      </RouterLink>
+      <span class="min-w-0 truncate text-[11px] text-ink-3">„{{ quoted.body }}“</span>
 
-           Das schließende Zeichen gehört in den Text und nicht daneben: Wird gekürzt, fällt es mit
-           dem Rest weg, und das Zitat endet auf „…" — genau so, wie ein abgeschnittenes Zitat
-           aussehen soll. -->
-      <StatusBody :text="`„${quoted.body}“`" :lines="2" size="text-[11.5px]" />
+      <button
+        v-if="removable"
+        type="button"
+        class="ml-auto shrink-0 rounded p-0.5 text-ink-4 hover:text-oak-deep"
+        aria-label="Zitat verwerfen"
+        @click="emit('remove')"
+      >
+        <X :size="13" :stroke-width="1.5" aria-hidden="true" />
+      </button>
     </div>
 
-    <button
-      v-if="removable"
-      type="button"
-      class="mt-0.5 shrink-0 rounded p-0.5 text-ink-4 hover:text-oak-deep"
-      aria-label="Zitat verwerfen"
-      @click="emit('remove')"
-    >
-      <X :size="13" :stroke-width="1.5" aria-hidden="true" />
-    </button>
+    <!-- Die Antwort selbst, in derselben Box. Beim Entwurf leer: Dort steht sie noch im Feld. -->
+    <slot />
   </div>
 </template>

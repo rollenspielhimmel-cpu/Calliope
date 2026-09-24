@@ -324,24 +324,32 @@ async function submitComment() {
             <UserAvatar :username="comment.createdByUsername" class="size-5" />
           </RouterLink>
           <div class="min-w-0 flex-1">
-            <QuotedComment
-              v-if="comment.quotedComment"
-              :quoted="comment.quotedComment"
-              class="mb-1"
-            />
-            <!-- `leading-5` ist genau die Höhe des Bildes daneben (`size-5`), also steht eine
-                 einzeilige Antwort mittig dazu statt drei Pixel zu hoch. Bei mehreren Zeilen
-                 bleibt das Bild an der ersten, wo der Name steht — das ist richtig so. -->
-            <p class="text-xs leading-5 text-ink-3">
-              <RouterLink
-                :to="{ name: 'member', params: { userId: comment.createdBy } }"
-                class="font-medium text-ink-2 hover:underline"
-              >
-                {{ comment.createdByUsername }}
-              </RouterLink>
-              {{ comment.body }}
-              <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }} ·</span>
-              <!-- **„Antworten", nicht „Zitieren", und mit Pfeil.**
+            <!--
+              **Zitat und Antwort stehen in einer Box.** Vorher war das Zitat ein Kasten und die
+              Antwort stand darunter im Freien; zwei Dinge, die zusammengehören, sahen aus wie
+              zwei. Jetzt trägt die Box beides: oben, worauf geantwortet wird, direkt darunter die
+              Antwort.
+
+              Ohne Zitat bleibt die Antwort nackt, wie jeder andere Kommentar auch — die Box
+              bedeutet etwas, und was sie bedeutet, soll sie nicht umsonst sagen.
+            -->
+            <component
+              :is="comment.quotedComment ? QuotedComment : 'div'"
+              v-bind="comment.quotedComment ? { quoted: comment.quotedComment } : {}"
+            >
+              <!-- `leading-5` ist genau die Höhe des Bildes daneben (`size-5`), also steht eine
+                   einzeilige Antwort mittig dazu statt drei Pixel zu hoch. Bei mehreren Zeilen
+                   bleibt das Bild an der ersten, wo der Name steht — das ist richtig so. -->
+              <p class="text-xs leading-5 text-ink-3">
+                <RouterLink
+                  :to="{ name: 'member', params: { userId: comment.createdBy } }"
+                  class="font-medium text-ink-2 hover:underline"
+                >
+                  {{ comment.createdByUsername }}
+                </RouterLink>
+                {{ comment.body }}
+                <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }} ·</span>
+                <!-- **„Antworten", nicht „Zitieren", und mit Pfeil.**
                    „Zitieren" beschreibt die Technik; „Antworten" das, was man vorhat — und
                    zitieren *ist* auf einen bestimmten Kommentar antworten, der Streifen darüber
                    zeigt danach, auf welchen. Der Pfeil ist das Zeichen, nach dem man sucht: In
@@ -349,15 +357,16 @@ async function submitComment() {
 
                    Bleibt in der Metazeile und wird keine Knopfleiste: eine Handlung, kein
                    Angebot, das sich vordrängt. -->
-              <button
-                type="button"
-                class="ml-0.5 inline-flex items-baseline gap-0.5 text-ink-4 hover:text-oak-deep"
-                @click="quoteComment(comment)"
-              >
-                <Reply :size="11" :stroke-width="1.75" class="self-center" aria-hidden="true" />
-                Antworten
-              </button>
-            </p>
+                <button
+                  type="button"
+                  class="ml-0.5 inline-flex items-baseline gap-0.5 text-ink-4 hover:text-oak-deep"
+                  @click="quoteComment(comment)"
+                >
+                  <Reply :size="11" :stroke-width="1.75" class="self-center" aria-hidden="true" />
+                  Antworten
+                </button>
+              </p>
+            </component>
           </div>
         </div>
 
