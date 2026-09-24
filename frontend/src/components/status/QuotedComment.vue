@@ -38,7 +38,7 @@ const emit = defineEmits<{ remove: [] }>()
       <!-- Zwei Zeilen, dann „… weiterlesen": Das Zitat soll zeigen, worauf sich jemand bezieht,
            und nicht die Antwort darunter verdrängen. Der ganze Text ist da — anders als früher,
            als nach sechzig Zeichen wirklich Schluss war. -->
-      <StatusBody :text="quoted.body" :lines="2" class="text-[11.5px]" />
+      <StatusBody :text="quoted.body" :lines="2" size="text-[11.5px]" />
     </div>
 
     <button

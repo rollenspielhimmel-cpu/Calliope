@@ -617,6 +617,12 @@ async function insertBlindDateEndedNotification(
  * das Blättern: Eine Gruppe, die über eine Seitengrenze fällt, ließe sich beim Anzeigen nicht mehr
  * richtig zusammenlegen — und die Zahl am Glockensymbol zählt Zeilen, also stimmt sie so von
  * selbst.
+ *
+ * **Eine Folge davon, die man kennen sollte:** In der Zeile steht der zuletzt Schreibende. Wer
+ * genau den blockiert hat, sieht die ganze zusammengefasste Mitteilung nicht — auch den Teil
+ * nicht, der von jemand anderem kam. Gefiltert wird beim Lesen (siehe `hiddenActorIds`), also
+ * kommt sie zurück, sobald die Blockade fällt oder jemand anderes schreibt. Das ist der Preis
+ * dafür, dass achtzig Kommentare eine Zeile sind statt achtzig.
  */
 async function insertStatusUpdateCommentNotifications(
   transaction: Transaction,

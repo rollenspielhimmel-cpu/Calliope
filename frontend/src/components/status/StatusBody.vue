@@ -28,11 +28,23 @@ import { nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { shortenToFit } from '@/lib/text/shortenToFit'
 
-const props = defineProps<{
-  text: string
-  /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
-  lines: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    text: string
+    /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
+    lines: number
+    /**
+     * Die Schriftgröße, als eine Klasse.
+     *
+     * **Eine Angabe, nicht zwei.** Sie von außen dazuzugeben ginge auch — nur stünden dann zwei
+     * Schriftgrößen am selben Absatz, und welche gewinnt, entscheidet die Reihenfolge im
+     * Stylesheet statt der Absicht. Im Zitat ist es kleiner als im Meldungstext; hier steht, wer
+     * das bestimmt.
+     */
+    size?: string
+  }>(),
+  { size: 'text-sm' },
+)
 
 /**
  * Der Absatz ist sein eigenes Maßband: Die Höhendeckelung und `overflow-hidden` halten ihn dort,
@@ -112,8 +124,8 @@ function toggle() {
   <!-- prettier-ignore -->
   <p
     ref="body"
-    class="text-sm leading-snug whitespace-pre-wrap text-ink-2"
-    :class="expanded ? '' : 'overflow-hidden'"
+    class="leading-snug whitespace-pre-wrap text-ink-2"
+    :class="[size, expanded ? '' : 'overflow-hidden']"
     :style="expanded ? undefined : { maxHeight: `${lines * LINE_HEIGHT}em` }"
   ><span ref="textSpan">{{ expanded ? text : shown }}</span><button
       v-if="wasCut"

@@ -184,3 +184,30 @@ Deno.test("der Schalter braucht eine Meldung, die es gibt", async () => {
 
   assertEquals(response.status, STATUS_CODE.NotFound);
 });
+
+/**
+ * **Der Zähler zählt seit dem letzten Hinsehen, nicht seit jeher.**
+ *
+ * Sonst stünde nach Wochen „47 neue Kommentare" an etwas, das man längst gelesen hat — und die
+ * Zahl wäre nicht falsch, sondern nur nutzlos.
+ */
+Deno.test("nach dem Lesen fängt der Zähler wieder bei eins an", async () => {
+  const authorCookie = await registerUser(author);
+  const commenterCookie = await registerUser(commenter);
+  const statusUpdate = await createStatusUpdate(authorCookie);
+
+  await comment(commenterCookie, statusUpdate.id, "Eins.");
+  await comment(commenterCookie, statusUpdate.id, "Zwei.");
+  assertEquals((await notifications(authorCookie))[0]?.newCommentCount, 2);
+
+  assertEquals(
+    (await request("POST", "/api/notifications/read", authorCookie)).status,
+    STATUS_CODE.OK,
+  );
+
+  await comment(commenterCookie, statusUpdate.id, "Drei.");
+
+  const received = await notifications(authorCookie);
+  assertEquals(received.length, 1, "weiterhin eine Zeile, keine zweite");
+  assertEquals(received[0]?.newCommentCount, 1);
+});

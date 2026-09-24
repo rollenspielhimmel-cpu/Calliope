@@ -479,17 +479,6 @@ Deno.test("der Archiv-Haken hängt einen Beitrag an den einen Faden", async () =
   const cookies = await fixture();
 
   try {
-    const before = await db
-      .selectFrom("writingPost")
-      .innerJoin(
-        "writingThread",
-        "writingThread.id",
-        "writingPost.writingThreadId",
-      )
-      .select("writingPost.id")
-      .where("writingThread.isBroadcastArchive", "=", true)
-      .execute();
-
     await submit(cookies.root, TO_THE_ARCHIVE);
 
     const broadcast = await theBroadcast();
@@ -523,8 +512,17 @@ Deno.test("der Archiv-Haken hängt einen Beitrag an den einen Faden", async () =
     assert(post.text.startsWith(SUBJECT));
     assert(post.text.includes(BODY));
 
-    // Genau einer mehr als vorher.
-    const after = await db
+    // **Genau einer, und nur die eigenen gezählt.**
+    //
+    // Vorher zählte das alle Beiträge im Archiv, vor und nach dem Senden, und verlangte genau
+    // einen mehr. Das Archiv ist aber der eine Faden der ganzen Plattform: Schickt eine andere
+    // Testdatei gleichzeitig eine Rundmail dorthin — `retract_broadcast_test.ts` tut genau das —,
+    // sind es zwei mehr, und der Test fällt um, ohne dass irgendetwas kaputt wäre. Genau so ist er
+    // am 24.09.2026 einmal gescheitert und beim Wiederholen durchgelaufen.
+    //
+    // Gezählt wird jetzt nach dem Betreff, den nur diese Datei benutzt. Die Aussage bleibt: Eine
+    // Rundmail hängt genau einen Beitrag an, nicht zwei.
+    const mine = await db
       .selectFrom("writingPost")
       .innerJoin(
         "writingThread",
@@ -533,9 +531,10 @@ Deno.test("der Archiv-Haken hängt einen Beitrag an den einen Faden", async () =
       )
       .select("writingPost.id")
       .where("writingThread.isBroadcastArchive", "=", true)
+      .where("writingPost.text", "like", `${SUBJECT}%`)
       .execute();
 
-    assertEquals(after.length, before.length + 1);
+    assertEquals(mine.length, 1);
   } finally {
     await cleanUp();
   }
