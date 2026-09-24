@@ -57,21 +57,13 @@ async function submit() {
         :maxlength="TEXT_LIMIT.createStatusUpdate.body.maxLength"
         @keydown.enter="submit"
       />
-      <!-- **Zweite Stufe, und ohne Kante.**
+      <!-- **Zweite Stufe, nicht erste.**
            Ein voll gefüllter Hauptknopf sagt „das ist die Handlung dieser Seite". Auf der
            Anmeldeseite stimmt das; in einem Kasten zwischen anderen Kästen ist „Posten" eine
-           Nebensache, und ein Hauptknopf darin drückt.
-
-           Die Linie fällt weg, damit die Füllung dieselbe ist wie an den Sprechblasen darunter —
-           ein Kasten, eine Familie. `border-transparent` statt `border-0`: Die Kante bleibt als
-           Platz erhalten, sonst wäre der Knopf zwei Pixel kleiner als die Eingabezeile daneben. -->
-      <Button
-        variant="outline"
-        size="sm"
-        class="border-transparent"
-        :disabled="posting || !draft.trim()"
-        @click="submit"
-      >
+           Nebensache, und ein Hauptknopf darin drückt. Dieselbe gedämpfte Stufe wie „＋ Schritt"
+           in der Seitenleiste: die Füllung der Sprechblasen darunter, dazu eine feine Linie, die
+           ihn als Knopf von der Eingabezeile daneben abgrenzt. -->
+      <Button variant="outline" size="sm" :disabled="posting || !draft.trim()" @click="submit">
         <Spinner v-if="posting" />
         Posten
       </Button>
