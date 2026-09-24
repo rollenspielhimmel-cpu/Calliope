@@ -20,8 +20,8 @@ import type {
 } from '@/api/models'
 import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
-import { cutAtWord, ELLIPSIS } from '@/lib/text/shortenToFit'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
+import QuotedComment from '@/components/status/QuotedComment.vue'
 import StatusBody from '@/components/status/StatusBody.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { Input } from '@/components/ui/input'
@@ -69,16 +69,17 @@ function toggleComments() {
   open.value = !open.value
 }
 
-/**
- * Wie viel von einem zitierten Kommentar mitkommt.
- *
- * Ein Kommentar steht hier auf einer Zeile, und das Zitat gehört mit auf diese Zeile — genug, um zu
- * erkennen, worauf sich jemand bezieht, und kurz genug, dass die eigene Antwort noch der Hauptteil
- * bleibt. Wer den ganzen Kommentar wiederholen will, steht ohnehin direkt darüber.
- */
-const QUOTE_LENGTH = 60
-
 const draft = ref<string>('')
+
+/**
+ * Der Kommentar, auf den sich die Antwort bezieht, solange sie getippt wird.
+ *
+ * **Als Bezug, nicht als Text.** Früher schrieb „Zitieren" `@name: „die ersten 60 Zeichen …"` in
+ * das Feld. Der Rest war damit für immer weg, der Name ließ sich nicht verlinken, und er wäre
+ * eingefroren, sobald jemand sich umbenennt. Jetzt geht die Kennung mit, und das Zitat wird beim
+ * Anzeigen aus dem echten Kommentar gebaut.
+ */
+const quoted = ref<ListStatusUpdateComments200ResultsItem | undefined>(undefined)
 const commentField = ref<HTMLInputElement | undefined>(undefined)
 
 /**
@@ -94,25 +95,16 @@ function setCommentField(element: unknown) {
 }
 
 /**
- * Setzt einen Bezug auf einen Kommentar in das Feld.
+ * Legt den Bezug über das Eingabefeld.
  *
- * **Als Text, nicht als Verweis** — vorerst: Der Kommentar bleibt eine Zeile, und es braucht keine
- * Spalte in der Datenbank. Der Preis steht dazu: Ändert jemand seinen Kommentar nachträglich,
- * ändert sich das Zitat nicht mit, und der Name lässt sich nicht verlinken. Beides ist der Grund,
- * warum daraus ein echter Bezug wird — Schritt 3 des Umbaus.
- *
- * Vorangestellt statt angehängt: Wer schon etwas getippt hat, meint meistens die Antwort, und die
- * gehört hinter das Zitat.
+ * Der getippte Text bleibt stehen: Wer schon angefangen hat zu antworten und dann zitiert, meint
+ * beides. Der Blinkstrich geht zurück ins Feld, damit man einfach weiterschreibt.
  */
 function quoteComment(comment: ListStatusUpdateComments200ResultsItem) {
-  const shortened = cutAtWord(comment.body, QUOTE_LENGTH)
-  const quoted = shortened === comment.body ? shortened : shortened + ELLIPSIS
-
-  draft.value = `@${comment.createdByUsername}: „${quoted}" ${draft.value.trim()}`.trimEnd() + ' '
+  quoted.value = comment
 
   void nextTick(() => {
     commentField.value?.focus()
-    // Ans Ende, nicht an den Anfang: Dort schreibt man weiter.
     const end = commentField.value?.value.length ?? 0
     commentField.value?.setSelectionRange(end, end)
   })
@@ -129,14 +121,18 @@ async function submitComment() {
 
   sending.value = true
   try {
-    const created = await createStatusUpdateComment(props.update.id, { body })
+    const created = await createStatusUpdateComment(props.update.id, {
+      body,
+      quotedCommentId: quoted.value?.id,
+    })
     if (created.status !== 201) {
       return
     }
 
-    // Erst nach der Zusage geleert: Schlägt das Absenden fehl, steht der Text noch da und ist
-    // nicht verloren.
+    // Erst nach der Zusage geleert: Schlägt das Absenden fehl, stehen Text und Zitat noch da und
+    // sind nicht verloren.
     draft.value = ''
+    quoted.value = undefined
     // Die Liste mit, nicht nur die Kommentare: Die Zahl am Sprechblasen-Knopf kommt von dort, und
     // sie steht an beiden Orten.
     await Promise.all([commentsQuery.refetch(), refreshStatusUpdates()])
@@ -240,28 +236,45 @@ async function submitComment() {
           <RouterLink :to="{ name: 'member', params: { userId: comment.createdBy } }">
             <UserAvatar :username="comment.createdByUsername" class="size-5" />
           </RouterLink>
-          <p class="text-xs leading-snug text-ink-3">
-            <RouterLink
-              :to="{ name: 'member', params: { userId: comment.createdBy } }"
-              class="font-medium text-ink-2 hover:underline"
-            >
-              {{ comment.createdByUsername }}
-            </RouterLink>
-            {{ comment.body }}
-            <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }}</span>
-            <!-- In derselben zurückgenommenen Zeile wie die Uhrzeit: eine Handlung, kein
+          <div class="min-w-0 flex-1">
+            <QuotedComment
+              v-if="comment.quotedComment"
+              :quoted="comment.quotedComment"
+              class="mb-1"
+            />
+            <p class="text-xs leading-snug text-ink-3">
+              <RouterLink
+                :to="{ name: 'member', params: { userId: comment.createdBy } }"
+                class="font-medium text-ink-2 hover:underline"
+              >
+                {{ comment.createdByUsername }}
+              </RouterLink>
+              {{ comment.body }}
+              <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }}</span>
+              <!-- In derselben zurückgenommenen Zeile wie die Uhrzeit: eine Handlung, kein
                  Angebot, das sich vordrängt. Ein roher Knopf, weil diese Zeile Text ist und
                  keine Knopfleiste. -->
-            <button
-              type="button"
-              class="text-ink-4 hover:text-oak-deep"
-              @click="quoteComment(comment)"
-            >
-              · Zitieren
-            </button>
-          </p>
+              <button
+                type="button"
+                class="text-ink-4 hover:text-oak-deep"
+                @click="quoteComment(comment)"
+              >
+                · Zitieren
+              </button>
+            </p>
+          </div>
         </div>
       </template>
+
+      <!-- Was zitiert wird, steht über dem Feld statt im Feld: Der eigene Text bleibt der eigene,
+           und beim Absenden geht die Kennung mit statt einer Abschrift. -->
+      <QuotedComment
+        v-if="quoted"
+        :quoted="quoted"
+        removable
+        class="mt-1"
+        @remove="quoted = undefined"
+      />
 
       <!-- `v-model` statt eines Griffs ans DOM: Das Feld merkt sich seinen Wert selbst, und
            ein direkt geleertes `input.value` schrieb es beim nächsten Zeichnen zurück. -->

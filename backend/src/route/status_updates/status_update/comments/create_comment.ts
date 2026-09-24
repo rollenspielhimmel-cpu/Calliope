@@ -13,7 +13,10 @@ import {
   ERROR_RESPONSE,
   jsonContent,
 } from "@/src/http/response.ts";
-import { STATUS_UPDATE_SCHEMA } from "@/src/database/schema.ts";
+import {
+  STATUS_UPDATE_COMMENT_SCHEMA,
+  STATUS_UPDATE_SCHEMA,
+} from "@/src/database/schema.ts";
 
 const STATUS_UPDATE_PARAMS = z.object({
   statusUpdateId: STATUS_UPDATE_SCHEMA.shape.id,
@@ -21,6 +24,13 @@ const STATUS_UPDATE_PARAMS = z.object({
 
 const CREATE_COMMENT_BODY = z.object({
   body: notBlank(z.string().max(TEXT_LIMIT.statusUpdateCommentBody)),
+  /**
+   * Der Kommentar, auf den sich dieser bezieht — statt seinen Text mitzuschicken.
+   *
+   * Der Text stand früher als `@name: „…"` im Kommentar selbst. Als Bezug bleibt das Zitat
+   * richtig, wenn der zitierte Kommentar geändert wird, und der Name lässt sich verlinken.
+   */
+  quotedCommentId: STATUS_UPDATE_COMMENT_SCHEMA.shape.id.optional(),
 });
 
 export default new OpenAPIHono().openapi(
@@ -45,7 +55,7 @@ export default new OpenAPIHono().openapi(
         content: jsonContent(ERROR_RESPONSE),
       },
       [STATUS_CODE.NotFound]: {
-        description: "No such status update",
+        description: "No such status update, or no such comment to quote",
         content: jsonContent(ERROR_RESPONSE),
       },
       ...BAD_REQUEST_RESPONSE,
@@ -54,7 +64,7 @@ export default new OpenAPIHono().openapi(
   }),
   async (c) => {
     const { statusUpdateId } = c.req.valid("param");
-    const { body } = c.req.valid("json");
+    const { body, quotedCommentId } = c.req.valid("json");
 
     const result = await db.transaction().execute((transaction) =>
       StatusUpdateService.createComment(
@@ -62,11 +72,22 @@ export default new OpenAPIHono().openapi(
         statusUpdateId,
         c.get("user").id,
         body,
+        quotedCommentId,
       )
     );
 
-    return result === "not_found"
-      ? c.json({ error: "Not found" }, STATUS_CODE.NotFound)
-      : c.json(result, STATUS_CODE.Created);
+    switch (result) {
+      case "not_found":
+        return c.json({ error: "Not found" }, STATUS_CODE.NotFound);
+      // Beides 404, aber nicht derselbe Satz: „Die Meldung gibt es nicht" und „den Kommentar, den
+      // du zitierst, gibt es unter dieser Meldung nicht" schicken jemanden an verschiedene Orte.
+      case "quoted_not_found":
+        return c.json(
+          { error: "Der zitierte Kommentar steht nicht unter dieser Meldung." },
+          STATUS_CODE.NotFound,
+        );
+      default:
+        return c.json(result, STATUS_CODE.Created);
+    }
   },
 );

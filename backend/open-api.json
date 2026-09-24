@@ -36111,7 +36111,25 @@
                             "type": "string",
                             "format": "date-time"
                           },
-                          "createdByUsername": { "type": "string" }
+                          "createdByUsername": { "type": "string" },
+                          "quotedComment": {
+                            "type": ["object", "null"],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "body": { "type": "string" },
+                              "createdBy": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "createdByUsername": { "type": "string" }
+                            },
+                            "required": [
+                              "id",
+                              "body",
+                              "createdBy",
+                              "createdByUsername"
+                            ]
+                          }
                         },
                         "required": [
                           "id",
@@ -36119,7 +36137,8 @@
                           "createdBy",
                           "body",
                           "createdAt",
-                          "createdByUsername"
+                          "createdByUsername",
+                          "quotedComment"
                         ]
                       }
                     }
@@ -36350,7 +36369,8 @@
                     "type": "string",
                     "maxLength": 1000,
                     "pattern": "\\S"
-                  }
+                  },
+                  "quotedCommentId": { "type": "string", "format": "uuid" }
                 },
                 "required": ["body"]
               }
@@ -36370,7 +36390,22 @@
                     "createdBy": { "type": "string", "format": "uuid" },
                     "body": { "type": "string" },
                     "createdAt": { "type": "string", "format": "date-time" },
-                    "createdByUsername": { "type": "string" }
+                    "createdByUsername": { "type": "string" },
+                    "quotedComment": {
+                      "type": ["object", "null"],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "body": { "type": "string" },
+                        "createdBy": { "type": "string", "format": "uuid" },
+                        "createdByUsername": { "type": "string" }
+                      },
+                      "required": [
+                        "id",
+                        "body",
+                        "createdBy",
+                        "createdByUsername"
+                      ]
+                    }
                   },
                   "required": [
                     "id",
@@ -36378,7 +36413,8 @@
                     "createdBy",
                     "body",
                     "createdAt",
-                    "createdByUsername"
+                    "createdByUsername",
+                    "quotedComment"
                   ]
                 }
               }
@@ -36463,7 +36499,7 @@
             }
           },
           "404": {
-            "description": "No such status update",
+            "description": "No such status update, or no such comment to quote",
             "content": {
               "application/json": {
                 "schema": {

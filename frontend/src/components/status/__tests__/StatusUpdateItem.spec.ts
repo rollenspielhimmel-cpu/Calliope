@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import StatusUpdateItem from '@/components/status/StatusUpdateItem.vue'
+import QuotedComment from '@/components/status/QuotedComment.vue'
 
 /**
  * Eine Statusmeldung mit ihren Kommentaren.
@@ -21,7 +22,7 @@ const update = {
   createdAt: '2026-09-06T10:00:00.000Z',
   createdBy: 'u1',
   createdByUsername: 'federkiel',
-  commentCount: 1,
+  commentCount: 2,
 }
 
 const existingComment = {
@@ -31,6 +32,7 @@ const existingComment = {
   createdAt: '2026-09-06T10:02:00.000Z',
   createdBy: 'u3',
   createdByUsername: 'randnotiz',
+  quotedComment: null,
 }
 
 const createdComment = {
@@ -40,13 +42,33 @@ const createdComment = {
   createdAt: '2026-09-06T10:05:00.000Z',
   createdBy: 'u2',
   createdByUsername: 'tintenfleck',
+  quotedComment: null,
+}
+
+/** Eine Antwort, die den Kommentar darüber zitiert — so kommt sie vom Server zurück. */
+const quotingComment = {
+  id: 'c2',
+  statusUpdateId: 's1',
+  body: 'Genau das meinte ich auch.',
+  createdAt: '2026-09-06T10:08:00.000Z',
+  createdBy: 'u2',
+  createdByUsername: 'tintenfleck',
+  quotedComment: {
+    id: 'c0',
+    body: existingComment.body,
+    createdBy: 'u3',
+    createdByUsername: 'randnotiz',
+  },
 }
 
 const createComment = vi.fn<(...args: unknown[]) => Promise<unknown>>()
 
 vi.mock('@/api/status-updates/status-updates', () => ({
   useListStatusUpdateComments: () => ({
-    data: ref({ status: 200, data: { totalResults: 1, results: [existingComment] } }),
+    data: ref({
+      status: 200,
+      data: { totalResults: 2, results: [existingComment, quotingComment] },
+    }),
     isPending: ref(false),
     refetch: () => Promise.resolve(),
   }),
@@ -68,7 +90,7 @@ async function itemWithCommentsOpen(layout: 'box' | 'page' = 'box') {
   await flushPromises()
 
   // Die Kommentare hängen hinter dem Aufklapper; ohne ihn gibt es kein Feld.
-  const toggle = wrapper.findAll('button').find((button) => button.text().includes('1'))
+  const toggle = wrapper.findAll('button').find((button) => button.text().includes('2'))
   await toggle?.trigger('click')
   await flushPromises()
 
@@ -155,47 +177,83 @@ describe('StatusUpdateItem, der Weg zur Seite', () => {
   })
 })
 
+/** Der Streifen über dem Eingabefeld — der einzige, der sich verwerfen lässt. */
+function draftQuote(wrapper: ReturnType<typeof item>) {
+  return wrapper.findAllComponents(QuotedComment).find((chip) => chip.props('removable') === true)
+}
+
 describe('Zitieren', () => {
-  it('setzt den Bezug ins Feld und kürzt einen langen Kommentar', async () => {
-    createComment.mockResolvedValue({ status: 201, data: createdComment })
-
-    const wrapper = await itemWithCommentsOpen()
-
-    const quote = wrapper.findAll('button').find((button) => button.text() === '· Zitieren')
-    expect(quote?.exists()).toBe(true)
-
-    await quote?.trigger('click')
-
-    const field = wrapper.find('input[type="text"]')
-    const value = (field.element as HTMLInputElement).value
-
-    // Der Name gehört dazu, sonst weiß niemand, worauf sich das Zitat bezieht.
-    expect(value).toContain('@randnotiz')
-    expect(value).toContain('Das ist ein ziemlich langer Kommentar')
-
-    // Gekürzt: Ein Kommentar steht hier auf einer Zeile, und das Zitat gehört mit darauf.
-    expect(value).toContain('…')
-    expect(value).not.toContain('eine Zeile bleibt')
-
-    // Und der Blinkstrich steht dahinter, damit man einfach weiterschreibt.
-    expect(value.endsWith(' ')).toBe(true)
-  })
-
-  it('stellt das Zitat vor das, was schon getippt war', async () => {
+  /**
+   * **Als Bezug, nicht als Text.** Früher schrieb „Zitieren" `@name: „die ersten 60 Zeichen …"`
+   * ins Feld: Der Rest war damit für immer weg, der Name ließ sich nicht verlinken, und er wäre
+   * eingefroren, sobald jemand sich umbenennt.
+   */
+  it('legt das Zitat über das Feld und lässt den eigenen Text in Ruhe', async () => {
     createComment.mockResolvedValue({ status: 201, data: createdComment })
 
     const wrapper = await itemWithCommentsOpen()
     const field = wrapper.find('input[type="text"]')
-
     await field.setValue('Sehe ich anders.')
+
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '· Zitieren')
       ?.trigger('click')
+    await flushPromises()
 
-    const value = (field.element as HTMLInputElement).value
+    // Der Entwurf bleibt, wie er war — das Zitat steht daneben, nicht darin.
+    expect((field.element as HTMLInputElement).value).toBe('Sehe ich anders.')
 
-    // Wer schon etwas getippt hat, meint die Antwort — und die gehört hinter das Zitat.
-    expect(value.indexOf('@randnotiz')).toBeLessThan(value.indexOf('Sehe ich anders.'))
+    // Und es zeigt den ganzen Kommentar mit seinem Verfasser, nicht eine Abschrift.
+    const chip = draftQuote(wrapper)
+    expect(chip).toBeDefined()
+    expect(chip?.props('quoted')).toMatchObject({ id: 'c0', createdByUsername: 'randnotiz' })
+  })
+
+  it('schickt die Kennung mit, nicht den Text', async () => {
+    createComment.mockResolvedValue({ status: 201, data: createdComment })
+
+    const wrapper = await itemWithCommentsOpen()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '· Zitieren')
+      ?.trigger('click')
+    await flushPromises()
+
+    const field = wrapper.find('input[type="text"]')
+    await field.setValue('Genau.')
+    await field.trigger('keydown.enter')
+    await flushPromises()
+
+    expect(createComment).toHaveBeenCalledWith('s1', {
+      body: 'Genau.',
+      quotedCommentId: 'c0',
+    })
+  })
+
+  it('lässt das Zitat wieder verwerfen', async () => {
+    const wrapper = await itemWithCommentsOpen()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '· Zitieren')
+      ?.trigger('click')
+    await flushPromises()
+
+    await draftQuote(wrapper)?.find('button').trigger('click')
+    await flushPromises()
+
+    expect(draftQuote(wrapper)).toBeUndefined()
+  })
+
+  /** Am fertigen Kommentar steht dasselbe Zitat — dieselbe Komponente, nur ohne Kreuz. */
+  it('zeigt das Zitat über dem Kommentar, der es trägt', async () => {
+    const wrapper = await itemWithCommentsOpen()
+
+    const chip = wrapper.findComponent(QuotedComment)
+    expect(chip.props('quoted')).toMatchObject({ createdByUsername: 'randnotiz' })
+    // Ohne Kreuz: Ein abgeschickter Kommentar lässt sein Zitat nicht mehr verwerfen.
+    expect(chip.props('removable')).toBeFalsy()
   })
 })

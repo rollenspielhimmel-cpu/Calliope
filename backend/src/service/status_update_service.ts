@@ -16,12 +16,26 @@ export type StatusUpdate =
   // update cannot outlive its author.
   & { createdByUsername: string; commentCount: number };
 
+/**
+ * Ein Zitat, wie es die Oberfläche braucht: der Kommentar selbst, nicht eine Kopie davon.
+ *
+ * **Frisch gelesen, nicht mitgeschrieben.** Ändert jemand seinen Kommentar, stimmt das Zitat
+ * weiterhin; benennt sich jemand um, steht überall sofort der neue Name. Genau dafür ist aus dem
+ * Zitat ein Bezug geworden.
+ */
+export type QuotedComment = {
+  id: string;
+  body: string;
+  createdBy: string;
+  createdByUsername: string;
+};
+
 export type StatusUpdateComment =
   & Pick<
     Selectable<DatabaseStatusUpdateComment>,
     "id" | "statusUpdateId" | "createdBy" | "body" | "createdAt"
   >
-  & { createdByUsername: string };
+  & { createdByUsername: string; quotedComment: QuotedComment | null };
 
 const STATUS_UPDATE_COLUMNS = [
   "statusUpdate.id",
@@ -109,10 +123,22 @@ async function createStatusUpdate(
 
 export type StatusUpdateRefusal = "not_found";
 
+/**
+ * Ein Kommentar mit seinem Verfasser — und, wenn er zitiert, mit dem zitierten Kommentar.
+ *
+ * Die beiden Verknüpfungen für das Zitat sind links: Die meisten Kommentare zitieren nichts, und
+ * ein innerer Verbund ließe genau die verschwinden.
+ */
 function commentsWithAuthor(executor: Executor = db) {
   return executor
     .selectFrom("statusUpdateComment")
     .innerJoin("user", "user.id", "statusUpdateComment.createdBy")
+    .leftJoin(
+      "statusUpdateComment as quoted",
+      "quoted.id",
+      "statusUpdateComment.quotedCommentId",
+    )
+    .leftJoin("user as quotedAuthor", "quotedAuthor.id", "quoted.createdBy")
     .select([
       "statusUpdateComment.id",
       "statusUpdateComment.statusUpdateId",
@@ -120,7 +146,56 @@ function commentsWithAuthor(executor: Executor = db) {
       "statusUpdateComment.body",
       "statusUpdateComment.createdAt",
       "user.username as createdByUsername",
+      "quoted.id as quotedId",
+      "quoted.body as quotedBody",
+      "quoted.createdBy as quotedCreatedBy",
+      "quotedAuthor.username as quotedCreatedByUsername",
     ]);
+}
+
+/**
+ * Baut die vier Spalten des Zitats zu einem Ding zusammen — oder zu nichts.
+ *
+ * Vier nullbare Felder nebeneinander hieße, dass jede Lesestelle selbst entscheiden muss, wann ein
+ * Zitat „da" ist. Hier wird das einmal entschieden: Es ist da, wenn der zitierte Kommentar noch
+ * existiert.
+ */
+function withQuote<
+  Row extends {
+    quotedId: string | null;
+    quotedBody: string | null;
+    quotedCreatedBy: string | null;
+    quotedCreatedByUsername: string | null;
+  },
+>(
+  row: Row,
+):
+  & Omit<
+    Row,
+    "quotedId" | "quotedBody" | "quotedCreatedBy" | "quotedCreatedByUsername"
+  >
+  & { quotedComment: QuotedComment | null } {
+  const {
+    quotedId,
+    quotedBody,
+    quotedCreatedBy,
+    quotedCreatedByUsername,
+    ...rest
+  } = row;
+
+  return {
+    ...rest,
+    quotedComment:
+      quotedId !== null && quotedBody !== null && quotedCreatedBy !== null &&
+        quotedCreatedByUsername !== null
+        ? {
+          id: quotedId,
+          body: quotedBody,
+          createdBy: quotedCreatedBy,
+          createdByUsername: quotedCreatedByUsername,
+        }
+        : null,
+  };
 }
 
 async function listComments(
@@ -136,20 +211,26 @@ async function listComments(
     return "not_found";
   }
 
-  return await commentsWithAuthor()
+  const comments = await commentsWithAuthor()
     .where("statusUpdateComment.statusUpdateId", "=", statusUpdateId)
     // Oldest first — a conversation reads top to bottom. Ids order it the same way created_at
     // would, and are what the feed above already sorts by.
     .orderBy("statusUpdateComment.id", "asc")
     .execute();
+
+  return comments.map(withQuote);
 }
+
+export type CommentRefusal = StatusUpdateRefusal | "quoted_not_found";
 
 async function createComment(
   transaction: Transaction,
   statusUpdateId: string,
   createdBy: string,
   body: string,
-): Promise<StatusUpdateComment | StatusUpdateRefusal> {
+  /** Der Kommentar, auf den sich dieser bezieht. Muss unter derselben Meldung stehen. */
+  quotedCommentId?: string,
+): Promise<StatusUpdateComment | CommentRefusal> {
   const statusUpdate = await transaction
     .selectFrom("statusUpdate")
     .select("id")
@@ -160,17 +241,42 @@ async function createComment(
     return "not_found";
   }
 
+  // **Vorher geprüft, obwohl die Datenbank es auch täte.** Der zusammengesetzte Fremdschlüssel
+  // lehnt ein Zitat aus einer fremden Meldung ab — aber als Verstoß, aus dem eine 500 würde. Ein
+  // Nein mit Grund ist hier das, was die Oberfläche braucht.
+  if (quotedCommentId !== undefined) {
+    const quoted = await transaction
+      .selectFrom("statusUpdateComment")
+      .select("id")
+      .where("id", "=", quotedCommentId)
+      .where("statusUpdateId", "=", statusUpdateId)
+      .executeTakeFirst();
+
+    if (quoted === undefined) {
+      return "quoted_not_found";
+    }
+  }
+
   const trimmed = body.trim().slice(0, TEXT_LIMIT.statusUpdateCommentBody);
 
   const { id } = await transaction
     .insertInto("statusUpdateComment")
-    .values({ statusUpdateId, createdBy, body: trimmed })
+    .values({
+      statusUpdateId,
+      createdBy,
+      body: trimmed,
+      quotedCommentId: quotedCommentId ?? null,
+    })
     .returning(["id"])
     .executeTakeFirstOrThrow();
 
-  return await commentsWithAuthor(transaction)
-    .where("statusUpdateComment.id", "=", id)
-    .executeTakeFirstOrThrow();
+  // Aus derselben Transaktion gelesen: Sonst läuft die Rückfrage auf einer anderen Verbindung und
+  // sieht die eben geschriebene Zeile nicht.
+  return withQuote(
+    await commentsWithAuthor(transaction)
+      .where("statusUpdateComment.id", "=", id)
+      .executeTakeFirstOrThrow(),
+  );
 }
 
 export const StatusUpdateService = {

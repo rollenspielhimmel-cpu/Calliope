@@ -634,6 +634,10 @@ export interface StatusUpdateComment {
   createdAt: Generated<string>;
   createdBy: string;
   id: Generated<string>;
+  /**
+   * Der zitierte Kommentar, oder null. Das Zitat wird beim Anzeigen aus ihm gebaut, damit Name und Text aktuell bleiben.
+   */
+  quotedCommentId: string | null;
   statusUpdateId: string;
 }
 
@@ -1611,6 +1615,9 @@ export const STATUS_UPDATE_COMMENT_SCHEMA = z.object({
   createdBy: z.uuidv7(),
   body: z.string(),
   createdAt: z.iso.datetime({ offset: true }),
+  quotedCommentId: z.uuidv7().nullable().describe(
+    "Der zitierte Kommentar, oder null. Das Zitat wird beim Anzeigen aus ihm gebaut, damit Name und Text aktuell bleiben.",
+  ),
 });
 
 export const STORY_IDEA_SCHEMA = z.object({

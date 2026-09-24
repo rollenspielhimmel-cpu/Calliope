@@ -573,9 +573,26 @@ export const STATUS_UPDATE_RESPONSE = STATUS_UPDATE_SCHEMA.extend({
   commentCount: z.number().int().nonnegative(),
 });
 
+/**
+ * Das Zitat, das ein Kommentar trägt: der zitierte Kommentar selbst, nicht eine Kopie seines Texts.
+ *
+ * Gebaut wird es beim Anzeigen aus dem Bezug, damit Name und Text aktuell bleiben — wer seinen
+ * Kommentar ändert oder sich umbenennt, steht danach überall richtig da.
+ */
+const QUOTED_COMMENT = z.object({
+  id: STATUS_UPDATE_COMMENT_SCHEMA.shape.id,
+  body: STATUS_UPDATE_COMMENT_SCHEMA.shape.body,
+  createdBy: STATUS_UPDATE_COMMENT_SCHEMA.shape.createdBy,
+  createdByUsername: z.string(),
+});
+
 export const STATUS_UPDATE_COMMENT_RESPONSE = STATUS_UPDATE_COMMENT_SCHEMA
+  // Die Kennung des Zitats bleibt drinnen: Sie ist Buchführung, und was die Oberfläche davon
+  // braucht, steht ausgebaut in `quotedComment`.
+  .omit({ quotedCommentId: true })
   .extend({
     createdByUsername: z.string(),
+    quotedComment: QUOTED_COMMENT.nullable(),
   });
 
 /**
