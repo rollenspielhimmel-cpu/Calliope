@@ -1,5 +1,15 @@
 /**
- * Shortens a plot description for a card, at a word — and only when it does not fit.
+ * Shortens a text to the room it has, at a word — and only when it does not fit.
+ *
+ * **Es misst, es zählt nicht — und es kennt keine Höhe.** Diese Datei weiß nichts über Karten,
+ * Kästen oder Zeilen. Sie bekommt vom Aufrufer ein Maßband gereicht ("passt dieser Kandidat noch
+ * in dich hinein?") und sucht die längste Fassung, die ein Ja bekommt. Wie hoch "hinein" ist,
+ * entscheidet jede Komponente in ihrem eigenen CSS — die Blind-Date-Karte anders als eine
+ * Statusmeldung, und keine von beiden kann die andere mitziehen.
+ *
+ * Deshalb liegt es unter `lib/text/` und nicht mehr unter `lib/blindDate/`: Der alte Ort
+ * behauptete eine Verwandtschaft, die es nie gab. Drei Aufrufer teilen sich das Suchverfahren,
+ * keiner teilt sich ein Aussehen.
  *
  * **The card decides, not a character count.** This counted to 280 and cut there, which meant a
  * plot of 293 characters ended in „…" while the box below it still had two empty lines: the

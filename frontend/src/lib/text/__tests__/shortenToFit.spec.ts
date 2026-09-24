@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cutAtWord, ELLIPSIS, shortenToFit } from '@/lib/blindDate/truncate'
+import { cutAtWord, ELLIPSIS, shortenToFit } from '@/lib/text/shortenToFit'
 
 /**
  * Shortening a plot for a card.

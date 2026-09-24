@@ -16,7 +16,7 @@
  * steht er ungekürzt da und es gibt keinen Knopf.
  */
 import { computed, ref } from 'vue'
-import { cutAtWord, ELLIPSIS } from '@/lib/blindDate/truncate'
+import { cutAtWord, ELLIPSIS } from '@/lib/text/shortenToFit'
 
 const { text } = defineProps<{ text: string }>()
 

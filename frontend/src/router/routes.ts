@@ -134,6 +134,13 @@ export const routes: Array<RouteRecordRaw> = [
     name: 'blindDateOffer',
     component: () => import('../views/BlindDateOfferView.vue'),
   },
+  // Die Startseite zeigt die zehn neuesten in einem Kasten fester Höhe; hier stehen alle, bis
+  // zurück zur ersten. Ein Anker in der Adresse führt zu der Meldung, von der jemand gekommen ist.
+  {
+    path: '/statusmeldungen',
+    name: 'statusUpdates',
+    component: () => import('../views/StatusUpdatesView.vue'),
+  },
   {
     path: '/members',
     name: 'members',

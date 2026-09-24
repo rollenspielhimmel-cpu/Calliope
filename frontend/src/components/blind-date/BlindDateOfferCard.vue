@@ -7,7 +7,7 @@
  * boxes where the longest one decides the whole row. So the card is a fixed frame: the description
  * takes what is left and the deadline sits at the bottom, whatever is above it.
  *
- * **The shortening is measured, not counted** — see `lib/blindDate/truncate.ts` for why, and why
+ * **The shortening is measured, not counted** — see `lib/text/shortenToFit.ts` for why, and why
  * not `-webkit-line-clamp`. A description that fits is shown whole, with no ellipsis and no
  * „Weiterlesen": there is nothing behind the link, and a link that leads to what you already read
  * is a small betrayal.
@@ -18,7 +18,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import type { ListBlindDateOffers200Item } from '@/api/models'
-import { shortenToFit } from '@/lib/blindDate/truncate'
+import { shortenToFit } from '@/lib/text/shortenToFit'
 import { applicationsHaveClosed } from '@/lib/blindDate/offerDeadline'
 import { formatDeadline } from '@/lib/format/formatTime'
 

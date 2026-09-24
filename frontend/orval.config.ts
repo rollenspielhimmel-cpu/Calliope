@@ -41,6 +41,7 @@ export default defineConfig({
           listIpOverview: { query: { useQuery: true } },
           listSharedIpAddresses: { query: { useQuery: true } },
           listForumPosts: { query: { useQuery: true } },
+          listStatusUpdates: { query: { useQuery: true } },
           listBlindDateParticipation: { query: { useQuery: true } },
         },
         // The generated client resolves for every status, so vue-query would see a 401 as a
