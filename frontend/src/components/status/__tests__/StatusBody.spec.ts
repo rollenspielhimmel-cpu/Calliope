@@ -105,21 +105,35 @@ describe('StatusBody', () => {
   })
 
   /**
-   * Mittig steht **nur** das Angebot, nie der Text: Fließtext liest sich linksbündig, mittig
-   * gesetzt zerfällt er in Zeilen, die jede für sich anfangen. Linksbündig unter zwei Zeilen läse
-   * sich „weiterlesen" aber wie eine dritte, angefangene — also genau eines von beidem.
+   * Drei Zeilen über die volle Breite stehen als Block ruhiger, wenn sie eine Mitte teilen. Acht
+   * Zeilen sind Fließtext und bleiben links. Das Angebot steht im Absatz, also richtet es sich
+   * mit ihm aus — eine eigene Ausrichtung braucht es nicht.
    */
-  it('stellt das Angebot mittig, den Text nie', async () => {
-    const mitte = mount(StatusBody, { props: { text: LONG, lines: 2, centered: true } })
+  it('stellt den Absatz mittig, wo der Ort es verlangt', async () => {
+    const mitte = mount(StatusBody, { props: { text: LONG, lines: 3, centered: true } })
     await flushPromises()
 
-    expect(mitte.find('button').classes()).toContain('text-center')
-    expect(mitte.find('p').classes()).not.toContain('text-center')
+    expect(mitte.find('p').classes()).toContain('text-center')
 
     const links = mount(StatusBody, { props: { text: LONG, lines: 8 } })
     await flushPromises()
 
-    expect(links.find('button').classes()).not.toContain('text-center')
+    expect(links.find('p').classes()).not.toContain('text-center')
+  })
+
+  /**
+   * **Der Fall, für den das Angebot im Text steht:** Darunter gesetzt bekam „… weiterlesen" eine
+   * eigene Zeile, auch wenn die letzte Textzeile nach zwei Wörtern endete — eine ganze Zeile für
+   * zwei Wörter, in einem Kasten, in dem jede zählt.
+   */
+  it('setzt „weiterlesen" in denselben Absatz wie den Text', async () => {
+    const wrapper = body(LONG)
+    await flushPromises()
+
+    const paragraph = wrapper.find('p')
+    expect(paragraph.find('button').exists()).toBe(true)
+    // Und direkt hinter dem Text, ohne trennbaren Abstand: „…" und „weiterlesen" gehören zusammen.
+    expect(paragraph.find('button').classes()).toContain('whitespace-nowrap')
   })
 
   /** Der Ort entscheidet, nicht der Text: Die Deckelung steht in Zeilen, nicht in Zeichen. */

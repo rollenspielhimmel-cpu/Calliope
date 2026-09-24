@@ -10,10 +10,16 @@
  * da, ohne „…" und ohne „weiterlesen": Ein Angebot, das zu dem führt, was man schon gelesen hat,
  * ist ein kleiner Betrug.
  *
+ * **Das Angebot steht im Text, nicht darunter.** Sonst endet die letzte Zeile nach zwei Wörtern und
+ * „… weiterlesen" bekommt eine eigene Zeile für sich — eine ganze Zeile für zwei Wörter, in einem
+ * Kasten, in dem jede zählt. Deshalb wird in zwei Durchgängen gemessen: erst, ob der ganze Text
+ * ohne Angebot hineinpasst; wenn nicht, mit dem Angebot im Absatz, damit die Suche dessen Breite
+ * kennt und der Text genau dort endet, wo noch Platz dafür ist.
+ *
  * **Aufgeklappt wird an Ort und Stelle**, mit einem Weg zurück. Ohne „weniger" ließe sich eine
  * einmal aufgeklappte Meldung nicht wieder wegräumen, und der Kasten hat feste Höhe.
  */
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { shortenToFit } from '@/lib/text/shortenToFit'
 
@@ -23,14 +29,13 @@ const props = withDefaults(
     /** Wie viele Zeilen stehen bleiben, bevor gekürzt wird. Der Ort entscheidet, nicht der Text. */
     lines: number
     /**
-     * Ob „weiterlesen" mittig steht.
+     * Ob Text und Angebot mittig stehen.
      *
-     * Im schmalen Kasten schon: Dort bricht der Text nach zwei Zeilen ab, und linksbündig läse
-     * sich das Angebot darunter wie eine dritte, angefangene Zeile. Mittig ist es sichtbar eine
-     * Handlung und keine Fortsetzung.
+     * Im Kasten schon: Dort sind es drei Zeilen über die volle Breite, und die stehen als Block
+     * ruhiger, wenn sie eine Mitte teilen.
      *
-     * **Nur das Angebot, nie der Text.** Fließtext liest sich linksbündig; mittig gesetzt zerfällt
-     * er in Zeilen, die jede für sich anfangen. Ausprobiert und wieder verworfen.
+     * Auf der Seite nicht: Acht Zeilen sind Fließtext, und Fließtext liest sich linksbündig —
+     * mittig gesetzt fängt jede Zeile für sich an.
      */
     centered?: boolean
   }>(),
@@ -42,12 +47,13 @@ const props = withDefaults(
  * wie viel Text auch darin steht — `scrollHeight` größer als `clientHeight` heißt also genau, dass
  * dieser Text nicht hineinpasst.
  *
- * Während der Suche wird in `textContent` geschrieben statt über den Verweis: Jeder Kandidat muss
- * gemessen sein, bevor der nächste gewählt wird, und Vue trägt einen Verweis erst im nächsten
- * Durchgang ein. Der Endwert geht anschließend durch den Verweis, damit Gezeichnetes und Zustand
- * übereinstimmen.
+ * Gemessen wird der Absatz, geschrieben wird in die Spanne darin: So zählt die Breite des Angebots
+ * mit, das daneben steht. Während der Suche geht der Text direkt in `textContent` statt über den
+ * Verweis — jeder Kandidat muss gemessen sein, bevor der nächste gewählt wird, und Vue trägt einen
+ * Verweis erst im nächsten Durchgang ein.
  */
 const body = ref<HTMLElement | null>(null)
+const textSpan = ref<HTMLElement | null>(null)
 
 const shown = ref<string>(props.text)
 const wasCut = ref<boolean>(false)
@@ -56,22 +62,39 @@ const expanded = ref<boolean>(false)
 /** In `em`, damit die Deckelung der Schriftgröße folgt. `leading-snug` ist 1.375. */
 const LINE_HEIGHT = 1.375
 
-function refit() {
-  const element = body.value
-
+async function refit() {
   // Aufgeklappt gibt es nichts zu messen: Dann steht alles da, und die Deckelung ist weg.
-  if (element === null || expanded.value) {
+  if (expanded.value) {
     return
   }
 
+  // Erster Durchgang: ohne Angebot, denn es soll keines geben, wenn alles hineinpasst.
+  wasCut.value = false
+  shown.value = props.text
+  await nextTick()
+
+  const element = body.value
+  const span = textSpan.value
+  if (element === null || span === null) {
+    return
+  }
+
+  span.textContent = props.text
+  if (element.scrollHeight <= element.clientHeight) {
+    return
+  }
+
+  // Zweiter Durchgang: Das Angebot steht jetzt im Absatz, also kennt die Suche seine Breite.
+  wasCut.value = true
+  await nextTick()
+
   const result = shortenToFit(props.text, (candidate) => {
-    element.textContent = candidate
+    span.textContent = candidate
     return element.scrollHeight <= element.clientHeight
   })
 
-  element.textContent = result.text
+  span.textContent = result.text
   shown.value = result.text
-  wasCut.value = result.wasCut
 }
 
 // Nicht `onMounted`: Der Absatz entsteht erst, wenn er gezeichnet wird, und im Kasten wird eine
@@ -88,30 +111,22 @@ function toggle() {
   expanded.value = !expanded.value
   if (!expanded.value) {
     // Zusammengeklappt muss neu gemessen werden: Die Deckelung ist wieder da.
-    void Promise.resolve().then(refit)
+    void refit()
   }
 }
 </script>
 
 <template>
-  <div>
-    <p
-      ref="body"
-      class="text-sm leading-snug whitespace-pre-wrap text-ink-2"
-      :class="expanded ? '' : 'overflow-hidden'"
-      :style="expanded ? undefined : { maxHeight: `${lines * LINE_HEIGHT}em` }"
-    >
-      {{ expanded ? text : shown }}
-    </p>
-
-    <button
+  <!-- prettier-ignore -->
+  <p
+    ref="body"
+    class="text-sm leading-snug whitespace-pre-wrap text-ink-2"
+    :class="[expanded ? '' : 'overflow-hidden', centered ? 'text-center' : '']"
+    :style="expanded ? undefined : { maxHeight: `${lines * LINE_HEIGHT}em` }"
+  ><span ref="textSpan">{{ expanded ? text : shown }}</span><button
       v-if="wasCut"
       type="button"
-      class="mt-0.5 text-[11.5px] font-medium text-oak-deep underline-offset-[4px] hover:underline"
-      :class="centered ? 'block w-full text-center' : ''"
+      class="font-medium whitespace-nowrap text-oak-deep underline-offset-[3px] hover:underline"
       @click="toggle"
-    >
-      {{ expanded ? 'weniger' : 'weiterlesen' }}
-    </button>
-  </div>
+    >&nbsp;{{ expanded ? 'weniger' : 'weiterlesen' }}</button></p>
 </template>

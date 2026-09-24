@@ -152,12 +152,26 @@ async function submitComment() {
     class="rounded-lg border border-line-3 bg-paper-0 px-3 py-2 shadow-card"
     :class="layout === 'page' ? 'px-4 py-3' : ''"
   >
-    <div class="flex items-start gap-2">
-      <RouterLink :to="{ name: 'member', params: { userId: update.createdBy } }">
+    <!--
+      **Bild und Sprechblase stehen über dem Text, nicht neben ihm.**
+
+      Als Nachbarn in einem Flex-Kasten machten beide die Textspalte auf ihrer *ganzen* Höhe
+      schmaler: Auch die vierte Zeile hielt vor der Sprechblase an und hinter dem Bild, obwohl
+      dort längst nichts mehr steht. Freigestellt hält nur die Kopfzeile Abstand — links vom Bild,
+      rechts von der Blase —, und der Text darunter läuft über die volle Breite.
+
+      `leading-7` ist genau die Höhe des Bildes (`size-7`), also steht die Kopfzeile mittig
+      daneben, ohne dass dafür etwas ausgerichtet werden müsste.
+    -->
+    <div class="relative">
+      <RouterLink
+        :to="{ name: 'member', params: { userId: update.createdBy } }"
+        class="absolute top-0 left-0"
+      >
         <UserAvatar :username="update.createdByUsername" />
       </RouterLink>
-      <div class="min-w-0 flex-1">
-        <p class="text-xs">
+      <div>
+        <p class="pr-12 pl-9 text-xs leading-7">
           <RouterLink
             :to="{ name: 'member', params: { userId: update.createdBy } }"
             class="font-medium text-ink-2 hover:underline"
@@ -178,32 +192,35 @@ async function submitComment() {
         </p>
         <StatusBody
           :text="update.body"
-          :lines="layout === 'page' ? 8 : 2"
+          :lines="layout === 'page' ? 8 : 3"
           :centered="layout === 'box'"
         />
-      </div>
-      <button
-        type="button"
-        class="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-paper-3 px-2 py-0.5"
-        @click="toggleComments"
-      >
-        <svg
-          class="size-3.5 text-oak-deep"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
+        <button
+          type="button"
+          class="absolute top-0 right-0 flex items-center gap-1 rounded-full bg-paper-3 px-2 py-0.5"
+          @click="toggleComments"
         >
-          <path
-            d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
-          />
-        </svg>
-        <span class="text-[11.5px] font-medium text-ink-3">{{ update.commentCount }}</span>
-      </button>
+          <svg
+            class="size-3.5 text-oak-deep"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path
+              d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+            />
+          </svg>
+          <span class="text-[11.5px] font-medium text-ink-3">{{ update.commentCount }}</span>
+        </button>
+      </div>
     </div>
 
-    <div v-if="open" class="mt-2 ml-9 border-t border-line-4 pt-2">
+    <!-- Keine Einrückung: Der Meldungstext darüber läuft bis zum Rand, und ein Kommentarblock,
+         der neun Pixel weiter innen anfängt, sieht daneben aus wie ein Versehen. Die Trennlinie
+         sagt schon, dass hier etwas anderes beginnt. -->
+    <div v-if="open" class="mt-2 border-t border-line-4 pt-2">
       <p v-if="commentsQuery.isPending.value" class="text-[11.5px] text-ink-5">Wird geladen …</p>
 
       <template v-else>
