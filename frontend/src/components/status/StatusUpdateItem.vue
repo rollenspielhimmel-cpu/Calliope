@@ -4,8 +4,9 @@
  *
  * **Eine Komponente für zwei Orte.** Derselbe Eintrag steht im Kasten auf der Startseite und auf
  * der Seite mit allen Meldungen; was sich unterscheidet, ist der Platz, nicht der Inhalt. Also
- * entscheidet `layout` über zwei Kleinigkeiten — ob die Uhrzeit zur Seite führt und ob Kommentare
- * erst in einer Vorschau stehen —, und alles andere ist geteilt.
+ * entscheidet `layout` über drei Kleinigkeiten — ob die Uhrzeit zur Seite führt, ob Kommentare
+ * erst in einer Vorschau stehen, und wie viele Zeilen ein Text bekommt, bevor er gekürzt wird —,
+ * und alles andere ist geteilt.
  */
 import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -21,6 +22,7 @@ import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { cutAtWord, ELLIPSIS } from '@/lib/text/shortenToFit'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
+import StatusBody from '@/components/status/StatusBody.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { Input } from '@/components/ui/input'
 
@@ -174,7 +176,7 @@ async function submitComment() {
           </RouterLink>
           <span v-else class="text-ink-3">{{ formatActivityTime(update.createdAt) }}</span>
         </p>
-        <p class="text-sm leading-snug whitespace-pre-wrap text-ink-2">{{ update.body }}</p>
+        <StatusBody :text="update.body" :lines="layout === 'page' ? 8 : 4" />
       </div>
       <button
         type="button"

@@ -47,7 +47,7 @@ const { updates, isPending, isError } = useStatusUpdates(PAGE_SIZE)
 
     <RouterLink
       :to="{ name: 'statusUpdates' }"
-      class="mt-2 block text-center text-[12.5px] font-medium text-oak-deep hover:underline"
+      class="mt-3 mb-0.5 block text-center text-[12.5px] font-medium text-oak-deep hover:underline"
     >
       Alle Statusmeldungen
     </RouterLink>
