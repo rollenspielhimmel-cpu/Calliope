@@ -329,7 +329,10 @@ async function submitComment() {
               :quoted="comment.quotedComment"
               class="mb-1"
             />
-            <p class="text-xs leading-snug text-ink-3">
+            <!-- `leading-5` ist genau die Höhe des Bildes daneben (`size-5`), also steht eine
+                 einzeilige Antwort mittig dazu statt drei Pixel zu hoch. Bei mehreren Zeilen
+                 bleibt das Bild an der ersten, wo der Name steht — das ist richtig so. -->
+            <p class="text-xs leading-5 text-ink-3">
               <RouterLink
                 :to="{ name: 'member', params: { userId: comment.createdBy } }"
                 class="font-medium text-ink-2 hover:underline"
