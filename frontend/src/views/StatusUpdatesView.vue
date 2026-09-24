@@ -8,10 +8,14 @@
  * gibt es keine feste Höhe, keinen Scrollbereich im Scrollbereich und keine Vorschau vor den
  * Kommentaren.
  *
- * **Und die Stränge stehen offen.** Hinter einer Sprechblase mit einer Zahl versteckt sah es aus,
- * als ließe sich hier gar nicht kommentieren — obwohl es ging, nur nicht sichtbar. Wer diese Seite
- * öffnet, will lesen, was geschrieben wurde; eine Meldung ohne Kommentare bleibt zu, dort gibt es
- * nichts aufzuklappen.
+ * **Die Stränge bleiben zu, bis jemand sie öffnet.** Einen Moment lang standen sie hier von
+ * selbst offen — das las sich gut, bis eine Meldung mit vielen Kommentaren dazwischenlag: Sie
+ * füllt dann die Seite, alle anderen gehen unter, und man scrollt durch etwas, das man nicht lesen
+ * wollte. Aufgeklappt wird also auf Klick, und dann sechs Kommentare, der Rest auf einen weiteren.
+ *
+ * Damit man den Weg hinein findet, trägt die Sprechblase hier ein Wort — „4 Kommentare" statt
+ * einer blanken Zahl. Ohne das sah sie aus wie eine Anzeige, und es wirkte, als ließe sich auf
+ * dieser Seite gar nicht kommentieren.
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
@@ -92,7 +96,7 @@ watch(
               :key="update.id"
               :update="update"
               layout="page"
-              :open-at-once="update.id === wanted || update.commentCount > 0"
+              :open-at-once="update.id === wanted"
             />
           </div>
 

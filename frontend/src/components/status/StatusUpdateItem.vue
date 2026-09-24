@@ -42,18 +42,21 @@ const props = withDefaults(
 )
 
 /**
- * Wie viele Kommentare im Kasten vor dem Aufklappen sichtbar sind.
+ * Wie viele Kommentare vor dem Aufklappen sichtbar sind.
  *
- * Nur dort: Auf der Seite ist Platz, und ein Zwischenschritt, der nichts spart, ist ein Klick zu
- * viel. Im Kasten schiebt ein Strang mit achtzig Kommentaren sonst alle anderen Meldungen aus dem
- * Blick — genau das, wogegen die Kürzung der langen Meldungen gebaut ist.
+ * **An beiden Orten, nur verschieden weit.** Auf der Seite stand vorher alles offen — dort ist ja
+ * Platz. Nur füllt ein Strang mit achtzig Kommentaren damit die ganze Seite: Eine Meldung steht im
+ * Blick, alle anderen gehen unter, und man scrollt sich durch etwas, das man gar nicht lesen
+ * wollte. Sechs zeigen, was los ist; der Rest kommt auf Klick.
  *
- * Gezeigt werden die **ersten** drei: Man liest von vorn und klappt nach unten auf.
+ * Gezeigt werden die **ersten**: Man liest von vorn und klappt nach unten auf.
  */
-const PREVIEW_COUNT = 3
+function previewCount(layout: 'box' | 'page'): number {
+  return layout === 'page' ? 6 : 3
+}
 
 const open = ref<boolean>(props.openAtOnce)
-const showAllComments = ref<boolean>(props.layout === 'page')
+const showAllComments = ref<boolean>(false)
 
 const commentsQuery = useListStatusUpdateComments(
   () => props.update.id,
@@ -77,7 +80,7 @@ const comments = computed<ListStatusUpdateComments200ResultsItem[]>(() => {
  * Jetzt liest man von vorn und klappt nach unten auf, in die Richtung, in die das Gespräch läuft.
  */
 const visibleComments = computed<ListStatusUpdateComments200ResultsItem[]>(() =>
-  showAllComments.value ? comments.value : comments.value.slice(0, PREVIEW_COUNT),
+  showAllComments.value ? comments.value : comments.value.slice(0, previewCount(props.layout)),
 )
 
 function toggleComments() {
@@ -221,7 +224,7 @@ async function submitComment() {
         <UserAvatar :username="update.createdByUsername" />
       </RouterLink>
       <div>
-        <p class="pr-12 pl-9 text-xs leading-7">
+        <p class="pl-9 text-xs leading-7" :class="layout === 'page' ? 'pr-40' : 'pr-16'">
           <RouterLink
             :to="{ name: 'member', params: { userId: update.createdBy } }"
             class="font-medium text-ink-2 hover:underline"
@@ -245,44 +248,60 @@ async function submitComment() {
              Durchgestrichen und grau heißt: von hier kommt nichts. In Farbe: es kommt etwas.
              Ein Zustand, den man sieht, statt eines Satzes, den man lesen muss — und er steht
              dort, wo auch die Kommentare stehen, um die es geht. -->
-        <button
-          v-if="subscribed !== undefined"
-          type="button"
-          class="absolute top-0 right-11 rounded-full p-1"
-          :disabled="switching"
-          :title="subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten'"
-          :aria-label="subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten'"
-          :aria-pressed="subscribed"
-          @click="toggleSubscription"
-        >
-          <component
-            :is="subscribed ? Bell : BellOff"
-            :size="14"
-            :stroke-width="1.5"
-            :class="subscribed ? 'text-oak-deep' : 'text-ink-5'"
-            aria-hidden="true"
-          />
-        </button>
-
-        <button
-          type="button"
-          class="absolute top-0 right-0 flex items-center gap-1 rounded-full bg-paper-3 px-2 py-0.5"
-          @click="toggleComments"
-        >
-          <svg
-            class="size-3.5 text-oak-deep"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
+        <div class="absolute top-0 right-0 flex items-center gap-1">
+          <button
+            v-if="subscribed !== undefined"
+            type="button"
+            class="rounded-full p-1"
+            :disabled="switching"
+            :title="subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten'"
+            :aria-label="subscribed ? 'Keine Mitteilungen mehr' : 'Mitteilungen einschalten'"
+            :aria-pressed="subscribed"
+            @click="toggleSubscription"
           >
-            <path
-              d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+            <component
+              :is="subscribed ? Bell : BellOff"
+              :size="14"
+              :stroke-width="1.5"
+              :class="subscribed ? 'text-oak-deep' : 'text-ink-5'"
+              aria-hidden="true"
             />
-          </svg>
-          <span class="text-[11.5px] font-medium text-ink-3">{{ update.commentCount }}</span>
-        </button>
+          </button>
+
+          <!-- **Auf der Seite mit Wort, im Kasten ohne.** Eine Pille mit einer Zahl sieht aus wie
+             eine Anzeige, nicht wie ein Knopf — auf der Seite sah es deshalb aus, als ließe sich
+             dort gar nicht kommentieren. Im Kasten ist kein Platz für das Wort, dort hilft die
+             Beschriftung für Vorlesegeräte. -->
+          <button
+            type="button"
+            class="flex items-center gap-1 rounded-full bg-paper-3 px-2 py-0.5 whitespace-nowrap"
+            :aria-expanded="open"
+            :aria-label="open ? 'Kommentare zuklappen' : 'Kommentare anzeigen'"
+            @click="toggleComments"
+          >
+            <svg
+              class="size-3.5 text-oak-deep"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path
+                d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+              />
+            </svg>
+            <span class="text-[11.5px] font-medium text-ink-3">
+              {{
+                layout === 'page'
+                  ? update.commentCount === 0
+                    ? 'Kommentieren'
+                    : pluralize(update.commentCount, 'Kommentar', 'Kommentare')
+                  : update.commentCount
+              }}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -336,13 +355,17 @@ async function submitComment() {
         <!-- Unter der Liste, nicht darüber: Das Gespräch läuft nach unten, und was fehlt, fehlt
              hinten. Darüber stehend forderte er auf, nach oben zu lesen. -->
         <button
-          v-if="!showAllComments && comments.length > PREVIEW_COUNT"
+          v-if="!showAllComments && comments.length > previewCount(layout)"
           type="button"
           class="mb-1.5 block text-xs font-medium text-oak-deep"
           @click="showAllComments = true"
         >
           {{
-            pluralize(comments.length - PREVIEW_COUNT, 'weiteren Kommentar', 'weitere Kommentare')
+            pluralize(
+              comments.length - previewCount(layout),
+              'weiteren Kommentar',
+              'weitere Kommentare',
+            )
           }}
           anzeigen
         </button>

@@ -325,3 +325,36 @@ describe('Die Vorschau der Kommentare', () => {
     )
   })
 })
+
+/**
+ * **Aufgeklappt wird auf Klick, auch auf der Seite.**
+ *
+ * Einen Moment lang standen die Stränge dort von selbst offen. Das las sich gut, bis eine Meldung
+ * mit vielen Kommentaren dazwischenlag: Sie füllt dann die Seite, alle anderen gehen unter, und
+ * man scrollt durch etwas, das man nicht lesen wollte.
+ */
+describe('Die Kommentare auf der Seite', () => {
+  it('bleiben zu, bis jemand sie öffnet', async () => {
+    const wrapper = item('page')
+    await flushPromises()
+
+    expect(wrapper.find('input[type="text"]').exists()).toBe(false)
+  })
+
+  /** Eine Pille mit einer Zahl sieht aus wie eine Anzeige. Mit Wort sieht sie aus wie ein Weg. */
+  it('sind über ein Wort erreichbar, nicht über eine blanke Zahl', async () => {
+    const aufDerSeite = item('page')
+    await flushPromises()
+    expect(aufDerSeite.text()).toContain('2 Kommentare')
+
+    // Im Kasten ist dafür kein Platz; dort hilft die Beschriftung für Vorlesegeräte.
+    const imKasten = item('box')
+    await flushPromises()
+    expect(imKasten.text()).not.toContain('2 Kommentare')
+    expect(
+      imKasten
+        .findAll('button')
+        .some((button) => button.attributes('aria-label') === 'Kommentare anzeigen'),
+    ).toBe(true)
+  })
+})
