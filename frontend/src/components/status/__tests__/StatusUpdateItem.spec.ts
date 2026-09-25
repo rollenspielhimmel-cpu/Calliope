@@ -190,10 +190,10 @@ describe('StatusUpdateItem, der Weg zur Seite', () => {
  * Die Tests beziehen sich auf ihn, weil er derjenige mit der bekannten Kennung `c0` ist.
  */
 function replyToOldest(wrapper: ReturnType<typeof item>) {
-  return wrapper
-    .findAll('button')
-    .filter((button) => button.text() === 'Antworten')
-    .at(-1)
+  // Über eine Zwischenvariable statt `.at(-1)` oder `findLast`: Das eine hält der Linter für ein
+  // verkapptes `find`, das andere gibt es erst ab ES2023.
+  const buttons = wrapper.findAll('button').filter((button) => button.text() === 'Antworten')
+  return buttons[buttons.length - 1]
 }
 
 /** Der Streifen über dem Eingabefeld — der einzige, der sich verwerfen lässt. */
