@@ -390,7 +390,7 @@ async function submitComment() {
         <button
           v-if="!showAllComments && comments.length > previewCount(layout)"
           type="button"
-          class="mb-1.5 block text-xs font-medium text-oak-deep"
+          class="mb-1.5 block w-full text-center text-xs font-medium text-oak-deep"
           @click="showAllComments = true"
         >
           {{

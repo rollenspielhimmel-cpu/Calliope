@@ -73,48 +73,69 @@ watch(
 
       <h1 class="mt-4 text-h1">Statusmeldungen</h1>
 
-      <div class="mt-5 max-w-[640px]">
-        <StatusComposer class="mb-4" />
+      <div class="mt-5 flex flex-col gap-8 lg:flex-row lg:items-start">
+        <div class="max-w-[640px] flex-1">
+          <StatusComposer class="mb-4" />
 
-        <div v-if="isPending" class="flex items-center gap-2 text-note text-ink-5">
-          <Spinner />
-          Einen Moment.
-        </div>
-
-        <p v-else-if="isError" class="text-note text-ink-5">
-          Die Statusmeldungen lassen sich gerade nicht laden.
-        </p>
-
-        <p v-else-if="updates.length === 0" class="text-note text-ink-5">
-          Noch keine Statusmeldungen. Schreib die erste.
-        </p>
-
-        <template v-else>
-          <div class="space-y-2">
-            <StatusUpdateItem
-              v-for="update in updates"
-              :key="update.id"
-              :update="update"
-              layout="page"
-              :open-at-once="update.id === wanted"
-            />
+          <div v-if="isPending" class="flex items-center gap-2 text-note text-ink-5">
+            <Spinner />
+            Einen Moment.
           </div>
 
-          <!-- Mittig wie „Alle Statusmeldungen" unter dem Kasten: Die beiden Wege weiter stehen
-               an beiden Orten gleich. -->
-          <Button
-            v-if="hasOlder"
-            variant="outline"
-            class="mt-4 block"
-            :disabled="isLoadingOlder"
-            @click="loadOlder()"
-          >
-            <Spinner v-if="isLoadingOlder" />
-            Mehr Statusmeldungen
-          </Button>
+          <p v-else-if="isError" class="text-note text-ink-5">
+            Die Statusmeldungen lassen sich gerade nicht laden.
+          </p>
 
-          <p v-else class="mt-4 text-center text-[12.5px] text-ink-5">Das war die erste.</p>
-        </template>
+          <p v-else-if="updates.length === 0" class="text-note text-ink-5">
+            Noch keine Statusmeldungen. Schreib die erste.
+          </p>
+
+          <template v-else>
+            <div class="space-y-2">
+              <StatusUpdateItem
+                v-for="update in updates"
+                :key="update.id"
+                :update="update"
+                layout="page"
+                :open-at-once="update.id === wanted"
+              />
+            </div>
+
+            <!-- Mittig wie „Alle Statusmeldungen" unter dem Kasten: Die beiden Wege weiter stehen
+               an beiden Orten gleich. Über den Kasten darum, nicht über `block` am Knopf — der
+               Knopf ist `inline-flex`, und zwei Anzeigearten am selben Element streiten sich. -->
+            <div class="mt-4 flex justify-center">
+              <Button
+                v-if="hasOlder"
+                variant="outline"
+                :disabled="isLoadingOlder"
+                @click="loadOlder()"
+              >
+                <Spinner v-if="isLoadingOlder" />
+                Mehr Statusmeldungen
+              </Button>
+
+              <p v-else class="text-[12.5px] text-ink-5">Das war die erste.</p>
+            </div>
+          </template>
+        </div>
+
+        <!-- **Eine Notiz, kein Versprechen.**
+             Chiara wollte den Gedanken sichtbar neben der Liste haben, damit er nicht in einem
+             Quelltext-Kommentar verschwindet. Die Startseite spricht schon so über sich selbst
+             („Diese Seite ist noch in Arbeit"), also passt der Ton. Gebaut ist nichts davon. -->
+        <aside class="max-w-[260px] shrink-0 text-[12.5px] leading-relaxed text-ink-5 lg:mt-14">
+          <p class="font-medium text-ink-3">Was hier noch fehlt</p>
+          <p class="mt-1.5">
+            Später soll hier stehen, was Bekannte kommentiert haben — wer wo etwas geschrieben hat,
+            statt nur der eigenen Meldungen.
+          </p>
+          <p class="mt-2">
+            Und man soll Mitgliedern folgen können, deren Kommentare man gern liest. Vorher ist zu
+            klären, wer „Bekannte" bei uns überhaupt sind: Es gibt keine Freundschaften, nur
+            gemeinsame Gruppen.
+          </p>
+        </aside>
       </div>
     </div>
   </AppLayout>
