@@ -647,6 +647,14 @@ export interface StatusUpdateComment {
   statusUpdateId: string;
 }
 
+export interface StatusUpdateHiddenMember {
+  createdAt: Generated<string>;
+  hiddenUserId: string;
+  hideComments: Generated<boolean>;
+  hideUpdates: Generated<boolean>;
+  userId: string;
+}
+
 export interface StatusUpdateSubscription {
   createdAt: Generated<string>;
   statusUpdateId: string;
@@ -908,6 +916,7 @@ export interface DB {
   senderGrant: SenderGrant;
   statusUpdate: StatusUpdate;
   statusUpdateComment: StatusUpdateComment;
+  statusUpdateHiddenMember: StatusUpdateHiddenMember;
   statusUpdateSubscription: StatusUpdateSubscription;
   storyIdea: StoryIdea;
   storyIdeaReader: StoryIdeaReader;
@@ -1637,6 +1646,14 @@ export const STATUS_UPDATE_COMMENT_SCHEMA = z.object({
   quotedCommentId: z.uuidv7().nullable().describe(
     "Der zitierte Kommentar, oder null. Das Zitat wird beim Anzeigen aus ihm gebaut, damit Name und Text aktuell bleiben.",
   ),
+});
+
+export const STATUS_UPDATE_HIDDEN_MEMBER_SCHEMA = z.object({
+  userId: z.uuidv7(),
+  hiddenUserId: z.uuidv7(),
+  hideUpdates: z.boolean(),
+  hideComments: z.boolean(),
+  createdAt: z.iso.datetime({ offset: true }),
 });
 
 export const STATUS_UPDATE_SUBSCRIPTION_SCHEMA = z.object({

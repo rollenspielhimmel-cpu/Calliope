@@ -47,7 +47,10 @@ export default new OpenAPIHono().openapi(
   }),
   async (c) => {
     const { statusUpdateId } = c.req.valid("param");
-    const result = await StatusUpdateService.listComments(statusUpdateId);
+    const result = await StatusUpdateService.listComments(
+      c.get("user"),
+      statusUpdateId,
+    );
 
     return result === "not_found"
       ? c.json({ error: "Not found" }, STATUS_CODE.NotFound)

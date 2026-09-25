@@ -148,17 +148,22 @@ describe('StatusUpdateItem, kommentieren', () => {
 })
 
 describe('StatusUpdateItem, der Weg zur Seite', () => {
-  it('führt von der Uhrzeit im Kasten auf die Seite, zu genau dieser Meldung', async () => {
+  /**
+   * **Die Uhrzeit ist eine Angabe, kein Weg.** Sie trug eine Weile den Verweis auf die Seite —
+   * ein Knopf weniger in einem engen Kasten. Nur klickt niemand auf eine Uhrzeit, um irgendwohin
+   * zu kommen, und wer es versehentlich tat, stand plötzlich woanders.
+   */
+  it('macht aus der Uhrzeit keinen Verweis', async () => {
     const wrapper = item('box')
     await flushPromises()
 
-    const links = wrapper.findAllComponents(RouterLinkStub)
-    const toPage = links.find(
-      (link) => (link.props('to') as { name?: string } | undefined)?.name === 'statusUpdates',
-    )
+    const toPage = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((link) => (link.props('to') as { name?: string } | undefined)?.name === 'statusUpdates')
 
-    expect(toPage).toBeDefined()
-    expect(toPage?.props('to')).toMatchObject({ name: 'statusUpdates', hash: '#s1' })
+    expect(toPage).toBeUndefined()
+    // Sie steht trotzdem da — als das, was sie ist.
+    expect(wrapper.text()).toContain('September')
   })
 
   it('verweist auf der Seite selbst nicht auf die Seite', async () => {

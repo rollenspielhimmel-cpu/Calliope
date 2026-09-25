@@ -43,6 +43,7 @@ export default new OpenAPIHono().openapi(
   }),
   async (c) => {
     const page = await StatusUpdateService.listStatusUpdates(
+      c.get("user"),
       c.req.valid("json"),
     );
     return c.json(page, STATUS_CODE.OK);

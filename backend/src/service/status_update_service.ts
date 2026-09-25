@@ -7,6 +7,7 @@ import type {
 } from "@/src/database/schema.ts";
 import { TEXT_LIMIT } from "@/src/text_limit.ts";
 import { NotificationService } from "@/src/service/notification_service.ts";
+import type { User } from "@/src/service/user_service.ts";
 
 export type StatusUpdate =
   & Pick<
@@ -58,23 +59,152 @@ function statusUpdatesWithAuthor(executor: Executor = db) {
 }
 
 /**
+ * Wen dieses Mitglied in den Statusmeldungen nicht sehen will.
+ *
+ * **Gefiltert wird beim Lesen, nie beim Schreiben** — wie bei den Blocks. Wer jemanden wieder
+ * einblendet, bekommt zurück, was verborgen war, statt einer Lücke in der Geschichte.
+ *
+ * **Die Moderation blendet niemanden aus.** Für sie muss alles sichtbar sein: Im Löschprotokoll
+ * steht nur, was gelöscht wurde — was jemand geschrieben und stehen gelassen hat, sieht man nur,
+ * wenn man es sehen kann. Deshalb gibt diese Abfrage für eine Rolle leere Listen zurück, statt
+ * dass jede Lesestelle daran denken muss.
+ */
+async function hiddenBy(user: User): Promise<{
+  updates: string[];
+  comments: string[];
+}> {
+  if (user.platformRole !== null) {
+    return { updates: [], comments: [] };
+  }
+
+  const rows = await db
+    .selectFrom("statusUpdateHiddenMember")
+    .select(["hiddenUserId", "hideUpdates", "hideComments"])
+    .where("userId", "=", user.id)
+    .execute();
+
+  return {
+    updates: rows.filter((row) => row.hideUpdates).map((row) =>
+      row.hiddenUserId
+    ),
+    comments: rows.filter((row) => row.hideComments).map((row) =>
+      row.hiddenUserId
+    ),
+  };
+}
+
+/** Was im Einstellungsdialog steht: wen man ausblendet, und womit. */
+export type HiddenMember = {
+  userId: string;
+  username: string;
+  hideUpdates: boolean;
+  hideComments: boolean;
+};
+
+async function listHiddenMembers(userId: string): Promise<HiddenMember[]> {
+  return await db
+    .selectFrom("statusUpdateHiddenMember")
+    .innerJoin("user", "user.id", "statusUpdateHiddenMember.hiddenUserId")
+    .select([
+      "statusUpdateHiddenMember.hiddenUserId as userId",
+      "user.username",
+      "statusUpdateHiddenMember.hideUpdates",
+      "statusUpdateHiddenMember.hideComments",
+    ])
+    .where("statusUpdateHiddenMember.userId", "=", userId)
+    .orderBy("user.username", "asc")
+    .execute();
+}
+
+export type HideRefusal = "not_found" | "not_yourself";
+
+/**
+ * Stellt für ein Mitglied ein, was von einem anderen verborgen bleibt.
+ *
+ * Beide Schalter aus heißt: Der Eintrag verschwindet. Sonst gäbe es zwei Arten, „ich sehe alles
+ * von dir" zu speichern, und jede Abfrage müsste beide kennen.
+ */
+async function setHiddenMember(
+  transaction: Transaction,
+  userId: string,
+  hiddenUserId: string,
+  { hideUpdates, hideComments }: {
+    hideUpdates: boolean;
+    hideComments: boolean;
+  },
+): Promise<HideRefusal | undefined> {
+  if (userId === hiddenUserId) {
+    return "not_yourself";
+  }
+
+  const member = await transaction
+    .selectFrom("user")
+    .select("id")
+    .where("id", "=", hiddenUserId)
+    .executeTakeFirst();
+
+  if (member === undefined) {
+    return "not_found";
+  }
+
+  if (!hideUpdates && !hideComments) {
+    await transaction
+      .deleteFrom("statusUpdateHiddenMember")
+      .where("userId", "=", userId)
+      .where("hiddenUserId", "=", hiddenUserId)
+      .execute();
+    return undefined;
+  }
+
+  await transaction
+    .insertInto("statusUpdateHiddenMember")
+    .values({ userId, hiddenUserId, hideUpdates, hideComments })
+    .onConflict((conflict) =>
+      conflict
+        .columns(["userId", "hiddenUserId"])
+        .doUpdateSet({ hideUpdates, hideComments })
+    )
+    .execute();
+
+  return undefined;
+}
+
+/**
  * Newest first, paged by a cursor rather than an offset — the same reasoning as a chat's
  * messages: a status posted while somebody reads shifts the window, so page two would repeat or
  * skip whatever crossed the boundary. Ids are uuidv7 and therefore time-ordered, so comparing
  * them orders the feed too.
  */
 async function listStatusUpdates(
+  user: User,
   { limit, before }: { limit: number; before?: string },
 ): Promise<{ results: StatusUpdate[]; nextCursor: string | null }> {
+  const hidden = await hiddenBy(user);
+
   let page = statusUpdatesWithAuthor()
     .leftJoin(
       "statusUpdateComment",
       "statusUpdateComment.statusUpdateId",
       "statusUpdate.id",
     )
-    .select((eb) =>
-      eb.fn.count<number>("statusUpdateComment.id").as("commentCount")
-    )
+    /**
+     * **Die Zahl zählt, was man sehen kann.** Steht dort eine Vier und öffnet sich ein Strang mit
+     * zwei Kommentaren, sieht das nach einem Fehler aus — und verrät nebenbei, dass da noch etwas
+     * ist.
+     *
+     * Gefiltert wird **in der Zählung**, nicht in der Auswahl. Eine Bedingung auf den
+     * verbundenen Kommentar wirft sonst die ganze Meldung hinaus, sobald *alle* ihre Kommentare
+     * ausgeblendet sind — der linke Verbund hat dann keine Zeile mehr, die durchkäme. Genau so
+     * ist es beim ersten Versuch passiert, und der Test hat es gefangen.
+     */
+    .select((eb) => {
+      const comments = eb.fn.count<number>("statusUpdateComment.id");
+      return (hidden.comments.length === 0 ? comments : comments.filterWhere(
+        "statusUpdateComment.createdBy",
+        "not in",
+        hidden.comments,
+      )).as("commentCount");
+    })
     .groupBy(["statusUpdate.id", "user.id"])
     .orderBy("statusUpdate.id", "desc")
     // One more than asked for, purely to know whether another page exists.
@@ -82,6 +212,10 @@ async function listStatusUpdates(
 
   if (before !== undefined) {
     page = page.where("statusUpdate.id", "<", before);
+  }
+
+  if (hidden.updates.length > 0) {
+    page = page.where("statusUpdate.createdBy", "not in", hidden.updates);
   }
 
   const rows = await page.execute();
@@ -200,8 +334,11 @@ function withQuote<
 }
 
 async function listComments(
+  user: User,
   statusUpdateId: string,
 ): Promise<StatusUpdateComment[] | StatusUpdateRefusal> {
+  const hidden = await hiddenBy(user);
+
   const statusUpdate = await db
     .selectFrom("statusUpdate")
     .select("id")
@@ -212,8 +349,18 @@ async function listComments(
     return "not_found";
   }
 
-  const comments = await commentsWithAuthor()
-    .where("statusUpdateComment.statusUpdateId", "=", statusUpdateId)
+  let query = commentsWithAuthor()
+    .where("statusUpdateComment.statusUpdateId", "=", statusUpdateId);
+
+  if (hidden.comments.length > 0) {
+    query = query.where(
+      "statusUpdateComment.createdBy",
+      "not in",
+      hidden.comments,
+    );
+  }
+
+  const comments = await query
     // Oldest first — a conversation reads top to bottom. Ids order it the same way created_at
     // would, and are what the feed above already sorts by.
     .orderBy("statusUpdateComment.id", "asc")
@@ -379,6 +526,8 @@ async function subscriptionFor(
 }
 
 export const StatusUpdateService = {
+  listHiddenMembers,
+  setHiddenMember,
   setSubscription,
   subscriptionFor,
   listStatusUpdates,

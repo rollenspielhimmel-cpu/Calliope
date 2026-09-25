@@ -247,16 +247,12 @@ async function submitComment() {
             {{ update.createdByUsername }}
           </RouterLink>
           <span class="text-ink-4"> · </span>
-          <!-- Die Uhrzeit trägt den Weg zur Seite: die Stelle, an der bei uns ohnehin das
-               Nebensächliche steht, und ein Knopf weniger in einem engen Kasten. -->
-          <RouterLink
-            v-if="layout === 'box'"
-            :to="{ name: 'statusUpdates', hash: `#${update.id}` }"
-            class="text-ink-3 hover:text-oak-deep hover:underline"
-          >
-            {{ formatActivityTime(update.createdAt) }}
-          </RouterLink>
-          <span v-else class="text-ink-3">{{ formatActivityTime(update.createdAt) }}</span>
+          <!-- **Die Uhrzeit ist eine Angabe, kein Weg.**
+               Sie trug eine Weile den Verweis auf die Seite — ein Knopf weniger in einem engen
+               Kasten. Nur klickt niemand auf eine Uhrzeit, um irgendwohin zu kommen: Wer es
+               versehentlich tat, stand plötzlich auf einer anderen Seite. Der Weg dorthin steht
+               unter dem Kasten, wo man ihn sucht. -->
+          <span class="text-ink-3">{{ formatActivityTime(update.createdAt) }}</span>
         </p>
         <StatusBody :text="update.body" :lines="layout === 'page' ? 8 : 3" />
         <!-- **Die Glocke neben der Sprechblase**, nicht als Satz unter dem Feld.
