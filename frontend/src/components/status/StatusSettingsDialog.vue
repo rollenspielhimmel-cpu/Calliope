@@ -13,6 +13,10 @@
  * blockiert ist, verschwindet deshalb *nicht* von selbst aus den Statusmeldungen. Hier steht er
  * aber schon da, mit einem Vermerk und zwei ungesetzten Schaltern — ein Klick genügt, und man
  * erfährt nebenbei, warum er noch sichtbar war.
+ *
+ * **Die Moderation sieht dasselbe Rädchen und etwas anderes dahinter.** Ausblenden kann sie
+ * nicht — für sie muss alles sichtbar sein —, aber das Löschprotokoll gehört hierher: Es ist die
+ * andere Hälfte derselben Frage, wer was zu sehen bekommt.
  */
 import { computed, ref } from 'vue'
 import { Settings } from '@lucide/vue'
@@ -23,6 +27,7 @@ import {
 import { useListBlocks } from '@/api/blocks/blocks'
 import type { ListUsers200ResultsItem } from '@/api/models'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
+import { useIsOperator } from '@/composables/useIsOperator'
 import UserPicker from '@/components/user/UserPicker.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -37,11 +42,16 @@ import { Label } from '@/components/ui/label'
 
 const open = ref<boolean>(false)
 
+/** Wer eine Rolle trägt, blendet niemanden aus und bekommt hier stattdessen das Protokoll. */
+const isOperator = useIsOperator()
+
 /** Erst fragen, wenn jemand hinsieht: Der Dialog ist zu, bis er gebraucht wird. */
-const hiddenQuery = useListHiddenStatusMembers({ query: { enabled: open } })
+const forMembers = computed<boolean>(() => open.value && !isOperator.value)
+
+const hiddenQuery = useListHiddenStatusMembers({ query: { enabled: forMembers } })
 const blocksQuery = useListBlocks(
   () => ({ limit: 100, offset: 0, sortAttribute: 'createdAt', sortOrder: 'desc' }),
-  { query: { enabled: open } },
+  { query: { enabled: forMembers } },
 )
 
 type Row = {
@@ -151,12 +161,29 @@ const excludeIds = computed<string[]>(() =>
       <DialogTitle>Statusmeldungen</DialogTitle>
       <DialogHeader>
         <DialogDescription>
-          Wen du hier nicht sehen möchtest. Das gilt nur für dich, und du kannst es jederzeit
-          zurücknehmen — es kommt dann alles wieder.
+          {{
+            isOperator
+              ? 'Was in den Statusmeldungen gelöscht wurde, und von wem.'
+              : 'Wen du hier nicht sehen möchtest. Das gilt nur für dich, und du kannst es jederzeit zurücknehmen — es kommt dann alles wieder.'
+          }}
         </DialogDescription>
       </DialogHeader>
 
-      <div class="flex flex-col gap-4">
+      <!-- **Das Protokoll kommt hierher.** Bis es gebaut ist, steht hier, dass es kommt — sonst
+           öffnet sich für die Moderation ein leerer Dialog, und niemand weiß, ob das ein Fehler
+           ist oder Absicht. -->
+      <div v-if="isOperator" class="flex flex-col gap-2">
+        <p class="text-control text-ink-3">Löschprotokoll</p>
+        <p class="text-control text-ink-5">
+          Hier stehen bald die gelöschten Statusmeldungen und Kommentare, neueste zuerst: der
+          Wortlaut, von wem er war, wer gelöscht hat und wann. Noch ist nichts davon gebaut.
+        </p>
+        <p class="text-control text-ink-5">
+          Ausblenden kannst du niemanden — für die Moderation muss alles sichtbar sein.
+        </p>
+      </div>
+
+      <div v-else class="flex flex-col gap-4">
         <UserPicker
           label="Mitglied ausblenden"
           placeholder="Name eingeben"

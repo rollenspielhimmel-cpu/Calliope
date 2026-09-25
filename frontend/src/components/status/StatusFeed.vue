@@ -30,7 +30,6 @@ import { useStatusUpdates } from '@/composables/useStatusUpdates'
 import StatusComposer from '@/components/status/StatusComposer.vue'
 import StatusSettingsDialog from '@/components/status/StatusSettingsDialog.vue'
 import StatusUpdateItem from '@/components/status/StatusUpdateItem.vue'
-import { useIsOperator } from '@/composables/useIsOperator'
 
 /**
  * Sichtbar sind etwa vier, der Rest steht hinter dem Scrollbalken des Kastens.
@@ -41,12 +40,6 @@ import { useIsOperator } from '@/composables/useIsOperator'
 const PAGE_SIZE = 10
 
 const { updates, isPending, isError } = useStatusUpdates(PAGE_SIZE)
-
-/**
- * **Die Moderation blendet niemanden aus**, also hat sie hier auch nichts einzustellen: Für sie
- * muss alles sichtbar sein. Der Server weist beide Wege ohnehin ab; das hier spart den Weg dorthin.
- */
-const isOperator = useIsOperator()
 </script>
 
 <template>
@@ -80,7 +73,7 @@ const isOperator = useIsOperator()
         Alle Statusmeldungen
       </RouterLink>
       <span class="justify-self-end">
-        <StatusSettingsDialog v-if="!isOperator" />
+        <StatusSettingsDialog />
       </span>
     </div>
   </div>
