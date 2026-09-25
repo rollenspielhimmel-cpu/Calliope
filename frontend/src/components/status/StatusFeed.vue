@@ -28,7 +28,9 @@
 import { RouterLink } from 'vue-router'
 import { useStatusUpdates } from '@/composables/useStatusUpdates'
 import StatusComposer from '@/components/status/StatusComposer.vue'
+import StatusSettingsDialog from '@/components/status/StatusSettingsDialog.vue'
 import StatusUpdateItem from '@/components/status/StatusUpdateItem.vue'
+import { useIsOperator } from '@/composables/useIsOperator'
 
 /**
  * Sichtbar sind etwa vier, der Rest steht hinter dem Scrollbalken des Kastens.
@@ -39,6 +41,12 @@ import StatusUpdateItem from '@/components/status/StatusUpdateItem.vue'
 const PAGE_SIZE = 10
 
 const { updates, isPending, isError } = useStatusUpdates(PAGE_SIZE)
+
+/**
+ * **Die Moderation blendet niemanden aus**, also hat sie hier auch nichts einzustellen: Für sie
+ * muss alles sichtbar sein. Der Server weist beide Wege ohnehin ab; das hier spart den Weg dorthin.
+ */
+const isOperator = useIsOperator()
 </script>
 
 <template>
@@ -60,11 +68,20 @@ const { updates, isPending, isError } = useStatusUpdates(PAGE_SIZE)
       <StatusUpdateItem v-for="update in updates" :key="update.id" :update="update" layout="box" />
     </div>
 
-    <RouterLink
-      :to="{ name: 'statusUpdates' }"
-      class="mt-3 mb-0.5 block text-center text-[12.5px] font-medium text-oak-deep hover:underline"
-    >
-      Alle Statusmeldungen
-    </RouterLink>
+    <!-- Der Verweis mittig, das Rädchen rechts daneben: Der Weg weiter ist das Angebot, die
+         Einstellungen sind das Werkzeug. Über einen Kasten mit drei Spalten, damit die Mitte die
+         Mitte bleibt und nicht vom Rädchen verschoben wird. -->
+    <div class="mt-3 mb-0.5 grid grid-cols-[1fr_auto_1fr] items-center">
+      <span />
+      <RouterLink
+        :to="{ name: 'statusUpdates' }"
+        class="text-[12.5px] font-medium text-oak-deep hover:underline"
+      >
+        Alle Statusmeldungen
+      </RouterLink>
+      <span class="justify-self-end">
+        <StatusSettingsDialog v-if="!isOperator" />
+      </span>
+    </div>
   </div>
 </template>

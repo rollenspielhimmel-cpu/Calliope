@@ -22,7 +22,9 @@ import { useRoute, RouterLink } from 'vue-router'
 import { useStatusUpdates } from '@/composables/useStatusUpdates'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusComposer from '@/components/status/StatusComposer.vue'
+import StatusSettingsDialog from '@/components/status/StatusSettingsDialog.vue'
 import StatusUpdateItem from '@/components/status/StatusUpdateItem.vue'
+import { useIsOperator } from '@/composables/useIsOperator'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -31,6 +33,8 @@ const PAGE_SIZE = 20
 
 const { updates, isPending, isError, hasOlder, isLoadingOlder, loadOlder } =
   useStatusUpdates(PAGE_SIZE)
+
+const isOperator = useIsOperator()
 
 const route = useRoute()
 
@@ -71,7 +75,10 @@ watch(
         ← Zurück zur Startseite
       </RouterLink>
 
-      <h1 class="mt-4 text-h1">Statusmeldungen</h1>
+      <div class="mt-4 flex items-center gap-2">
+        <h1 class="text-h1">Statusmeldungen</h1>
+        <StatusSettingsDialog v-if="!isOperator" />
+      </div>
 
       <div class="mt-5 flex flex-col gap-8 md:flex-row md:items-start">
         <div class="max-w-[640px] flex-1">

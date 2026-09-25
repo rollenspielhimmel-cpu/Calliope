@@ -57,6 +57,11 @@ vi.mock('@/components/layout/AppLayout.vue', () => ({
   default: { template: '<div><slot /></div>' },
 }))
 
+// Der Einstellungsdialog bringt eigene Abfragen mit — hier geht es um die Liste, nicht um ihn.
+vi.mock('@/components/status/StatusSettingsDialog.vue', () => ({
+  default: { template: '<button data-settings />' },
+}))
+
 function mountWith(component: unknown, hash = '') {
   return mount(component as Parameters<typeof mount>[0], {
     global: {
