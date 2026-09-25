@@ -73,7 +73,7 @@ watch(
 
       <h1 class="mt-4 text-h1">Statusmeldungen</h1>
 
-      <div class="mt-5 flex flex-col gap-8 lg:flex-row lg:items-start">
+      <div class="mt-5 flex flex-col gap-8 md:flex-row md:items-start">
         <div class="max-w-[640px] flex-1">
           <StatusComposer class="mb-4" />
 
@@ -124,7 +124,7 @@ watch(
              Chiara wollte den Gedanken sichtbar neben der Liste haben, damit er nicht in einem
              Quelltext-Kommentar verschwindet. Die Startseite spricht schon so über sich selbst
              („Diese Seite ist noch in Arbeit"), also passt der Ton. Gebaut ist nichts davon. -->
-        <aside class="max-w-[260px] shrink-0 text-[12.5px] leading-relaxed text-ink-5 lg:mt-14">
+        <aside class="max-w-[260px] shrink-0 text-[12.5px] leading-relaxed text-ink-5 md:mt-14">
           <p class="font-medium text-ink-3">Was hier noch fehlt</p>
           <p class="mt-1.5">
             Später soll hier stehen, was Bekannte kommentiert haben — wer wo etwas geschrieben hat,
