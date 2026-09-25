@@ -65,16 +65,19 @@ const { updates, isPending, isError } = useStatusUpdates(PAGE_SIZE)
          Einstellungen sind das Werkzeug. Über einen Kasten mit drei Spalten, damit die Mitte die
          Mitte bleibt und nicht vom Rädchen verschoben wird. -->
     <div class="mt-3 mb-0.5 grid grid-cols-[1fr_auto_1fr] items-center">
-      <span />
+      <!-- **Unter den Profilbildern, auf einer Mitte mit ihnen.** Ausgemessen statt geschätzt:
+           Das Bild ist 28 Pixel breit, der Knopf 22, und `ml-4` bringt beide Mitten auf dieselbe
+           Senkrechte. Rechts stand er allein in der Ecke und gehörte zu nichts. -->
+      <span class="ml-4 justify-self-start">
+        <StatusSettingsDialog />
+      </span>
       <RouterLink
         :to="{ name: 'statusUpdates' }"
         class="text-[12.5px] font-medium text-oak-deep hover:underline"
       >
         Alle Statusmeldungen
       </RouterLink>
-      <span class="justify-self-end">
-        <StatusSettingsDialog />
-      </span>
+      <span />
     </div>
   </div>
 </template>

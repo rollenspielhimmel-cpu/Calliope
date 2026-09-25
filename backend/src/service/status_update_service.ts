@@ -37,7 +37,17 @@ export type StatusUpdateComment =
     Selectable<DatabaseStatusUpdateComment>,
     "id" | "statusUpdateId" | "createdBy" | "body" | "createdAt"
   >
-  & { createdByUsername: string; quotedComment: QuotedComment | null };
+  & {
+    createdByUsername: string;
+    quotedComment: QuotedComment | null;
+    /**
+     * Wer gelöscht hat, oder null. **Der Unterschied gehört an die Oberfläche:** „Kommentar
+     * gelöscht." heißt, jemand hat sein eigenes Wort zurückgenommen; „Kommentar durch
+     * Rollenspielhimmel gelöscht." heißt, die Plattform hat eingegriffen. Wer das verwechselt,
+     * hält Moderation für Reue — oder umgekehrt.
+     */
+    deletedBy: "member" | "moderation" | null;
+  };
 
 const STATUS_UPDATE_COLUMNS = [
   "statusUpdate.id",
@@ -281,6 +291,8 @@ function commentsWithAuthor(executor: Executor = db) {
       "statusUpdateComment.body",
       "statusUpdateComment.createdAt",
       "user.username as createdByUsername",
+      "statusUpdateComment.deletedAt",
+      "statusUpdateComment.deletedByModeration",
       "quoted.id as quotedId",
       "quoted.body as quotedBody",
       "quoted.createdBy as quotedCreatedBy",
@@ -297,6 +309,9 @@ function commentsWithAuthor(executor: Executor = db) {
  */
 function withQuote<
   Row extends {
+    body: string;
+    deletedAt: string | null;
+    deletedByModeration: boolean;
     quotedId: string | null;
     quotedBody: string | null;
     quotedCreatedBy: string | null;
@@ -307,10 +322,20 @@ function withQuote<
 ):
   & Omit<
     Row,
-    "quotedId" | "quotedBody" | "quotedCreatedBy" | "quotedCreatedByUsername"
+    | "deletedAt"
+    | "deletedByModeration"
+    | "quotedId"
+    | "quotedBody"
+    | "quotedCreatedBy"
+    | "quotedCreatedByUsername"
   >
-  & { quotedComment: QuotedComment | null } {
+  & {
+    quotedComment: QuotedComment | null;
+    deletedBy: "member" | "moderation" | null;
+  } {
   const {
+    deletedAt,
+    deletedByModeration,
     quotedId,
     quotedBody,
     quotedCreatedBy,
@@ -318,8 +343,14 @@ function withQuote<
     ...rest
   } = row;
 
+  const deleted = deletedAt !== null;
+
   return {
     ...rest,
+    // **Der Text verlässt den Server nicht.** Ein gelöschter Kommentar ist gelöscht, auch für
+    // den, der die Antwort abfängt — im Protokoll steht er, in der Antwort nicht.
+    body: deleted ? "" : rest.body,
+    deletedBy: deleted ? (deletedByModeration ? "moderation" : "member") : null,
     quotedComment:
       quotedId !== null && quotedBody !== null && quotedCreatedBy !== null &&
         quotedCreatedByUsername !== null
@@ -525,7 +556,169 @@ async function subscriptionFor(
   };
 }
 
+export type DeleteRefusal = "not_found" | "not_yours";
+
+/**
+ * Löscht eine eigene Statusmeldung — samt allem, was darunter steht.
+ *
+ * **Hart gelöscht, anders als ein Kommentar.** Die Meldung ist weg, und ihre Kommentare gehen über
+ * die Fremdschlüssel mit. Das ist richtig so: Ein Strang ohne seinen Anfang ist kein Strang.
+ *
+ * **Vorher kommt alles ins Protokoll** — die Meldung und jeder Kommentar darunter, jeder mit
+ * seinem eigenen Verfasser. Der Fall, für den es das gibt: Jemand schreibt etwas, zieht es zurück
+ * und behauptet später, es nie getan zu haben.
+ *
+ * Die Namen stehen dort als Text, nicht als Verweis: Ein Protokoll hält fest, was war, und muss
+ * ein gelöschtes Konto überleben.
+ */
+async function deleteStatusUpdate(
+  transaction: Transaction,
+  actor: User,
+  statusUpdateId: string,
+): Promise<DeleteRefusal | undefined> {
+  const statusUpdate = await transaction
+    .selectFrom("statusUpdate")
+    .innerJoin("user", "user.id", "statusUpdate.createdBy")
+    .select([
+      "statusUpdate.id",
+      "statusUpdate.body",
+      "statusUpdate.createdAt",
+      "statusUpdate.createdBy",
+      "user.username as createdByUsername",
+    ])
+    .where("statusUpdate.id", "=", statusUpdateId)
+    .executeTakeFirst();
+
+  if (statusUpdate === undefined) {
+    return "not_found";
+  }
+
+  if (statusUpdate.createdBy !== actor.id) {
+    return "not_yours";
+  }
+
+  const comments = await transaction
+    .selectFrom("statusUpdateComment")
+    .innerJoin("user", "user.id", "statusUpdateComment.createdBy")
+    .select([
+      "statusUpdateComment.id",
+      "statusUpdateComment.body",
+      "statusUpdateComment.createdAt",
+      "statusUpdateComment.createdBy",
+      "user.username as createdByUsername",
+    ])
+    .where("statusUpdateComment.statusUpdateId", "=", statusUpdateId)
+    // Schon gelöschte stehen bereits im Protokoll; sie ein zweites Mal einzutragen hieße, eine
+    // Rücknahme als zwei zu zählen.
+    .where("statusUpdateComment.deletedAt", "is", null)
+    .execute();
+
+  await transaction
+    .insertInto("statusUpdateDeletion")
+    .values([
+      {
+        kind: "status_update" as const,
+        statusUpdateId,
+        commentId: null,
+        body: statusUpdate.body,
+        writtenBy: statusUpdate.createdBy,
+        writtenByUsername: statusUpdate.createdByUsername,
+        writtenAt: statusUpdate.createdAt,
+        deletedBy: actor.id,
+        deletedByUsername: actor.username,
+        byModeration: false,
+        reason: null,
+      },
+      ...comments.map((comment) => ({
+        kind: "comment" as const,
+        statusUpdateId,
+        commentId: comment.id,
+        body: comment.body,
+        writtenBy: comment.createdBy,
+        writtenByUsername: comment.createdByUsername,
+        writtenAt: comment.createdAt,
+        deletedBy: actor.id,
+        deletedByUsername: actor.username,
+        byModeration: false,
+        reason: null,
+      })),
+    ])
+    .execute();
+
+  await transaction
+    .deleteFrom("statusUpdate")
+    .where("id", "=", statusUpdateId)
+    .execute();
+
+  return undefined;
+}
+
+/**
+ * Löscht einen eigenen Kommentar.
+ *
+ * **Weich gelöscht:** Der Text ist weg, die Zeile bleibt. An ihrer Stelle steht „Kommentar
+ * gelöscht.", und Antworten, die ihn zitieren, behalten ihren Anker — ein Zitat ohne Bezug wäre
+ * plötzlich sinnlos.
+ */
+async function deleteComment(
+  transaction: Transaction,
+  actor: User,
+  statusUpdateId: string,
+  commentId: string,
+): Promise<DeleteRefusal | undefined> {
+  const comment = await transaction
+    .selectFrom("statusUpdateComment")
+    .innerJoin("user", "user.id", "statusUpdateComment.createdBy")
+    .select([
+      "statusUpdateComment.id",
+      "statusUpdateComment.body",
+      "statusUpdateComment.createdAt",
+      "statusUpdateComment.createdBy",
+      "statusUpdateComment.deletedAt",
+      "user.username as createdByUsername",
+    ])
+    .where("statusUpdateComment.id", "=", commentId)
+    .where("statusUpdateComment.statusUpdateId", "=", statusUpdateId)
+    .executeTakeFirst();
+
+  // Ein schon gelöschter Kommentar ist für den Lesenden nicht da — also auch nicht zu löschen.
+  if (comment === undefined || comment.deletedAt !== null) {
+    return "not_found";
+  }
+
+  if (comment.createdBy !== actor.id) {
+    return "not_yours";
+  }
+
+  await transaction
+    .insertInto("statusUpdateDeletion")
+    .values({
+      kind: "comment" as const,
+      statusUpdateId,
+      commentId,
+      body: comment.body,
+      writtenBy: comment.createdBy,
+      writtenByUsername: comment.createdByUsername,
+      writtenAt: comment.createdAt,
+      deletedBy: actor.id,
+      deletedByUsername: actor.username,
+      byModeration: false,
+      reason: null,
+    })
+    .execute();
+
+  await transaction
+    .updateTable("statusUpdateComment")
+    .set({ deletedAt: new Date().toISOString(), deletedByModeration: false })
+    .where("id", "=", commentId)
+    .execute();
+
+  return undefined;
+}
+
 export const StatusUpdateService = {
+  deleteStatusUpdate,
+  deleteComment,
   listHiddenMembers,
   setHiddenMember,
   setSubscription,

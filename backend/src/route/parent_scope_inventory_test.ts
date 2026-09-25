@@ -61,6 +61,11 @@ const COVERED: ReadonlyArray<{ pattern: RegExp; guard: string }> = [
 /** Adressen mit zwei Kennungen, die keine Eltern-Kind-Beziehung sind — mit Grund. */
 const EXEMPT: ReadonlyArray<{ path: string; reason: string }> = [
   {
+    path: "/api/status-updates/{statusUpdateId}/comments/{commentId}",
+    reason:
+      "Gedeckt im Dienst, nicht vor dem Teilbaum: `deleteComment` liest den Kommentar über beide Kennungen zugleich und antwortet 404, wenn er nicht unter dieser Meldung steht. Ein Vorfilter bräuchte dieselbe Abfrage ein zweites Mal, und die Statusmeldungen haben keinen Teilbaum, der ihn erben könnte.",
+  },
+  {
     path: "/api/groups/{groupId}/memberships/{userId}",
     reason:
       "Kein Kind: eine Mitgliedschaft ist das Paar (Gruppe, Konto), und der Dienst liest und schreibt sie nur über beide.",

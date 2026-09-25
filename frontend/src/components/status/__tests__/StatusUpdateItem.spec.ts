@@ -63,6 +63,15 @@ const quotingComment = {
 
 const createComment = vi.fn<(...args: unknown[]) => Promise<unknown>>()
 const setSubscription = vi.fn<(...args: unknown[]) => Promise<unknown>>()
+const removeUpdate = vi.fn<(...args: unknown[]) => Promise<unknown>>()
+const removeComment = vi.fn<(...args: unknown[]) => Promise<unknown>>()
+
+/** Wer hier liest: u1 schreibt die Meldung, u3 und u2 die beiden Kommentare. */
+vi.mock('@/api/auth/auth', () => ({
+  useGetCurrentUser: () => ({
+    data: ref({ status: 200, data: { id: 'u1', platformRole: null } }),
+  }),
+}))
 
 vi.mock('@/api/status-updates/status-updates', () => ({
   useListStatusUpdateComments: () => ({
@@ -79,6 +88,8 @@ vi.mock('@/api/status-updates/status-updates', () => ({
     refetch: () => Promise.resolve(),
   }),
   setStatusUpdateSubscription: (...args: unknown[]) => setSubscription(...args),
+  deleteStatusUpdate: (...args: unknown[]) => removeUpdate(...args),
+  deleteStatusUpdateComment: (...args: unknown[]) => removeComment(...args),
   listStatusUpdates: () =>
     Promise.resolve({ status: 200, data: { results: [update], nextCursor: null } }),
   getListStatusUpdatesQueryKey: () => ['QUERY', 'api', 'status-updates', {}],
@@ -367,5 +378,53 @@ describe('Die Kommentare auf der Seite', () => {
         .findAll('button')
         .some((button) => button.attributes('aria-label') === 'Kommentare anzeigen'),
     ).toBe(true)
+  })
+})
+
+/**
+ * Eigenes löschen.
+ *
+ * **Zwei Sätze, nicht einer:** „Kommentar gelöscht." heißt, jemand hat sein eigenes Wort
+ * zurückgenommen; „Kommentar durch Rollenspielhimmel gelöscht." heißt, die Plattform hat
+ * eingegriffen. Wer das verwechselt, hält Moderation für Reue — oder umgekehrt.
+ */
+describe('Löschen', () => {
+  it('bietet den Papierkorb nur an der eigenen Meldung an', async () => {
+    const wrapper = item('box')
+    await flushPromises()
+
+    // Die Meldung ist von u1, und u1 liest gerade.
+    const bin = wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label') === 'Statusmeldung löschen')
+
+    expect(bin).toBeDefined()
+  })
+
+  it('bietet an einem fremden Kommentar kein Löschen an', async () => {
+    const wrapper = await itemWithCommentsOpen()
+
+    // Beide Kommentare stammen von anderen; u1 hat dort nichts zu löschen.
+    const remove = wrapper.findAll('button').find((button) => button.text() === 'Löschen')
+
+    expect(remove).toBeUndefined()
+  })
+
+  it('fragt nach, bevor eine Meldung verschwindet', async () => {
+    removeUpdate.mockResolvedValue({ status: 204 })
+    const asked = vi.spyOn(globalThis, 'confirm').mockReturnValue(false)
+
+    const wrapper = item('box')
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.attributes('aria-label') === 'Statusmeldung löschen')
+      ?.trigger('click')
+    await flushPromises()
+
+    // Abgelehnt heißt abgelehnt: Die Meldung nimmt ihre Kommentare mit, das fragt man einmal.
+    expect(asked).toHaveBeenCalled()
+    expect(removeUpdate).not.toHaveBeenCalled()
+    asked.mockRestore()
   })
 })

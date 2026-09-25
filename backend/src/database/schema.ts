@@ -117,6 +117,8 @@ export type ReportTargetType =
   | "writing_post"
   | "writing_thread";
 
+export type StatusDeletionKind = "comment" | "status_update";
+
 export type StoryContentWarning =
   | "abuse"
   | "animal_cruelty"
@@ -639,12 +641,33 @@ export interface StatusUpdateComment {
   body: string;
   createdAt: Generated<string>;
   createdBy: string;
+  /**
+   * Gesetzt heißt: Der Text ist weg, die Zeile bleibt. Zitate darauf behalten ihren Anker.
+   */
+  deletedAt: string | null;
+  deletedByModeration: Generated<boolean>;
   id: Generated<string>;
   /**
    * Der zitierte Kommentar, oder null. Das Zitat wird beim Anzeigen aus ihm gebaut, damit Name und Text aktuell bleiben.
    */
   quotedCommentId: string | null;
   statusUpdateId: string;
+}
+
+export interface StatusUpdateDeletion {
+  body: string;
+  byModeration: boolean;
+  commentId: string | null;
+  deletedAt: Generated<string>;
+  deletedBy: string | null;
+  deletedByUsername: string;
+  id: Generated<string>;
+  kind: StatusDeletionKind;
+  reason: string | null;
+  statusUpdateId: string;
+  writtenAt: string;
+  writtenBy: string | null;
+  writtenByUsername: string;
 }
 
 export interface StatusUpdateHiddenMember {
@@ -916,6 +939,7 @@ export interface DB {
   senderGrant: SenderGrant;
   statusUpdate: StatusUpdate;
   statusUpdateComment: StatusUpdateComment;
+  statusUpdateDeletion: StatusUpdateDeletion;
   statusUpdateHiddenMember: StatusUpdateHiddenMember;
   statusUpdateSubscription: StatusUpdateSubscription;
   storyIdea: StoryIdea;
@@ -1302,6 +1326,9 @@ export const OFFICIAL_REVISION_KINDS = [
 ] as const;
 export const OFFICIAL_REVISION_KIND_SCHEMA = z.enum(OFFICIAL_REVISION_KINDS);
 
+export const STATUS_DELETION_KINDS = ["comment", "status_update"] as const;
+export const STATUS_DELETION_KIND_SCHEMA = z.enum(STATUS_DELETION_KINDS);
+
 export const ACTIVITY_WINDOW_SCHEMA = z.object({
   userId: z.uuidv7(),
   windowStart: z.iso.datetime({ offset: true }),
@@ -1646,6 +1673,26 @@ export const STATUS_UPDATE_COMMENT_SCHEMA = z.object({
   quotedCommentId: z.uuidv7().nullable().describe(
     "Der zitierte Kommentar, oder null. Das Zitat wird beim Anzeigen aus ihm gebaut, damit Name und Text aktuell bleiben.",
   ),
+  deletedAt: z.iso.datetime({ offset: true }).nullable().describe(
+    "Gesetzt heißt: Der Text ist weg, die Zeile bleibt. Zitate darauf behalten ihren Anker.",
+  ),
+  deletedByModeration: z.boolean(),
+});
+
+export const STATUS_UPDATE_DELETION_SCHEMA = z.object({
+  id: z.uuidv7(),
+  kind: STATUS_DELETION_KIND_SCHEMA,
+  statusUpdateId: z.uuidv7(),
+  commentId: z.uuidv7().nullable(),
+  body: z.string(),
+  writtenBy: z.uuidv7().nullable(),
+  writtenByUsername: z.string(),
+  writtenAt: z.iso.datetime({ offset: true }),
+  deletedBy: z.uuidv7().nullable(),
+  deletedByUsername: z.string(),
+  deletedAt: z.iso.datetime({ offset: true }),
+  byModeration: z.boolean(),
+  reason: z.string().nullable(),
 });
 
 export const STATUS_UPDATE_HIDDEN_MEMBER_SCHEMA = z.object({

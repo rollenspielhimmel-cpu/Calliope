@@ -141,6 +141,17 @@ export const PERSON_FIELD_INVENTORY: readonly InventoryEntry[] = [
     reason: "not-group-content",
   },
   {
+    // Die eigene Ausblendliste: Sie nennt, wen man selbst eingetragen hat, und niemanden sonst.
+    route: "GET /api/status-updates/hidden",
+    fields: ["userId"],
+    reason: "not-group-content",
+  },
+  {
+    route: "PUT /api/status-updates/hidden/{userId}",
+    fields: ["userId"],
+    reason: "not-group-content",
+  },
+  {
     route: "GET /api/story-ideas/{ideaId}",
     fields: ["createdBy"],
     reason: "not-group-content",

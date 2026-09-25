@@ -605,11 +605,23 @@ const QUOTED_COMMENT = z.object({
 
 export const STATUS_UPDATE_COMMENT_RESPONSE = STATUS_UPDATE_COMMENT_SCHEMA
   // Die Kennung des Zitats bleibt drinnen: Sie ist Buchführung, und was die Oberfläche davon
-  // braucht, steht ausgebaut in `quotedComment`.
-  .omit({ quotedCommentId: true })
+  // braucht, steht ausgebaut in `quotedComment`. Dasselbe für die beiden Löschspalten: Was die
+  // Oberfläche braucht, ist *wer* gelöscht hat, und das steht in `deletedBy`.
+  .omit({ quotedCommentId: true, deletedAt: true, deletedByModeration: true })
   .extend({
     createdByUsername: z.string(),
     quotedComment: QUOTED_COMMENT.nullable(),
+    /**
+     * Wer gelöscht hat, oder null.
+     *
+     * **Der Unterschied gehört an die Oberfläche:** „Kommentar gelöscht." heißt, jemand hat sein
+     * eigenes Wort zurückgenommen; „Kommentar durch Rollenspielhimmel gelöscht." heißt, die
+     * Plattform hat eingegriffen. Wer das verwechselt, hält Moderation für Reue — oder umgekehrt.
+     *
+     * Der Text ist dann leer. Er verlässt den Server nicht: Ein gelöschter Kommentar ist
+     * gelöscht, auch für den, der die Antwort abfängt. Im Protokoll steht er, in der Antwort nicht.
+     */
+    deletedBy: z.enum(["member", "moderation"]).nullable(),
   });
 
 /**

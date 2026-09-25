@@ -12,6 +12,8 @@ import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   createStatusUpdateComment,
+  deleteStatusUpdate,
+  deleteStatusUpdateComment,
   setStatusUpdateSubscription,
   useGetStatusUpdateSubscription,
   useListStatusUpdateComments,
@@ -24,7 +26,8 @@ import { TEXT_LIMIT } from '@/api/textLimit'
 import { formatActivityTime } from '@/lib/format/formatTime'
 import { pluralize } from '@/lib/format/formatText'
 import { useRefreshStatusUpdates } from '@/composables/useStatusUpdates'
-import { Bell, BellOff, Reply } from '@lucide/vue'
+import { useGetCurrentUser } from '@/api/auth/auth'
+import { Bell, BellOff, Reply, Trash2 } from '@lucide/vue'
 import QuotedComment from '@/components/status/QuotedComment.vue'
 import StatusBody from '@/components/status/StatusBody.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -176,7 +179,53 @@ async function toggleSubscription() {
   }
 }
 
+/** Wer hier liest — nur das Eigene lässt sich löschen. */
+const { data: userData } = useGetCurrentUser()
+const currentUserId = computed<string | undefined>(() =>
+  userData.value?.status === 200 ? userData.value.data.id : undefined,
+)
+
 const refreshStatusUpdates = useRefreshStatusUpdates()
+
+/**
+ * Was einem selbst gehört, darf man zurücknehmen.
+ *
+ * **Die Meldung nimmt ihre Kommentare mit** — ein Strang ohne seinen Anfang ist kein Strang. Ein
+ * Kommentar wird dagegen nur leer: An seiner Stelle steht „Kommentar gelöscht.", damit Antworten,
+ * die ihn zitieren, ihren Anker behalten.
+ *
+ * Beides steht vorher im Protokoll. Deshalb die Rückfrage: Es ist zurücknehmbar für die Lesenden,
+ * nicht für die Aufzeichnung.
+ */
+const removing = ref<boolean>(false)
+
+async function removeUpdate() {
+  if (!globalThis.confirm('Diese Statusmeldung löschen? Die Kommentare darunter gehen mit.')) {
+    return
+  }
+
+  removing.value = true
+  try {
+    await deleteStatusUpdate(props.update.id)
+    await refreshStatusUpdates()
+  } finally {
+    removing.value = false
+  }
+}
+
+async function removeComment(commentId: string) {
+  if (!globalThis.confirm('Diesen Kommentar löschen?')) {
+    return
+  }
+
+  removing.value = true
+  try {
+    await deleteStatusUpdateComment(props.update.id, commentId)
+    await Promise.all([commentsQuery.refetch(), refreshStatusUpdates()])
+  } finally {
+    removing.value = false
+  }
+}
 const sending = ref<boolean>(false)
 
 async function submitComment() {
@@ -260,6 +309,20 @@ async function submitComment() {
              Ein Zustand, den man sieht, statt eines Satzes, den man lesen muss — und er steht
              dort, wo auch die Kommentare stehen, um die es geht. -->
         <div class="absolute top-0 right-0 flex items-center gap-1">
+          <!-- Nur an der eigenen Meldung, und ganz links in der Reihe: Löschen ist selten und
+               endgültig, also steht es nicht dort, wo der Daumen ohnehin hinfährt. -->
+          <button
+            v-if="update.createdBy === currentUserId"
+            type="button"
+            class="rounded-full p-1 text-ink-5 hover:text-destructive"
+            :disabled="removing"
+            aria-label="Statusmeldung löschen"
+            title="Statusmeldung löschen"
+            @click="removeUpdate"
+          >
+            <Trash2 :size="13" :stroke-width="1.5" aria-hidden="true" />
+          </button>
+
           <button
             v-if="subscribed !== undefined"
             type="button"
@@ -358,7 +421,18 @@ async function submitComment() {
                 >
                   {{ comment.createdByUsername }}
                 </RouterLink>
-                {{ comment.body }}
+                <!-- **Zwei Sätze, nicht einer.** „Kommentar gelöscht." heißt, jemand hat sein
+                     eigenes Wort zurückgenommen; „durch Rollenspielhimmel" heißt, die Plattform
+                     hat eingegriffen. Wer das verwechselt, hält Moderation für Reue — oder
+                     umgekehrt. -->
+                <span v-if="comment.deletedBy" class="text-ink-5 italic">
+                  {{
+                    comment.deletedBy === 'moderation'
+                      ? 'Kommentar durch Rollenspielhimmel gelöscht.'
+                      : 'Kommentar gelöscht.'
+                  }}
+                </span>
+                <template v-else>{{ comment.body }}</template>
                 <span class="text-ink-4">· {{ formatActivityTime(comment.createdAt) }} ·</span>
                 <!-- **„Antworten", nicht „Zitieren", und mit Pfeil.**
                    „Zitieren" beschreibt die Technik; „Antworten" das, was man vorhat — und
@@ -369,12 +443,24 @@ async function submitComment() {
                    Bleibt in der Metazeile und wird keine Knopfleiste: eine Handlung, kein
                    Angebot, das sich vordrängt. -->
                 <button
+                  v-if="!comment.deletedBy"
                   type="button"
                   class="ml-0.5 inline-flex items-baseline gap-0.5 text-ink-4 hover:text-oak-deep"
                   @click="quoteComment(comment)"
                 >
                   <Reply :size="11" :stroke-width="1.75" class="self-center" aria-hidden="true" />
                   Antworten
+                </button>
+
+                <button
+                  v-if="!comment.deletedBy && comment.createdBy === currentUserId"
+                  type="button"
+                  class="ml-1 inline-flex items-baseline gap-0.5 text-ink-4 hover:text-destructive"
+                  :disabled="removing"
+                  @click="removeComment(comment.id)"
+                >
+                  <Trash2 :size="11" :stroke-width="1.75" class="self-center" aria-hidden="true" />
+                  Löschen
                 </button>
               </p>
             </component>
