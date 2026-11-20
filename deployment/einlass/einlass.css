@@ -1,0 +1,127 @@
+/* The gate's page. Colours from frontend/src/assets/styles/colors.css, written out because this
+   page is served without the frontend's bundle — it stands in front of it. */
+
+:root {
+  color-scheme: light dark;
+  --paper-0: #fffdf9;
+  --paper-1: #f7f4ee;
+  --line: #cdbfa6;
+  --ink-1: #2b2620;
+  --ink-2: #302a23;
+  --ink-5: #6d6153;
+  --oak: #8a6a3a;
+  --oak-deep: #4f4132;
+  --oak-deeper: #3f3427;
+  --alert-surface: #fbf0ed;
+  --alert-line: #e0b6ad;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper-0: #2a251f;
+    --paper-1: #1f1b17;
+    --line: #5a4f42;
+    --ink-1: #f2ece2;
+    --ink-2: #e6dfd3;
+    --ink-5: #b3a796;
+    --oak: #c9a46a;
+    --oak-deep: #c9a46a;
+    --oak-deeper: #dcb97f;
+    --alert-surface: #3a2622;
+    --alert-line: #7a4a40;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+main {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 24px;
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(90, 70, 40, 0.08), 0 1px 2px rgba(90, 70, 40, 0.05);
+}
+
+h1 {
+  margin: 0 0 8px;
+  color: var(--ink-1);
+  font: 500 1.75rem/1.2 Newsreader, Georgia, serif;
+}
+
+main > p {
+  margin: 0 0 20px;
+  color: var(--ink-5);
+  font-size: 0.95rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--ink-1);
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+input:focus {
+  outline: 2px solid var(--oak);
+  outline-offset: 1px;
+}
+
+button {
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--paper-0);
+  background: var(--oak-deep);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--oak-deeper);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+#hinweis {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  background: var(--alert-surface);
+  border: 1px solid var(--alert-line);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.ohne-skript {
+  text-align: center;
+  color: var(--ink-5);
+}

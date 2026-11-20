@@ -1,0 +1,38 @@
+<!doctype html>
+<!--
+  The gate's own page, shown instead of the browser's password prompt. Served by the Caddyfile's
+  `handle_errors 401` for every request the gate refuses; see the comment there.
+
+  Rendered through Caddy's `templates`, which is the only reason the username can be in it: the
+  check behind this page is the same basic authentication as before, and that wants a name as well
+  as a password. The name is not the secret — testers are handed the password only.
+-->
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#4f4132" />
+    <title>Rollenspielhimmel – Einlass</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/einlass.css" />
+    <script src="/einlass.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>Rollenspielhimmel</h1>
+      <p>Die Seite ist gerade nur für Testerinnen und Tester geöffnet. Mit dem Passwort, das du von uns bekommen hast, kommst du hinein.</p>
+
+      <form id="einlass" data-name="{{env "GATE_USERNAME" | html}}">
+        <label for="passwort">Passwort</label>
+        <input id="passwort" name="passwort" type="password" autocomplete="current-password" required autofocus />
+        <p id="hinweis" role="alert" hidden></p>
+        <button type="submit">Hinein</button>
+      </form>
+    </main>
+
+    <noscript>
+      <p class="ohne-skript">Für den Einlass braucht diese Seite JavaScript.</p>
+    </noscript>
+  </body>
+</html>

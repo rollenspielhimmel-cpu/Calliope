@@ -231,6 +231,13 @@ It sits in Caddy rather than in the application deliberately: it has to cover th
 document, the uploaded files and any route added later by somebody who was not thinking about
 this. A gate inside the application covers what it was told to cover.
 
+**No browser prompt.** A refusal is answered with a page of its own — `deployment/einlass/`,
+served by `handle_errors 401` in the `Caddyfile` — instead of the basic authentication dialog,
+which some browsers cannot show at all (the one built into the Claude app shows a blank page). The
+page sends the password as an `Authorization` header, so the check behind it is still `basic_auth`
+against the same hash, and the `einlass` cookie it hands out is the same pass as before. Only the
+password is asked for; the page fills in `GATE_USERNAME` itself.
+
 Generate the hash on the server, so the password never lands in a file that syncs anywhere:
 
 ```bash
@@ -243,7 +250,8 @@ anybody else. A 401 there is reported as a 401 rather than as a stale deploy —
 confuse, because a refused request contains neither the release id nor the commit meta.
 
 **Removing it** once the Impressum is up: delete the `route` wrapper in the `Caddyfile` (the two
-`handle` blocks move back out one level) and the three `GATE_*` lines from `.env`. The deploy
+`handle` blocks move back out one level), the `handle_errors 401` block and the `@einlass_seite`
+handle, the `/einlass` mount in `docker-compose.deploy.yaml`, and the `GATE_*` lines from `.env`. The deploy
 checks run unauthenticated when the variables are absent, so nothing else needs touching.
 
 ## The backend must stay a single instance

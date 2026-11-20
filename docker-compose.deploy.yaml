@@ -42,6 +42,9 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./frontend/dist:/srv:ro
+      # The gate's own page, which asks for the password instead of the browser's prompt. Apart
+      # from /srv because it stands in front of the frontend, not inside it.
+      - ./deployment/einlass:/einlass:ro
       # Issued certificates live here; losing this volume means requesting them again.
       - caddy-data:/data
       - caddy-config:/config

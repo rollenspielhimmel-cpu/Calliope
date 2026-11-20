@@ -84,6 +84,21 @@
 			file_server
 		}
 
+		# ── The gate's own page, its script and its stylesheet ──────────────────────────────
+		#
+		# In front of the gate for the same reason as the icons: the page that asks for the
+		# password has to load without it. Two exact paths, and nothing in them is secret.
+		@einlass_seite path /einlass.js /einlass.css
+		handle @einlass_seite {
+			root * /einlass
+			header {
+				X-Content-Type-Options nosniff
+				# Short, because the names carry no hash and a fix must arrive.
+				Cache-Control "public, max-age=3600"
+			}
+			file_server
+		}
+
 		# ── The pass ────────────────────────────────────────────────────────────────────────
 		#
 		# Whoever already carries the pass is not asked again.
@@ -116,6 +131,12 @@
 		# Both interpolated from `.env`. An empty hash makes Caddy refuse to start, which fails
 		# the deploy rather than quietly serving the site to everybody — the same direction
 		# `ENVIRONMENT` fails in, and for the same reason.
+		#
+		# **Still basic authentication, but nobody sees its prompt any more.** A refusal here is
+		# turned into the gate's own page by `handle_errors 401` at the bottom of this file, and
+		# that page sends the password back as an `Authorization` header — the same thing the
+		# browser's prompt sent. So this line remains the one place the password is checked, and
+		# `deploy.sh` with `curl --user` passes it exactly as before.
 		basic_auth @ohne_einlass bcrypt "Rollenspielhimmel" {
 			{$GATE_USERNAME} {$GATE_PASSWORD_HASH}
 		}
@@ -181,6 +202,51 @@
 
 			try_files {path} /index.html
 			file_server
+		}
+	}
+
+	# ── The gate's page instead of the browser's prompt ─────────────────────────────────────
+	#
+	# Every 401 the site gate gives becomes a page with a password field.
+	#
+	# **Why.** Not every browser can show the basic authentication prompt. The browser built into
+	# the Claude app shows a blank page instead, and strips credentials written into the address,
+	# so there was no way in at all. A page of our own works wherever a page works.
+	#
+	# **How the prompt is kept away.** A browser prompts because of `WWW-Authenticate`, which
+	# `basic_auth` sets before it refuses. Taking it off the refusal is all it takes; the status
+	# stays 401, so a script or `curl` still learns it was refused. The page's script then
+	# answers with an `Authorization` header, which the gate checks as it always did, and the
+	# pass is handed out on the way back — see `deployment/einlass/einlass.js`.
+	#
+	# **Not the mailbox.** Its refusals keep their header and their prompt: it is the team's,
+	# its password is not the site's, and this page would send the site's name with it.
+	#
+	# Only refusals reach here. The backend's own 401s are proxied responses, not errors, so a
+	# signed-out member still gets JSON from the API and never this page.
+	#
+	# Comes down with the gate: delete this block, the `@einlass_seite` handle and the
+	# `/einlass` mount in the compose file.
+	handle_errors 401 {
+		@sperre not path /{$MAILPIT_WEBROOT:postfach}*
+		handle @sperre {
+			header {
+				-WWW-Authenticate
+				# Never kept: the page stands at whatever address was asked for, and a cached
+				# copy would be shown again after the pass has arrived.
+				Cache-Control no-store
+				X-Content-Type-Options nosniff
+				X-Frame-Options SAMEORIGIN
+				Referrer-Policy no-referrer
+				Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+			}
+			root * /einlass
+			rewrite * /einlass.html
+			# Fills in the username, which the check behind the page needs alongside the password.
+			templates
+			file_server {
+				status 401
+			}
 		}
 	}
 }
