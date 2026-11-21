@@ -250,3 +250,12 @@
 		}
 	}
 }
+
+# ── Other sites on this host ────────────────────────────────────────────────────────────────
+#
+# Other services on the same host that share this Caddy as their front door. Each brings its own
+# site block as a file in /opt/caddy-sites on the host (mounted in docker-compose.deploy.yaml).
+#
+# **Only the reference lives here, not the blocks**, so Calliope needs to know nothing about them.
+# An empty folder is fine: Caddy logs a warning and starts.
+import /etc/caddy/sites/*.caddy

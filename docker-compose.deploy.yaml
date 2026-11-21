@@ -45,6 +45,9 @@ services:
       # The gate's own page, which asks for the password instead of the browser's prompt. Apart
       # from /srv because it stands in front of the frontend, not inside it.
       - ./deployment/einlass:/einlass:ro
+      # Site blocks of other services on this host, see the end of the Caddyfile. If the folder does
+      # not exist yet, Docker creates it empty and Caddy starts anyway.
+      - /opt/caddy-sites:/etc/caddy/sites:ro
       # Issued certificates live here; losing this volume means requesting them again.
       - caddy-data:/data
       - caddy-config:/config
