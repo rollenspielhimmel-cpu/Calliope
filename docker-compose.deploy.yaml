@@ -64,8 +64,25 @@ services:
     image: node:26-alpine
     working_dir: /app
     # The API client is generated rather than committed, so it has to be produced here or
-    # the type check fails on imports that do not exist yet in a fresh checkout.
-    command: sh -c "npm ci && npm run open-api:generate-client && npm run build"
+    # the build fails on imports that do not exist yet in a fresh checkout.
+    #
+    # **`build-only`, not `build`: no type check here.** `build` runs `vue-tsc` alongside Vite,
+    # and on this two-core server that took two of a deploy's three minutes (measured 21.11.2026)
+    # — to repeat what the Frontend job in `.github/workflows/validate.yml` already checks on
+    # every push. The price is that a type error no longer stops a deploy, so look at the
+    # pipeline for the commit before deploying it.
+    #
+    # **`npm ci` only when the dependencies changed.** It deletes node_modules and installs from
+    # scratch every time, which is another 25 seconds for nothing on most deploys. The volume
+    # below keeps node_modules between runs; the stamp in it records the lockfile and the Node
+    # version it was installed for, so a new lockfile or a new `node:26-alpine` (whose native
+    # packages might not fit the old install) reinstalls. `$$` is compose's escape for `$`.
+    command: >-
+      sh -c 'stamp="$$(node -v) $$(sha256sum package-lock.json | cut -d" " -f1)";
+      if [ "$$(cat node_modules/.deploy-stamp 2>/dev/null)" = "$$stamp" ];
+      then echo "node_modules matches package-lock.json, skipping npm ci";
+      else npm ci && echo "$$stamp" > node_modules/.deploy-stamp; fi
+      && npm run open-api:generate-client && npm run build-only'
     environment:
       # Baked into the bundle at build time, so the tab title and the wordmark are right from
       # the first paint. Renaming means rebuilding, which a deploy does anyway.
